@@ -33,16 +33,12 @@ function starsFromPercent(p: number) {
 
 // CSV helpers
 function csvEscape(val: unknown): string {
-  // Convert undefined/null to empty string, keep numbers/strings
   const s = val === null || val === undefined ? "" : String(val);
-  // Escape quotes and wrap if contains comma/quote/newline
   const needsQuotes = /[",\n]/.test(s);
   const escaped = s.replace(/"/g, '""');
   return needsQuotes ? `"${escaped}"` : escaped;
 }
-
 function toISO(dt: string) {
-  // ensure consistent ISO output; Vercel/Supa send ISO already, but standardise
   const d = new Date(dt);
   return isNaN(+d) ? dt : d.toISOString();
 }
@@ -115,7 +111,6 @@ export default function AdminPage() {
       "Predicted_100",
       "Stars",
     ];
-
     const lines = filtered.map((r) => {
       const stars = starsFromPercent(r.predicted);
       return [
@@ -131,13 +126,10 @@ export default function AdminPage() {
         csvEscape(stars),
       ].join(",");
     });
-
     const csv = [headers.join(","), ...lines].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-
     const ts = new Date().toISOString().replace(/[:.]/g, "-");
     const filename = `oer-walkthrough-export-${ts}.csv`;
-
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -150,6 +142,23 @@ export default function AdminPage() {
 
   return (
     <main style={{ maxWidth: 1100, margin: "0 auto", padding: 16 }}>
+      {/* Banner with Domino's blue border */}
+      <div
+        style={{
+          borderBottom: "4px solid #006491",
+          marginBottom: 12,
+          borderRadius: 12,
+          overflow: "hidden",
+          boxShadow: "0 6px 18px rgba(0,0,0,.06)",
+        }}
+      >
+        <img
+          src="/mourneoids_forms_header_1600x400.png"
+          alt="Mourne-oids Header Banner"
+          style={{ width: "100%", maxHeight: 200, objectFit: "cover", display: "block" }}
+        />
+      </div>
+
       {/* Header with Back + Download */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
         <a
