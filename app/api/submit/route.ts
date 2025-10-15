@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendSubmissionEmails } from "../../../lib/mail"; // 👈 fixed import path
+import { sendSubmissionEmails } from "../../../lib/mail"; // relative path (works without aliases)
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 403 });
 
-    // Fire-and-forget emails (no hard fail if email provider has issues)
+    // Fire-and-forget emails (don’t fail the request if email has an issue)
     try {
       await sendSubmissionEmails({
         toUser: user_email,
