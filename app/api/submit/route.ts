@@ -2,12 +2,10 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendSubmissionEmails } from "../../../lib/mail";
 
-
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || null;
 
-/** Create a Supabase client that acts as the end user (reads Bearer token) */
 function supabaseAsUser(req: Request) {
   const auth = req.headers.get("authorization") || req.headers.get("Authorization") || "";
   return createClient(url, anon, {
@@ -18,7 +16,6 @@ function supabaseAsUser(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    // Require login — must send Authorization: Bearer <jwt>
     const supabase = supabaseAsUser(req);
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) {
@@ -36,9 +33,10 @@ export async function POST(req: Request) {
     const store = body?.store ?? null;
     const user_email = body?.user_email ?? userData.user.email ?? null;
 
-    if (!store) return NextResponse.json({ error: "Store required." }, { status: 400 });
+    if (!store) {
+      return NextResponse.json({ error: "Store required." }, { status: 400 });
+    }
 
-    // Insert using user's JWT so RLS policies enforce per-store access
     const { data, error } = await supabase
       .from("walkthrough_submissions")
       .insert({
@@ -55,9 +53,11 @@ export async function POST(req: Request) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 403 });
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
 
-    // Fire-and-forget emails (don’t fail the request if email has an issue)
+    // Send confirmation email (best effort)
     try {
       await sendSubmissionEmails({
         toUser: user_email,
@@ -75,13 +75,13 @@ export async function POST(req: Request) {
           predicted: data.predicted,
         },
       });
-    } catch (err) {
-      console.warn("Email send failed:", err);
+    } catch (e) {
+      console.warn("Email send failed", e);
     }
 
     return NextResponse.json({ ok: true, id: data.id });
   } catch (e: any) {
-    console.error("Submit error:", e);
+    console.error("Route error", e);
     return NextResponse.json({ error: "Bad request" }, { status: 400 });
   }
 }
