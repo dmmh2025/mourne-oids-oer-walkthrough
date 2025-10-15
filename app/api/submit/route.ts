@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendSubmissionEmails } from "../../../lib/mail"; // relative path (works without aliases)
+import { sendSubmissionEmails } from "../../../lib/mail";
+
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
