@@ -10,7 +10,6 @@ const supabase = createClient(supabaseUrl, supabaseAnon);
 
 /**
  * Walkthrough sections — TOTAL = 75
- * (Your requested increases applied; other sections lightly reduced to keep total at 75.)
  */
 const SECTIONS: {
   key: string;
@@ -22,7 +21,7 @@ const SECTIONS: {
   {
     key: "temperature_records",
     title: "Temperature Records",
-    max: 6, // was 3 (+ cooking temps)
+    max: 6,
     items: [
       { key: "complete_pre_open", label: "Complete and upload PRE-OPEN" },
       { key: "cooking_temps", label: "Cooking temperatures recorded & in range" },
@@ -40,14 +39,12 @@ const SECTIONS: {
     key: "hand_washing",
     title: "Hand Washing",
     max: 3,
-    items: [
-      { key: "sinks_stocked_20s", label: "Sinks stocked (soap/towels); washing for 20 seconds" },
-    ],
+    items: [{ key: "sinks_stocked_20s", label: "Sinks stocked (soap/towels); washing for 20 seconds" }],
   },
   {
     key: "sanitation",
     title: "Sanitation",
-    max: 4, // trimmed (was 5)
+    max: 4,
     items: [
       { key: "surfaces_2h", label: "Food surfaces/utensils sanitised every 2h (clock running)" },
       { key: "can_opener", label: "Can opener clean, rust-free; cleaned after each use" },
@@ -62,7 +59,7 @@ const SECTIONS: {
   {
     key: "great_remake",
     title: "Great/Remake Criteria (scored in Product Section)",
-    max: 22, // was 20 (+ breaded sides)
+    max: 22,
     items: [
       { key: "no_day1_dough", label: "NO DAY 1 dough in use — swap with other stores" },
       { key: "bubble_popper_use", label: "Use bubble popper when needed; clean after every use" },
@@ -74,7 +71,7 @@ const SECTIONS: {
   {
     key: "dough",
     title: "Dough",
-    max: 4, // trimmed (was 5)
+    max: 5, // <-- was 4, +1 point here
     items: [
       { key: "mixed_trays_out", label: "Mixed trays dated; all sizes out at all times (incl. VEGAN)" },
       { key: "covered_clean_tray", label: "All dough covered with a clean/sanitised tray" },
@@ -85,7 +82,7 @@ const SECTIONS: {
   {
     key: "approved_product",
     title: "Approved Product & Procedures",
-    max: 8, // was 2 (+ pest control)
+    max: 7, // <-- was 8, -1 point here
     items: [
       { key: "bins_max_2h", label: "Makeline bins MAX 2 hours of product (≤ 1.5 full)" },
       { key: "gf_kit_black_bottom", label: "GF kit set; toppings in black tubs on bottom row" },
@@ -102,7 +99,7 @@ const SECTIONS: {
   {
     key: "uniform_grooming",
     title: "Uniform & Brand Standards",
-    max: 5, // stays 5 (+ drivers vehicle)
+    max: 5,
     items: [
       { key: "black_trousers", label: "Jet black trousers/jeans — no leggings/joggers/combat" },
       { key: "plain_undershirt", label: "Plain white/black undershirts; no visible writing/logos" },
@@ -115,7 +112,7 @@ const SECTIONS: {
   {
     key: "store_interior",
     title: "Store Interior / Customer View",
-    max: 6, // trimmed (was 8)
+    max: 6,
     items: [
       { key: "toilets_lined_bin", label: "Toilets: lined bin with lid" },
       { key: "customer_view_clean", label: "Everything in customer view clean and tidy" },
@@ -126,13 +123,13 @@ const SECTIONS: {
   {
     key: "outside_entry",
     title: "Outside Entry",
-    max: 2, // trimmed (was 3)
+    max: 2,
     items: [{ key: "no_branded_rubbish", label: "No branded rubbish; refuse bins not overflowing" }],
   },
   {
     key: "baking_equipment",
     title: "Baking Equipment",
-    max: 2, // trimmed (was 3)
+    max: 2,
     items: [
       { key: "oven_clean", label: "Oven clean (not yellowing) — hood/filters/belt/frame" },
       { key: "screens_pans_clean", label: "Screens & pans clean, good repair, no carbon build-up" },
@@ -142,13 +139,13 @@ const SECTIONS: {
   {
     key: "hotbags",
     title: "Hotbags",
-    max: 1, // trimmed (was 2)
+    max: 1,
     items: [{ key: "brushed_clean_no_rips", label: "Brushed out, clean patches, no rips (isolate if damaged)" }],
   },
   {
     key: "walk_in_cooler",
     title: "Walk-in Cooler",
-    max: 1, // trimmed (was 2)
+    max: 1,
     items: [
       { key: "surfaces_clean", label: "Fan/floor/ceiling/walls & shelving clean (no mould/debris/rust)" },
       { key: "door_seal_handle", label: "Door seal good; handle clean — no food debris" },
@@ -157,7 +154,7 @@ const SECTIONS: {
   {
     key: "makeline",
     title: "Makeline",
-    max: 1, // trimmed (was 2)
+    max: 1,
     items: [
       { key: "fixtures_clean", label: "Cupboards/doors/handles/shelves/seals/lids clean & in good condition" },
       { key: "catch_trays_good", label: "Catch trays/grills/seals in good condition — no splits/tears/missing rails" },
@@ -166,7 +163,7 @@ const SECTIONS: {
   {
     key: "safety_security",
     title: "Safety & Security",
-    max: 6, // trimmed (was 7)
+    max: 6,
     items: [
       { key: "drivers_drop_cash", label: "Drivers dropping cash (if applicable)" },
       { key: "safe_utilised", label: "Safe utilised, secure & working — time delay in use (not day lock)" },
@@ -176,19 +173,15 @@ const SECTIONS: {
   {
     key: "prp",
     title: "PRP",
-    max: 1, // trimmed (was 2)
+    max: 1,
     items: [
       { key: "prep_sheet_printed", label: "Prep sheet printed & used for FULL DAY’S TRADE" },
       { key: "all_items_available", label: "ALL ITEMS AVAILABLE (source pre-open if NO)" },
     ],
   },
-]; // ← sums to 75
+]; // sums to 75
 
-/** ===== Service scoring (TOTAL 25) =====
- * ADT (mins) — max 15 pts
- * SBR (%) — max 5 pts
- * Extremes per 1000 — max 5 pts
- */
+/** ===== Service scoring (TOTAL 25) ===== */
 function scoreADT(adt: number | null): number | null {
   if (adt == null || Number.isNaN(adt)) return null;
   if (adt > 30) return 0;
@@ -214,9 +207,9 @@ function scoreExtremes(perThousand: number | null): number | null {
   return 5; // 0–15
 }
 function colourForPredicted(v: number) {
-  if (v >= 85) return "#065f46"; // green
-  if (v >= 70) return "#92400e"; // amber
-  return "#7f1d1d";              // red
+  if (v >= 85) return "#065f46";
+  if (v >= 70) return "#92400e";
+  return "#7f1d1d";
 }
 
 type SectionState = Record<string, boolean>;
@@ -332,7 +325,7 @@ export default function WalkthroughPage() {
       <header style={{ marginBottom: 8 }}>
         <h1 style={{ margin: 0, fontSize: 24 }}>🍕 Daily OER Walkthrough</h1>
         <p style={{ margin: "6px 0 0 0", color: "#475569" }}>
-          Updated weights & checks applied. Service points auto-calc from ADT / SBR / Extremes.
+          Updated weights applied. Service points auto-calc from ADT / SBR / Extremes.
         </p>
       </header>
 
