@@ -1,276 +1,144 @@
 "use client";
-export const dynamic = "force-dynamic";
 
 import * as React from "react";
 import { createClient } from "@supabase/supabase-js";
 
+// Create Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseAnon);
 
-/**
- * Walkthrough sections — TOTAL = 75
- */
-const SECTIONS: {
-  key: string;
-  title: string;
-  max: number;
-  items: { key: string; label: string }[];
-}[] = [
-  // LEFT COLUMN
+// SECTION DEFINITIONS
+const SECTIONS = [
   {
-    key: "temperature_records",
-    title: "Temperature Records",
+    key: "temps",
+    title: "Temperatures (6 points)",
     max: 6,
     items: [
-      { key: "complete_pre_open", label: "Complete and upload PRE-OPEN" },
-      { key: "cooking_temps", label: "Cooking temperatures recorded & in range" },
+      { key: "fridge", label: "All fridges within range" },
+      { key: "freezer", label: "All freezers within range" },
+      { key: "cooking", label: "Cooking temps within tolerance" },
     ],
   },
   {
-    key: "shelf_life",
-    title: "Shelf Life",
-    max: 3,
+    key: "app",
+    title: "Appearance & Pest Control (8 points)",
+    max: 8,
     items: [
-      { key: "dated_within_shelf", label: "All products (incl. staff food) dated & within shelf life" },
-    ],
-  },
-  {
-    key: "hand_washing",
-    title: "Hand Washing",
-    max: 3,
-    items: [{ key: "sinks_stocked_20s", label: "Sinks stocked (soap/towels); washing for 20 seconds" }],
-  },
-  {
-    key: "sanitation",
-    title: "Sanitation",
-    max: 4,
-    items: [
-      { key: "surfaces_2h", label: "Food surfaces/utensils sanitised every 2h (clock running)" },
-      { key: "can_opener", label: "Can opener clean, rust-free; cleaned after each use" },
-      { key: "smallwares_clean", label: "Bubble popper/shakers/squeeze bottles/keyboards clean for open" },
-      { key: "sink_concentration", label: "Sanitiser sink correct concentration (test strip checked)" },
-      { key: "bottles_filled", label: "Fresh sanitiser bottles filled each morning" },
-      { key: "spray_only_prep", label: "ONLY sanitiser spray in food prep area" },
-      { key: "tubs_changed", label: "Dip tubs/silicon/foil/squeeze bottles/gluten kit changed daily" },
-      { key: "nothing_on_floor", label: "Nothing stored on dough trays/ directly on floor" },
-    ],
-  },
-  {
-    key: "great_remake",
-    title: "Great/Remake Criteria (scored in Product Section)",
-    max: 22,
-    items: [
-      { key: "no_day1_dough", label: "NO DAY 1 dough in use — swap with other stores" },
-      { key: "bubble_popper_use", label: "Use bubble popper when needed; clean after every use" },
-      { key: "no_sauce_cheese_crust", label: "No sauce or cheese on the crust" },
-      { key: "breaded_sides", label: "Breaded sides cooked correctly (time/temp/quality)" },
-      { key: "five_star_follow", label: "5★ Pizzas — follow Sell/Remake: RIM / SIZE / PORTION / PLACEMENT / BAKE" },
+      { key: "clean", label: "Store clean & tidy" },
+      { key: "bins", label: "Bins clean & emptied" },
+      { key: "pest", label: "Pest control log up to date" },
     ],
   },
   {
     key: "dough",
-    title: "Dough",
-    max: 5, // <-- was 4, +1 point here
+    title: "Dough Management (6 points)",
+    max: 6,
     items: [
-      { key: "mixed_trays_out", label: "Mixed trays dated; all sizes out at all times (incl. VEGAN)" },
-      { key: "covered_clean_tray", label: "All dough covered with a clean/sanitised tray" },
-      { key: "discard_blown", label: "Discard blown dough immediately and replace" },
-      { key: "plan_created", label: "Dough plan created for day and used" },
+      { key: "rotation", label: "Correct rotation and dating" },
+      { key: "proof", label: "Proofing dough correctly" },
+      { key: "doughplan", label: "Dough plan followed" },
     ],
   },
   {
-    key: "approved_product",
-    title: "Approved Product & Procedures",
-    max: 7, // <-- was 8, -1 point here
+    key: "greatremake",
+    title: "Great/Remake & Breaded Sides (22 points)",
+    max: 22,
     items: [
-      { key: "bins_max_2h", label: "Makeline bins MAX 2 hours of product (≤ 1.5 full)" },
-      { key: "gf_kit_black_bottom", label: "GF kit set; toppings in black tubs on bottom row" },
-      { key: "no_out_of_products", label: "No out-of-products anywhere (no stickers/bars)" },
-      { key: "allergen_poster", label: "Allergen poster (QR) displayed; leaflets available" },
-      { key: "plant_based_order", label: "Plant-based procedures followed (PB cheese not over first catch tray)" },
-      { key: "separate_scrapers", label: "Separate scrapers for veg/meat doughballs used" },
-      { key: "back_door_closed", label: "Back door securely closed at ALL TIMES" },
-      { key: "pest_control", label: "Pest control: checks complete, traps in place, no activity" },
+      { key: "cutcam", label: "Cut cam in use" },
+      { key: "quality", label: "Pizza quality standards met" },
+      { key: "breaded", label: "Breaded sides checked and correct" },
     ],
   },
-
-  // RIGHT COLUMN
   {
-    key: "uniform_grooming",
-    title: "Uniform & Brand Standards",
+    key: "uniform",
+    title: "Uniform & Brand Standards (5 points)",
     max: 5,
     items: [
-      { key: "black_trousers", label: "Jet black trousers/jeans — no leggings/joggers/combat" },
-      { key: "plain_undershirt", label: "Plain white/black undershirts; no visible writing/logos" },
-      { key: "no_jumpers", label: "No jumpers/hoodies/jackets under Domino’s jacket" },
-      { key: "clean_shaven", label: "Clean shaven or beard with clean lines" },
-      { key: "no_piercings", label: "No visible piercings (not covered with plasters)" },
-      { key: "drivers_vehicle", label: "Drivers vehicle clean/road-legal (lights/plates/insurance)" },
+      { key: "uniform", label: "Uniform clean and correct" },
+      { key: "vehicle", label: "Drivers vehicle clean and branded" },
     ],
   },
   {
-    key: "store_interior",
-    title: "Store Interior / Customer View",
-    max: 6,
+    key: "sanitation",
+    title: "Sanitation & Cleanliness (10 points)",
+    max: 10,
     items: [
-      { key: "toilets_lined_bin", label: "Toilets: lined bin with lid" },
-      { key: "customer_view_clean", label: "Everything in customer view clean and tidy" },
-      { key: "no_staff_food_view", label: "No staff food/drink in customer view (cut table/hot rack/driver table)" },
-      { key: "bins_lids_clean", label: "All bins in customer view have lids and are clean" },
-    ],
-  },
-  {
-    key: "outside_entry",
-    title: "Outside Entry",
-    max: 2,
-    items: [{ key: "no_branded_rubbish", label: "No branded rubbish; refuse bins not overflowing" }],
-  },
-  {
-    key: "baking_equipment",
-    title: "Baking Equipment",
-    max: 2,
-    items: [
-      { key: "oven_clean", label: "Oven clean (not yellowing) — hood/filters/belt/frame" },
-      { key: "screens_pans_clean", label: "Screens & pans clean, good repair, no carbon build-up" },
-      { key: "wedge_gpb_clean", label: "Wedge/GPB pans cleaned daily & dried through oven pre-open" },
-    ],
-  },
-  {
-    key: "hotbags",
-    title: "Hotbags",
-    max: 1,
-    items: [{ key: "brushed_clean_no_rips", label: "Brushed out, clean patches, no rips (isolate if damaged)" }],
-  },
-  {
-    key: "walk_in_cooler",
-    title: "Walk-in Cooler",
-    max: 1,
-    items: [
-      { key: "surfaces_clean", label: "Fan/floor/ceiling/walls & shelving clean (no mould/debris/rust)" },
-      { key: "door_seal_handle", label: "Door seal good; handle clean — no food debris" },
-    ],
-  },
-  {
-    key: "makeline",
-    title: "Makeline",
-    max: 1,
-    items: [
-      { key: "fixtures_clean", label: "Cupboards/doors/handles/shelves/seals/lids clean & in good condition" },
-      { key: "catch_trays_good", label: "Catch trays/grills/seals in good condition — no splits/tears/missing rails" },
-    ],
-  },
-  {
-    key: "safety_security",
-    title: "Safety & Security",
-    max: 6,
-    items: [
-      { key: "drivers_drop_cash", label: "Drivers dropping cash (if applicable)" },
-      { key: "safe_utilised", label: "Safe utilised, secure & working — time delay in use (not day lock)" },
-      { key: "front_till_locked", label: "Front till locked; no key left at counter — ≤ £100 total" },
+      { key: "surfaces", label: "Food contact surfaces sanitised" },
+      { key: "handwash", label: "Handwash stations stocked" },
+      { key: "toilets", label: "Toilets clean and stocked" },
+      { key: "equipment", label: "Equipment clean and stored" },
     ],
   },
   {
     key: "prp",
-    title: "PRP",
-    max: 1,
+    title: "PRP & Checklists (18 points)",
+    max: 18,
     items: [
-      { key: "prep_sheet_printed", label: "Prep sheet printed & used for FULL DAY’S TRADE" },
-      { key: "all_items_available", label: "ALL ITEMS AVAILABLE (source pre-open if NO)" },
+      { key: "checklist", label: "DomFD checklist complete" },
+      { key: "sides", label: "Sides & dips prepped correctly" },
+      { key: "training", label: "Training logs up to date" },
     ],
   },
-]; // sums to 75
-
-/** ===== Service scoring (TOTAL 25) ===== */
-function scoreADT(adt: number | null): number | null {
-  if (adt == null || Number.isNaN(adt)) return null;
-  if (adt > 30) return 0;
-  if (adt > 28 && adt <= 30) return 4;
-  if (adt > 27 && adt <= 28) return 6;
-  if (adt > 26 && adt <= 27) return 8;
-  if (adt > 25 && adt <= 26) return 10;
-  return 15; // ≤25
-}
-function scoreSBR(sbr: number | null): number | null {
-  if (sbr == null || Number.isNaN(sbr)) return null;
-  if (sbr < 50) return 0;
-  if (sbr < 70) return 3;
-  if (sbr < 75) return 4;
-  return 5; // ≥75%
-}
-function scoreExtremes(perThousand: number | null): number | null {
-  if (perThousand == null || Number.isNaN(perThousand)) return null;
-  if (perThousand > 30) return 0;
-  if (perThousand > 25) return 2; // 25.01–30
-  if (perThousand > 20) return 3; // 20.01–25
-  if (perThousand > 15) return 4; // 15.01–20
-  return 5; // 0–15
-}
-function colourForPredicted(v: number) {
-  if (v >= 85) return "#065f46";
-  if (v >= 70) return "#92400e";
-  return "#7f1d1d";
-}
-
-type SectionState = Record<string, boolean>;
+];
 
 export default function WalkthroughPage() {
-  // store dropdown + optional email
+  const [sections, setSections] = React.useState<Record<string, Record<string, boolean>>>({});
   const [store, setStore] = React.useState("");
   const [userEmail, setUserEmail] = React.useState("");
-  const stores = ["Downpatrick", "Kilkeel", "Newcastle"];
-
-  // KPIs
-  const [adt, setAdt] = React.useState<string | number>("");
-  const [extPerThousand, setExtPerThousand] = React.useState<string | number>("");
-  const [sbr, setSbr] = React.useState<string | number>("");
-
-  // sections state
-  const [sections, setSections] = React.useState<Record<string, SectionState>>(
-    () =>
-      Object.fromEntries(
-        SECTIONS.map((sec) => [
-          sec.key,
-          Object.fromEntries(sec.items.map((i) => [i.key, false])),
-        ])
-      )
-  );
-
+  const [adt, setAdt] = React.useState("");
+  const [sbr, setSbr] = React.useState("");
+  const [extremes, setExtremes] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   const [msg, setMsg] = React.useState<string | null>(null);
 
-  // walkthrough (/75)
-  const walkthroughScore = React.useMemo(() => {
-    let total = 0;
-    for (const sec of SECTIONS) {
-      const state = sections[sec.key] || {};
-      const checked = sec.items.filter((i) => state[i.key]).length;
-      const perItem = sec.max / sec.items.length;
-      total += perItem * checked;
-    }
-    return Math.round(total);
-  }, [sections]);
-
-  // service (/25)
-  const adtNum = adt === "" ? null : Number(adt);
-  const extNum = extPerThousand === "" ? null : Number(extPerThousand);
-  const sbrNum = sbr === "" ? null : Number(sbr);
-
-  const adtPts = scoreADT(adtNum);
-  const extPts = scoreExtremes(extNum);
-  const sbrPts = scoreSBR(sbrNum);
-  const serviceTotal = (adtPts ?? 0) + (extPts ?? 0) + (sbrPts ?? 0);
-
-  // predicted (/100)
-  const predicted = walkthroughScore + serviceTotal;
-
-  function toggleItem(sectionKey: string, itemKey: string) {
+  // Handle section toggles
+  function toggle(sectionKey: string, itemKey: string) {
     setSections((prev) => ({
       ...prev,
-      [sectionKey]: { ...prev[sectionKey], [itemKey]: !prev[sectionKey][itemKey] },
+      [sectionKey]: {
+        ...prev[sectionKey],
+        [itemKey]: !prev[sectionKey]?.[itemKey],
+      },
     }));
   }
 
+  // Calculate scores
+  const walkthroughScore = React.useMemo(() => {
+    return SECTIONS.reduce((sum, sec) => {
+      const checkedCount = Object.values(sections[sec.key] || {}).filter(Boolean).length;
+      const ratio = checkedCount / sec.items.length;
+      return sum + Math.round(sec.max * ratio);
+    }, 0);
+  }, [sections]);
+
+  const adtNum = parseFloat(adt) || 0;
+  const sbrNum = parseFloat(sbr) || 0;
+  const extNum = parseFloat(extremes) || 0;
+
+  // SERVICE POINTS
+  const adtPoints =
+    adtNum > 30 ? 0 :
+    adtNum > 28 ? 4 :
+    adtNum > 27 ? 6 :
+    adtNum > 26 ? 8 :
+    adtNum > 25 ? 10 : 15;
+
+  const sbrPoints =
+    sbrNum < 50 ? 0 :
+    sbrNum < 70 ? 3 :
+    sbrNum < 75 ? 4 : 5;
+
+  const extremePoints =
+    extNum > 30 ? 0 :
+    extNum > 25 ? 2 :
+    extNum > 20 ? 3 :
+    extNum > 15 ? 4 : 5;
+
+  const serviceTotal = adtPoints + sbrPoints + extremePoints;
+  const predicted = walkthroughScore + serviceTotal;
+
+  // ✅ SUBMIT + REDIRECT TO SUCCESS
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setMsg(null);
@@ -312,7 +180,19 @@ export default function WalkthroughPage() {
       ]);
 
       if (error) throw error;
-      setMsg("✅ Walkthrough saved!");
+
+      // ✅ Redirect to success page
+      setMsg("✅ Walkthrough saved! Redirecting…");
+      const params = new URLSearchParams({
+        store,
+        predicted: String(predicted),
+        walkthrough: String(walkthroughScore),
+        service: String(serviceTotal),
+      }).toString();
+
+      setTimeout(() => {
+        window.location.href = `/success?${params}`;
+      }, 1000);
     } catch (err: any) {
       setMsg(`❌ ${err.message || "Failed to save"}`);
     } finally {
@@ -320,112 +200,89 @@ export default function WalkthroughPage() {
     }
   }
 
+  // RENDER
   return (
-    <main style={{ maxWidth: 980, margin: "0 auto", padding: 16 }}>
-      <header style={{ marginBottom: 8 }}>
-        <h1 style={{ margin: 0, fontSize: 24 }}>🍕 Daily OER Walkthrough</h1>
-        <p style={{ margin: "6px 0 0 0", color: "#475569" }}>
-          Updated weights applied. Service points auto-calc from ADT / SBR / Extremes.
-        </p>
-      </header>
-
-      {/* Score bar */}
-      <div style={{ display: "flex", gap: 12, alignItems: "center", padding: 12, border: "1px solid #e5e7eb", borderRadius: 12, background: "#fff", marginBottom: 12, flexWrap: "wrap" }}>
-        <Badge label="Walkthrough" value={`${walkthroughScore}/75`} />
-        <Badge label="Service" value={`${serviceTotal}/25`} />
-        <Badge label="Predicted" value={`${predicted}/100`} strong color={colourForPredicted(predicted)} />
-        <div style={{ marginLeft: "auto" }}>
-          <small style={{ color: "#6b7280" }}>Green ≥85 • Amber ≥70 • Red &lt;70</small>
-        </div>
-      </div>
-
-      {/* Form */}
-      <form onSubmit={submit} style={{ display: "grid", gap: 12 }}>
-        {/* Store + email */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <label style={{ display: "grid", gap: 6 }}>
-            Store
-            <select value={store} onChange={(e) => setStore(e.target.value)} required style={input()}>
-              <option value="" disabled>Select a store…</option>
-              <option>Downpatrick</option>
-              <option>Kilkeel</option>
-              <option>Newcastle</option>
+    <main style={{ maxWidth: 800, margin: "0 auto", padding: 20 }}>
+      <h1 style={{ textAlign: "center" }}>Daily OER Walkthrough</h1>
+      <form onSubmit={submit}>
+        <div style={{ marginBottom: 16 }}>
+          <label>
+            Store:
+            <select value={store} onChange={(e) => setStore(e.target.value)} style={{ marginLeft: 8, padding: 6 }}>
+              <option value="">Select Store</option>
+              <option value="Downpatrick">Downpatrick</option>
+              <option value="Kilkeel">Kilkeel</option>
+              <option value="Newcastle">Newcastle</option>
             </select>
           </label>
-          <label style={{ display: "grid", gap: 6 }}>
-            Your email (optional)
-            <input type="email" value={userEmail} onChange={(e) => setUserEmail(e.target.value)} placeholder="you@company.com" style={input()} />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label>
+            Your Email:
+            <input
+              type="email"
+              value={userEmail}
+              onChange={(e) => setUserEmail(e.target.value)}
+              style={{ marginLeft: 8, padding: 6, width: 260 }}
+            />
           </label>
         </div>
 
-        {/* KPIs */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-          <label style={{ display: "grid", gap: 6 }}>
-            ADT (mins)
-            <input type="number" step="0.01" value={adt as number | string} onChange={(e) => setAdt(e.target.value === "" ? "" : Number(e.target.value))} placeholder="e.g. 26.4" style={input()} />
-            <small style={{ color: "#6b7280" }}>Points: {adtPts == null ? "—" : adtPts} / 15</small>
+        {SECTIONS.map((sec) => (
+          <div key={sec.key} style={{ marginBottom: 20, border: "1px solid #ddd", borderRadius: 10, padding: 12 }}>
+            <h3>{sec.title}</h3>
+            {sec.items.map((i) => (
+              <label key={i.key} style={{ display: "block" }}>
+                <input
+                  type="checkbox"
+                  checked={!!sections[sec.key]?.[i.key]}
+                  onChange={() => toggle(sec.key, i.key)}
+                />{" "}
+                {i.label}
+              </label>
+            ))}
+          </div>
+        ))}
+
+        <h3>Service Metrics</h3>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+          <label>
+            ADT (mins): <input type="number" value={adt} onChange={(e) => setAdt(e.target.value)} style={{ width: 80 }} />
           </label>
-          <label style={{ display: "grid", gap: 6 }}>
-            SBR (%)
-            <input type="number" step="0.01" value={sbr as number | string} onChange={(e) => setSbr(e.target.value === "" ? "" : Number(e.target.value))} placeholder="e.g. 78" style={input()} />
-            <small style={{ color: "#6b7280" }}>Points: {sbrPts == null ? "—" : sbrPts} / 5</small>
+          <label>
+            SBR (%): <input type="number" value={sbr} onChange={(e) => setSbr(e.target.value)} style={{ width: 80 }} />
           </label>
-          <label style={{ display: "grid", gap: 6 }}>
-            Extremes (per 1000 orders)
-            <input type="number" step="0.01" value={extPerThousand as number | string} onChange={(e) => setExtPerThousand(e.target.value === "" ? "" : Number(e.target.value))} placeholder="e.g. 18.3" style={input()} />
-            <small style={{ color: "#6b7280" }}>Points: {extPts == null ? "—" : extPts} / 5</small>
+          <label>
+            Extremes (/1000): <input type="number" value={extremes} onChange={(e) => setExtremes(e.target.value)} style={{ width: 80 }} />
           </label>
         </div>
 
-        {/* Sections */}
-        <div style={{ display: "grid", gap: 12 }}>
-          {SECTIONS.map((sec) => {
-            const state = sections[sec.key];
-            const checkedCount = sec.items.filter((i) => state[i.key]).length;
-            const secScore = Math.round((checkedCount / sec.items.length) * sec.max);
-
-            return (
-              <section key={sec.key} style={{ border: "1px solid #e5e7eb", borderRadius: 12, background: "white", padding: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 8 }}>
-                  <h3 style={{ margin: 0 }}>{sec.title}</h3>
-                  <span style={{ fontWeight: 700 }}>{secScore} / {sec.max}</span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
-                  {sec.items.map((it) => (
-                    <label key={it.key} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: 8, border: "1px solid #f1f5f9", borderRadius: 10 }}>
-                      <input type="checkbox" checked={!!state[it.key]} onChange={() => toggleItem(sec.key, it.key)} style={{ marginTop: 4 }} />
-                      <span>{it.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </section>
-            );
-          })}
+        <div style={{ marginTop: 16 }}>
+          <strong>Walkthrough:</strong> {walkthroughScore}/75 |{" "}
+          <strong>Service:</strong> {serviceTotal}/25 |{" "}
+          <strong>Predicted:</strong> {predicted}/100
         </div>
 
-        <button type="submit" disabled={saving} style={{ padding: "12px 16px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#006491", color: "white", fontWeight: 700, cursor: "pointer" }}>
-          {saving ? "Saving…" : "Save Walkthrough"}
+        {msg && <p style={{ marginTop: 10 }}>{msg}</p>}
+
+        <button
+          type="submit"
+          disabled={saving}
+          style={{
+            marginTop: 20,
+            background: "#006491",
+            color: "white",
+            border: "none",
+            padding: "10px 16px",
+            borderRadius: 8,
+            cursor: "pointer",
+            fontWeight: 600,
+          }}
+        >
+          {saving ? "Saving..." : "Save Walkthrough"}
         </button>
-
-        {msg && (
-          <p style={{ margin: 0, color: msg.startsWith("✅") ? "#065f46" : "#7f1d1d", fontWeight: 600 }}>
-            {msg}
-          </p>
-        )}
       </form>
     </main>
-  );
-}
-
-// UI helpers
-function input(): React.CSSProperties {
-  return { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5e1", outline: "none" };
-}
-function Badge(props: { label: string; value: string; strong?: boolean; color?: string }) {
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 999, background: "#f1f5f9", border: "1px solid #e5e7eb", color: props.color || "#111827", fontWeight: props.strong ? 800 : 600 }}>
-      <span style={{ opacity: 0.7 }}>{props.label}</span>
-      <span>{props.value}</span>
-    </span>
   );
 }
