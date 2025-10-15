@@ -12,7 +12,7 @@ type Row = {
   id: string;
   created_at: string;
   store: string | null;
-  user_name: string | null;     // 👈 now using user_name
+  user_name: string | null;     // Name (not email)
   section_total: number;        // /75
   adt: number | null;           // minutes
   extreme_lates: number | null; // per 1000
@@ -29,6 +29,22 @@ function starsFromPercent(p: number) {
   if (p >= 60) return 2;
   if (p >= 50) return 1;
   return 0;
+}
+
+// CSV helpers
+function csvEscape(val: unknown): string {
+  // Convert undefined/null to empty string, keep numbers/strings
+  const s = val === null || val === undefined ? "" : String(val);
+  // Escape quotes and wrap if contains comma/quote/newline
+  const needsQuotes = /[",\n]/.test(s);
+  const escaped = s.replace(/"/g, '""');
+  return needsQuotes ? `"${escaped}"` : escaped;
+}
+
+function toISO(dt: string) {
+  // ensure consistent ISO output; Vercel/Supa send ISO already, but standardise
+  const d = new Date(dt);
+  return isNaN(+d) ? dt : d.toISOString();
 }
 
 export default function AdminPage() {
@@ -86,10 +102,56 @@ export default function AdminPage() {
     );
   });
 
+  function downloadCSV() {
+    const headers = [
+      "DateTimeISO",
+      "Store",
+      "Name",
+      "Walkthrough_75",
+      "ADT_mins",
+      "Extremes_per_1000",
+      "SBR_percent",
+      "Service_25",
+      "Predicted_100",
+      "Stars",
+    ];
+
+    const lines = filtered.map((r) => {
+      const stars = starsFromPercent(r.predicted);
+      return [
+        csvEscape(toISO(r.created_at)),
+        csvEscape(r.store ?? ""),
+        csvEscape(r.user_name ?? ""),
+        csvEscape(r.section_total),
+        csvEscape(r.adt ?? ""),
+        csvEscape(r.extreme_lates ?? ""),
+        csvEscape(r.sbr ?? ""),
+        csvEscape(r.service_total),
+        csvEscape(r.predicted),
+        csvEscape(stars),
+      ].join(",");
+    });
+
+    const csv = [headers.join(","), ...lines].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+
+    const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    const filename = `oer-walkthrough-export-${ts}.csv`;
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <main style={{ maxWidth: 1100, margin: "0 auto", padding: 16 }}>
-      {/* Header with Back button */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+      {/* Header with Back + Download */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
         <a
           href="/"
           style={{
@@ -110,6 +172,24 @@ export default function AdminPage() {
         </a>
 
         <h1 style={{ margin: 0, fontSize: 22 }}>Admin — Walkthrough Submissions</h1>
+
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <button
+            onClick={downloadCSV}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #004e73",
+              background: "#006491",
+              color: "white",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+            title="Download currently filtered rows as CSV"
+          >
+            ⬇️ Download CSV
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -173,7 +253,7 @@ export default function AdminPage() {
                 {[
                   "Date/Time",
                   "Store",
-                  "Name",              // 👈 header changed
+                  "Name",
                   "Walkthrough (75)",
                   "ADT",
                   "XLates/1000",
