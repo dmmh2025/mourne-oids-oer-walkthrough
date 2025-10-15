@@ -72,9 +72,32 @@ export default function AdminPage() {
   });
 
   return (
-    <main style={{ maxWidth: 1100, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 26, marginBottom: 10 }}>🧭 Admin — Walkthrough Submissions</h1>
+    <main style={{ maxWidth: 1100, margin: "0 auto", padding: 16 }}>
+      {/* Header with Back button */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <a
+          href="/"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px 12px",
+            borderRadius: 10,
+            border: "1px solid #e5e7eb",
+            textDecoration: "none",
+            background: "white",
+            boxShadow: "0 2px 6px rgba(0,0,0,.06)",
+            fontWeight: 600,
+          }}
+          aria-label="Back to Home"
+        >
+          <span style={{ fontSize: 18 }}>←</span> Back to Home
+        </a>
 
+        <h1 style={{ margin: 0, fontSize: 22 }}>Admin — Walkthrough Submissions</h1>
+      </div>
+
+      {/* Filters */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
         <label>
           Store&nbsp;
@@ -112,7 +135,7 @@ export default function AdminPage() {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                {["Date/Time","Store","Email","Walkthrough (75)","ADT","XLates%","SBR%","Service (25)","Predicted (100)"].map((h) => (
+                {["Date/Time","Store","Email","Walkthrough (75)","ADT","XLates/1000","SBR%","Service (25)","Predicted (100)"].map((h) => (
                   <th key={h} style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8, whiteSpace: "nowrap", background: "#fafafa" }}>
                     {h}
                   </th>
