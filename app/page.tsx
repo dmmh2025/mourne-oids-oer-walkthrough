@@ -34,7 +34,7 @@ export default function Home() {
         gap: 20,
       }}
     >
-      {/* Banner header */}
+      {/* Mourne-oids Header Banner */}
       <div
         style={{
           borderRadius: 16,
@@ -49,7 +49,20 @@ export default function Home() {
         />
       </div>
 
-      {/* Auth strip */}
+      {/* Title Section */}
+      <h1
+        style={{
+          textAlign: "center",
+          fontSize: "2.2rem",
+          margin: "10px 0 0 0",
+          color: "#0b5f80",
+          fontWeight: 700,
+        }}
+      >
+        Daily OER Walkthrough
+      </h1>
+
+      {/* Auth Strip */}
       <div
         style={{
           background: "#fff",
@@ -86,7 +99,7 @@ export default function Home() {
         )}
       </div>
 
-      {/* Main actions */}
+      {/* Main Actions */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <Card
           title="Start Walkthrough"
@@ -100,7 +113,7 @@ export default function Home() {
         />
       </div>
 
-      {/* Helpful links / notes */}
+      {/* Helpful Footer Note */}
       <div style={{ fontSize: 12, color: "#6b7280", textAlign: "center" }}>
         Need another store added to your login? Ask your manager to add your
         email in <em>store_members</em>.
