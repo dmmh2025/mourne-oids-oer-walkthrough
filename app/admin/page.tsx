@@ -141,182 +141,198 @@ export default function AdminPage() {
   }
 
   return (
-    <main style={{ maxWidth: 1100, margin: "0 auto", padding: 16 }}>
-      {/* Banner with Domino's blue border */}
-      <div
-        style={{
-          borderBottom: "4px solid #006491",
-          marginBottom: 12,
-          borderRadius: 12,
-          overflow: "hidden",
-          boxShadow: "0 6px 18px rgba(0,0,0,.06)",
-        }}
-      >
-        <img
-          src="/mourneoids_forms_header_1600x400.png"
-          alt="Mourne-oids Header Banner"
-          style={{ width: "100%", maxHeight: 200, objectFit: "cover", display: "block" }}
-        />
-      </div>
-
-      {/* Header with Back + Download */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
-        <a
-          href="/"
+    <>
+      <main style={{ maxWidth: 1100, margin: "0 auto", padding: 16 }}>
+        {/* Banner with Domino's blue border */}
+        <div
           style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "8px 12px",
-            borderRadius: 10,
-            border: "1px solid #e5e7eb",
-            textDecoration: "none",
-            background: "white",
-            boxShadow: "0 2px 6px rgba(0,0,0,.06)",
-            fontWeight: 600,
+            borderBottom: "4px solid #006491",
+            marginBottom: 12,
+            borderRadius: 12,
+            overflow: "hidden",
+            boxShadow: "0 6px 18px rgba(0,0,0,.06)",
           }}
-          aria-label="Back to Home"
         >
-          <span style={{ fontSize: 18 }}>←</span> Back to Home
-        </a>
+          <img
+            src="/mourneoids_forms_header_1600x400.png"
+            alt="Mourne-oids Header Banner"
+            style={{ width: "100%", maxHeight: 200, objectFit: "cover", display: "block" }}
+          />
+        </div>
 
-        <h1 style={{ margin: 0, fontSize: 22 }}>Admin — Walkthrough Submissions</h1>
-
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          <button
-            onClick={downloadCSV}
+        {/* Header with Back + Download */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+          <a
+            href="/"
             style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
               padding: "8px 12px",
               borderRadius: 10,
-              border: "1px solid #004e73",
-              background: "#006491",
-              color: "white",
-              fontWeight: 700,
-              cursor: "pointer",
+              border: "1px solid #e5e7eb",
+              textDecoration: "none",
+              background: "white",
+              boxShadow: "0 2px 6px rgba(0,0,0,.06)",
+              fontWeight: 600,
             }}
-            title="Download currently filtered rows as CSV"
+            aria-label="Back to Home"
           >
-            ⬇️ Download CSV
-          </button>
-        </div>
-      </div>
+            <span style={{ fontSize: 18 }}>←</span> Back to Home
+          </a>
 
-      {/* Filters */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-        <label>
-          Store&nbsp;
-          <select
-            value={storeFilter}
-            onChange={(e) => setStoreFilter(e.target.value)}
-            style={{ padding: 8, minWidth: 160 }}
-          >
-            <option value="ALL">All stores</option>
-            {allStores.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
+          <h1 style={{ margin: 0, fontSize: 22 }}>Admin — Walkthrough Submissions</h1>
 
-        <label>
-          From&nbsp;
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            style={{ padding: 8 }}
-          />
-        </label>
-
-        <label>
-          To&nbsp;
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            style={{ padding: 8 }}
-          />
-        </label>
-
-        <label style={{ flex: 1, minWidth: 220 }}>
-          Search&nbsp;
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="store or name"
-            style={{ padding: 8, width: "100%" }}
-          />
-        </label>
-      </div>
-
-      {loading && <p>Loading…</p>}
-      {error && <p style={{ color: "crimson" }}>Error: {error}</p>}
-      {!loading && !error && filtered.length === 0 && <p>No submissions match your filter.</p>}
-
-      {!loading && !error && filtered.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                {[
-                  "Date/Time",
-                  "Store",
-                  "Name",
-                  "Walkthrough (75)",
-                  "ADT",
-                  "XLates/1000",
-                  "SBR%",
-                  "Service (25)",
-                  "Predicted (100)",
-                  "Stars",
-                ].map((h) => (
-                  <th
-                    key={h}
-                    style={{
-                      textAlign: "left",
-                      borderBottom: "1px solid #ddd",
-                      padding: 8,
-                      whiteSpace: "nowrap",
-                      background: "#fafafa",
-                    }}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r) => {
-                const stars = starsFromPercent(r.predicted);
-                return (
-                  <tr key={r.id}>
-                    <td style={td()}>{new Date(r.created_at).toLocaleString()}</td>
-                    <td style={td()}>{r.store ?? "-"}</td>
-                    <td style={td()}>{r.user_name ?? "-"}</td>
-                    <td style={td()}>{r.section_total}</td>
-                    <td style={td()}>{r.adt ?? "-"}</td>
-                    <td style={td()}>{r.extreme_lates ?? "-"}</td>
-                    <td style={td()}>{r.sbr ?? "-"}</td>
-                    <td style={td()}>{r.service_total}</td>
-                    <td style={{ ...td(), fontWeight: 700 }}>{r.predicted}</td>
-                    <td style={{ ...td(), fontFamily: "system-ui, Segoe UI, Apple Color Emoji" }}>
-                      {"★".repeat(stars)}
-                      {"☆".repeat(5 - stars)} ({stars})
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-
-          {/* Legend */}
-          <div style={{ marginTop: 10, color: "#6b7280", fontSize: 13 }}>
-            90%+ = 5★ • 80–89.99% = 4★ • 70–79.99% = 3★ • 60–69.99% = 2★ • 50–59.99% = 1★ • &lt;50% = 0★
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+            <button
+              onClick={downloadCSV}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: "1px solid #004e73",
+                background: "#006491",
+                color: "white",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+              title="Download currently filtered rows as CSV"
+            >
+              ⬇️ Download CSV
+            </button>
           </div>
         </div>
-      )}
-    </main>
+
+        {/* Filters */}
+        <div className="filters-row" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+          <label>
+            Store&nbsp;
+            <select
+              value={storeFilter}
+              onChange={(e) => setStoreFilter(e.target.value)}
+              style={{ padding: 8, minWidth: 160 }}
+            >
+              <option value="ALL">All stores</option>
+              {allStores.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            From&nbsp;
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              style={{ padding: 8 }}
+            />
+          </label>
+
+          <label>
+            To&nbsp;
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              style={{ padding: 8 }}
+            />
+          </label>
+
+          <label style={{ flex: 1, minWidth: 220 }}>
+            Search&nbsp;
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="store or name"
+              style={{ padding: 8, width: "100%" }}
+            />
+          </label>
+        </div>
+
+        {loading && <p>Loading…</p>}
+        {error && <p style={{ color: "crimson" }}>Error: {error}</p>}
+        {!loading && !error && filtered.length === 0 && <p>No submissions match your filter.</p>}
+
+        {!loading && !error && filtered.length > 0 && (
+          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  {[
+                    "Date/Time",
+                    "Store",
+                    "Name",
+                    "Walkthrough (75)",
+                    "ADT",
+                    "XLates/1000",
+                    "SBR%",
+                    "Service (25)",
+                    "Predicted (100)",
+                    "Stars",
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      style={{
+                        textAlign: "left",
+                        borderBottom: "1px solid #ddd",
+                        padding: 8,
+                        whiteSpace: "nowrap",
+                        background: "#fafafa",
+                        position: "sticky",
+                        top: 0,
+                        zIndex: 1,
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((r) => {
+                  const stars = starsFromPercent(r.predicted);
+                  return (
+                    <tr key={r.id}>
+                      <td style={td()}>{new Date(r.created_at).toLocaleString()}</td>
+                      <td style={td()}>{r.store ?? "-"}</td>
+                      <td style={td()}>{r.user_name ?? "-"}</td>
+                      <td style={td()}>{r.section_total}</td>
+                      <td style={td()}>{r.adt ?? "-"}</td>
+                      <td style={td()}>{r.extreme_lates ?? "-"}</td>
+                      <td style={td()}>{r.sbr ?? "-"}</td>
+                      <td style={td()}>{r.service_total}</td>
+                      <td style={{ ...td(), fontWeight: 700 }}>{r.predicted}</td>
+                      <td style={{ ...td(), fontFamily: "system-ui, Segoe UI, Apple Color Emoji" }}>
+                        {"★".repeat(stars)}
+                        {"☆".repeat(5 - stars)} ({stars})
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            {/* Legend */}
+            <div style={{ marginTop: 10, color: "#6b7280", fontSize: 13 }}>
+              90%+ = 5★ • 80–89.99% = 4★ • 70–79.99% = 3★ • 60–69.99% = 2★ • 50–59.99% = 1★ • &lt;50% = 0★
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Mobile tweaks */}
+      <style jsx global>{`
+        @media (max-width: 640px) {
+          main { padding: 12px; }
+          .filters-row { flex-direction: column; gap: 8px; }
+          input, select, textarea { font-size: 16px; } /* prevent iOS zoom */
+          table th, table td { padding: 10px 8px !important; }
+          table { font-size: 14px; }
+        }
+      `}</style>
+    </>
   );
 }
 
