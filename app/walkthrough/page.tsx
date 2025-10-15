@@ -232,9 +232,9 @@ function starsForPercent(p: number) {
 type SectionState = Record<string, boolean>;
 
 export default function WalkthroughPage() {
-  // Store + email
+  // Store + name
   const [store, setStore] = React.useState("");
-  const [userEmail, setUserEmail] = React.useState("");
+  const [userName, setUserName] = React.useState("");
   const stores = ["Downpatrick", "Kilkeel", "Newcastle"];
 
   // KPIs
@@ -303,6 +303,10 @@ export default function WalkthroughPage() {
       setMsg("❌ Please select your Store.");
       return;
     }
+    if (!userName.trim()) {
+      setMsg("❌ Please enter your name.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -327,7 +331,7 @@ export default function WalkthroughPage() {
           service_total: serviceTotal,
           predicted,
           store,
-          user_email: userEmail || null,
+          user_name: userName || null, // <-- saving Name here
         },
       ]);
       if (error) throw error;
@@ -349,15 +353,10 @@ export default function WalkthroughPage() {
 
   return (
     <main style={{ maxWidth: 980, margin: "0 auto", padding: 16 }}>
-      {/* Optional banner:
-      <div style={{ marginBottom: 12 }}>
-        <img src="/mourneoids_forms_header_1600x400.png" alt="Mourne-oids OER" style={{ width: "100%", height: "auto", borderRadius: 12 }} />
-      </div> */}
-
       <header style={{ marginBottom: 8 }}>
         <h1 style={{ margin: 0, fontSize: 24 }}>Daily OER Walkthrough</h1>
         <p style={{ margin: "6px 0 0 0", color: "#475569" }}>
-          Match of your paper checklist — with automatic Service points from ADT / SBR / Extremes.
+          Match your paper checklist — Service points auto-calc from ADT / SBR / Extremes.
         </p>
       </header>
 
@@ -392,7 +391,7 @@ export default function WalkthroughPage() {
 
       {/* Form */}
       <form onSubmit={submit} style={{ display: "grid", gap: 12 }}>
-        {/* Store + email */}
+        {/* Store + name */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <label style={{ display: "grid", gap: 6 }}>
             Store
@@ -410,12 +409,13 @@ export default function WalkthroughPage() {
           </label>
 
           <label style={{ display: "grid", gap: 6 }}>
-            Your email (optional)
+            Your Name
             <input
-              type="email"
-              value={userEmail}
-              onChange={(e) => setUserEmail(e.target.value)}
-              placeholder="you@company.com"
+              type="text"
+              value={userName}
+              onChange={(e) => setUserName(e.target.value)}
+              placeholder="Enter your name"
+              required
               style={input()}
             />
           </label>
