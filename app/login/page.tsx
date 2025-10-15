@@ -33,17 +33,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main
-      style={{
-        maxWidth: 480,
-        margin: "80px auto",
-        textAlign: "center",
-        background: "white",
-        borderRadius: 12,
-        padding: 24,
-        boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-      }}
-    >
+    <main style={{ maxWidth: 480, margin: "80px auto", textAlign: "center", background: "white", borderRadius: 12, padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.08)" }}>
       <h1 style={{ fontSize: 24, marginBottom: 16 }}>Mourne-oids Admin Login</h1>
       <p style={{ marginBottom: 24, color: "#555" }}>
         Enter your Domino’s email address to receive a magic login link.
@@ -56,37 +46,15 @@ export default function LoginPage() {
           onChange={(e) => setEmail(e.target.value)}
           required
           placeholder="you@dominos.co.uk"
-          style={{
-            padding: "10px 12px",
-            borderRadius: 8,
-            border: "1px solid #ccc",
-            fontSize: 16,
-          }}
+          style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #ccc", fontSize: 16 }}
         />
-        <button
-          type="submit"
-          style={{
-            padding: "10px 12px",
-            background: "#006491",
-            color: "white",
-            fontWeight: 600,
-            border: "none",
-            borderRadius: 8,
-            cursor: "pointer",
-          }}
-        >
+        <button type="submit" style={{ padding: "10px 12px", background: "#006491", color: "white", fontWeight: 600, border: "none", borderRadius: 8, cursor: "pointer" }}>
           Send Magic Link
         </button>
       </form>
 
       {status && (
-        <p
-          style={{
-            marginTop: 20,
-            fontSize: 14,
-            color: status.startsWith("Error") ? "crimson" : "green",
-          }}
-        >
+        <p style={{ marginTop: 20, fontSize: 14, color: status.startsWith("Error") ? "crimson" : "green" }}>
           {status}
         </p>
       )}
