@@ -1,24 +1,40 @@
 "use client";
-export const dynamic = "force-dynamic"; // ⛔️ stop prerendering at build
+export const dynamic = "force-dynamic";
+
 import * as React from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const supabase = createClient(url, anon);
+
+type Row = {
+  id: string;
+  created_at: string;
+  store: string | null;
+  user_email: string | null;
+  section_total: number;
+  adt: number | null;
+  extreme_lates: number | null;
+  sbr: number | null;
+  service_total: number;
+  predicted: number;
+};
 
 export default function AdminPage() {
-  const [rows, setRows] = React.useState<any[]>([]);
+  const [authed, setAuthed] = React.useState<boolean | null>(null);
+  const [rows, setRows] = React.useState<Row[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    // Lazy-create client on the client only (avoids build-time env issues)
-    if (!url || !anon) {
-      setError("Missing Supabase env vars"); 
-      setLoading(false);
-      return;
-    }
-    const supabase = createClient(url, anon);
+    supabase.auth.getSession().then(({ data }) => setAuthed(!!data.session));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setAuthed(!!s));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  React.useEffect(() => {
+    if (authed !== true) return;
     (async () => {
       try {
         const { data, error } = await supabase
@@ -27,14 +43,23 @@ export default function AdminPage() {
           .order("created_at", { ascending: false })
           .limit(100);
         if (error) throw error;
-        setRows(data ?? []);
+        setRows((data as Row[]) ?? []);
       } catch (e: any) {
         setError(e.message || "Failed to load");
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [authed]);
+
+  if (authed === null) return <main style={{ padding: 20 }}>Checking login…</main>;
+  if (!authed)
+    return (
+      <main style={{ padding: 20 }}>
+        <h1>🧭 Admin — Walkthrough Submissions</h1>
+        <p>You must <a href="/login">log in</a> to view submissions.</p>
+      </main>
+    );
 
   return (
     <main style={{ maxWidth: 1000, margin: "0 auto" }}>
@@ -53,11 +78,11 @@ export default function AdminPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {rows.map(r => (
                 <tr key={r.id}>
                   <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>{new Date(r.created_at).toLocaleString()}</td>
-                  <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>{r.store ?? "-"}</td>
-                  <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>{r.user_email ?? "-"}</td>
+                  <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>{r.store || "-"}</td>
+                  <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>{r.user_email || "-"}</td>
                   <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>{r.section_total}</td>
                   <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>{r.adt ?? "-"}</td>
                   <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>{r.extreme_lates ?? "-"}</td>
