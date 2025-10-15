@@ -396,249 +396,268 @@ export default function WalkthroughPage() {
   }
 
   return (
-    <main style={{ maxWidth: 980, margin: "0 auto", padding: 16 }}>
-      {/* Banner with Domino's blue border */}
-      <div
-        style={{
-          borderBottom: "4px solid #006491",
-          marginBottom: 12,
-          borderRadius: 12,
-          overflow: "hidden",
-          boxShadow: "0 6px 18px rgba(0,0,0,.06)",
-        }}
-      >
-        <img
-          src="/mourneoids_forms_header_1600x400.png"
-          alt="Mourne-oids Header Banner"
-          style={{ width: "100%", maxHeight: 200, objectFit: "cover", display: "block" }}
-        />
-      </div>
-
-      {/* Sticky score bar */}
-      <div
-        style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
-          background: "white",
-          paddingBottom: 8,
-          marginBottom: 12,
-          borderBottom: "1px solid #e5e7eb",
-        }}
-      >
+    <>
+      <main style={{ maxWidth: 980, margin: "0 auto", padding: 16 }}>
+        {/* Banner with Domino's blue border */}
         <div
           style={{
-            display: "flex",
-            gap: 12,
-            alignItems: "center",
-            padding: 12,
-            border: "1px solid #e5e7eb",
+            borderBottom: "4px solid #006491",
+            marginBottom: 12,
             borderRadius: 12,
-            background: "#fff",
-            boxShadow: "0 2px 10px rgba(0,0,0,.04)",
-            flexWrap: "wrap",
+            overflow: "hidden",
+            boxShadow: "0 6px 18px rgba(0,0,0,.06)",
           }}
         >
-          <Badge label="Walkthrough" value={`${walkthroughScore}/75`} />
-          <Badge label="Service" value={`${serviceTotal}/25`} />
-          <Badge label="Predicted" value={`${predicted}/100`} strong />
-          <Badge label="Grade" value={`${"★".repeat(stars)}${"☆".repeat(5 - stars)} (${stars}-Star)`} strong />
-          <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-            <small style={{ color: "#6b7280" }}>
-              90%+ = 5★ • 80–89.99% = 4★ • 70–79.99% = 3★ • 60–69.99% = 2★ • 50–59.99% = 1★ • &lt;50% = 0★
-            </small>
-            <button onClick={() => expandAll(true)} type="button" style={ghostBtn()}>Expand all</button>
-            <button onClick={() => expandAll(false)} type="button" style={ghostBtn()}>Collapse all</button>
-          </div>
-        </div>
-      </div>
-
-      <header style={{ marginBottom: 8 }}>
-        <h1 style={{ margin: 0, fontSize: 24 }}>Daily OER Walkthrough</h1>
-        <p style={{ margin: "6px 0 0 0", color: "#475569" }}>
-          Tick each checklist. Add your ADT / SBR / Extremes to auto-calc Service points.
-        </p>
-      </header>
-
-      {/* Form */}
-      <form onSubmit={submit} style={{ display: "grid", gap: 12 }}>
-        {/* Store + Name */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <label style={{ display: "grid", gap: 6 }}>
-            Store
-            <select value={store} onChange={(e) => setStore(e.target.value)} required style={input()}>
-              <option value="" disabled>Select a store…</option>
-              {stores.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </label>
-
-          <label style={{ display: "grid", gap: 6 }}>
-            Your Name
-            <input
-              type="text"
-              value={userName}
-              onChange={(e) => setUserName(e.target.value)}
-              placeholder="Enter your name"
-              required
-              style={input()}
-            />
-          </label>
+          <img
+            src="/mourneoids_forms_header_1600x400.png"
+            alt="Mourne-oids Header Banner"
+            style={{ width: "100%", maxHeight: 200, objectFit: "cover", display: "block" }}
+          />
         </div>
 
-        {/* KPIs */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-          <label style={{ display: "grid", gap: 6 }}>
-            ADT (mins)
-            <input
-              type="number"
-              step="0.01"
-              value={adt as number | string}
-              onChange={(e) => setAdt(e.target.value === "" ? "" : Number(e.target.value))}
-              placeholder="e.g. 26.4"
-              style={input()}
-            />
-            <small style={{ color: "#6b7280" }}>Points: {(scoreADT(adt === "" ? null : Number(adt)) ?? 0)} / 15</small>
-          </label>
-
-          <label style={{ display: "grid", gap: 6 }}>
-            SBR (%)
-            <input
-              type="number"
-              step="0.01"
-              value={sbr as number | string}
-              onChange={(e) => setSbr(e.target.value === "" ? "" : Number(e.target.value))}
-              placeholder="e.g. 78"
-              style={input()}
-            />
-            <small style={{ color: "#6b7280" }}>Points: {(scoreSBR(sbr === "" ? null : Number(sbr)) ?? 0)} / 5</small>
-          </label>
-
-          <label style={{ display: "grid", gap: 6 }}>
-            Extremes (per 1000 orders)
-            <input
-              type="number"
-              step="0.01"
-              value={extPerThousand as number | string}
-              onChange={(e) => setExtPerThousand(e.target.value === "" ? "" : Number(e.target.value))}
-              placeholder="e.g. 18.3"
-              style={input()}
-            />
-            <small style={{ color: "#6b7280" }}>Points: {(scoreExtremes(extPerThousand === "" ? null : Number(extPerThousand)) ?? 0)} / 5</small>
-          </label>
-        </div>
-
-        {/* Sections (accordions) */}
-        <div style={{ display: "grid", gap: 12 }}>
-          {SECTIONS.map((sec) => {
-            const state = sections[sec.key];
-            const checkedCount = sec.items.filter((i) => state[i.key]).length;
-            const secScore = Math.round((checkedCount / sec.items.length) * sec.max);
-            const pct = Math.round((checkedCount / sec.items.length) * 100);
-
-            return (
-              <section key={sec.key} style={{ border: "1px solid #e5e7eb", borderRadius: 12, background: "white" }}>
-                {/* header */}
-                <button
-                  type="button"
-                  onClick={() => setExpanded((p) => ({ ...p, [sec.key]: !p[sec.key] }))}
-                  style={{
-                    display: "flex",
-                    width: "100%",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: 12,
-                    background: "white",
-                    border: "none",
-                    borderBottom: expanded[sec.key] ? "1px solid #eef2f7" : "none",
-                    borderRadius: "12px 12px 0 0",
-                    cursor: "pointer",
-                  }}
-                  aria-expanded={expanded[sec.key] ? "true" : "false"}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                    <span style={{ fontSize: 18 }}>{expanded[sec.key] ? "▾" : "▸"}</span>
-                    <h3 style={{ margin: 0, fontSize: 18, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {sec.title}
-                    </h3>
-                  </div>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    {/* progress bar */}
-                    <div style={{ width: 160, height: 8, background: "#f1f5f9", borderRadius: 999, overflow: "hidden" }}>
-                      <div style={{ width: `${pct}%`, height: "100%", background: "#0ea5e9" }} />
-                    </div>
-                    <span style={{ fontSize: 12, color: "#64748b" }}>{checkedCount}/{sec.items.length}</span>
-                    <span style={{ fontWeight: 700 }}>{secScore} / {sec.max}</span>
-                  </div>
-                </button>
-
-                {/* body */}
-                {expanded[sec.key] && (
-                  <div style={{ padding: 12 }}>
-                    {/* quick actions */}
-                    <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                      <button type="button" onClick={() => setAllInSection(sec.key, true)} style={ghostBtn()}>Check all</button>
-                      <button type="button" onClick={() => setAllInSection(sec.key, false)} style={ghostBtn()}>Clear all</button>
-                    </div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
-                      {sec.items.map((it) => (
-                        <label key={it.key} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: 8, border: "1px solid #f1f5f9", borderRadius: 10 }}>
-                          <input
-                            type="checkbox"
-                            checked={!!state?.[it.key]}
-                            onChange={() => toggleItem(sec.key, it.key)}
-                            style={{ marginTop: 4 }}
-                          />
-                          <span>{it.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </section>
-            );
-          })}
-        </div>
-
-        {/* Actions */}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <button
-            type="submit"
-            disabled={saving}
+        {/* Sticky score bar */}
+        <div
+          style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 10,
+            background: "white",
+            paddingBottom: 8,
+            marginBottom: 12,
+            borderBottom: "1px solid #e5e7eb",
+          }}
+        >
+          <div
+            className="stickybar"
             style={{
-              padding: "12px 16px",
-              borderRadius: 10,
-              border: "1px solid #004e73",
-              background: "#006491",
-              color: "white",
-              fontWeight: 700,
-              cursor: "pointer",
+              display: "flex",
+              gap: 12,
+              alignItems: "center",
+              padding: 12,
+              border: "1px solid #e5e7eb",
+              borderRadius: 12,
+              background: "#fff",
+              boxShadow: "0 2px 10px rgba(0,0,0,.04)",
+              flexWrap: "wrap",
             }}
           >
-            {saving ? "Saving…" : "Save Walkthrough"}
-          </button>
-
-          <button type="button" onClick={resetForm} style={ghostBtn()}>
-            Reset form
-          </button>
-
-          {msg && (
-            <span style={{ marginLeft: "auto", color: msg.startsWith("✅") ? "#065f46" : "#7f1d1d", fontWeight: 600 }}>
-              {msg}
-            </span>
-          )}
+            <Badge label="Walkthrough" value={`${walkthroughScore}/75`} />
+            <Badge label="Service" value={`${serviceTotal}/25`} />
+            <Badge label="Predicted" value={`${predicted}/100`} strong />
+            <Badge label="Grade" value={`${"★".repeat(stars)}${"☆".repeat(5 - stars)} (${stars}-Star)`} strong />
+            <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+              <small style={{ color: "#6b7280" }}>
+                90%+ = 5★ • 80–89.99% = 4★ • 70–79.99% = 3★ • 60–69.99% = 2★ • 50–59.99% = 1★ • &lt;50% = 0★
+              </small>
+              <button onClick={() => expandAll(true)} type="button" style={ghostBtn()}>Expand all</button>
+              <button onClick={() => expandAll(false)} type="button" style={ghostBtn()}>Collapse all</button>
+            </div>
+          </div>
         </div>
-      </form>
-    </main>
+
+        <header style={{ marginBottom: 8 }}>
+          <h1 style={{ margin: 0, fontSize: 24 }}>Daily OER Walkthrough</h1>
+          <p style={{ margin: "6px 0 0 0", color: "#475569" }}>
+            Tick each checklist. Add your ADT / SBR / Extremes to auto-calc Service points.
+          </p>
+        </header>
+
+        {/* Form */}
+        <form onSubmit={submit} style={{ display: "grid", gap: 12 }}>
+          {/* Store + Name */}
+          <div className="two-col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <label style={{ display: "grid", gap: 6 }}>
+              Store
+              <select value={store} onChange={(e) => setStore(e.target.value)} required style={input()}>
+                <option value="" disabled>Select a store…</option>
+                {stores.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </label>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              Your Name
+              <input
+                type="text"
+                value={userName}
+                onChange={(e) => setUserName(e.target.value)}
+                placeholder="Enter your name"
+                required
+                style={input()}
+              />
+            </label>
+          </div>
+
+          {/* KPIs */}
+          <div className="three-col" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+            <label style={{ display: "grid", gap: 6 }}>
+              ADT (mins)
+              <input
+                type="number"
+                step="0.01"
+                value={adt as number | string}
+                onChange={(e) => setAdt(e.target.value === "" ? "" : Number(e.target.value))}
+                placeholder="e.g. 26.4"
+                style={input()}
+              />
+              <small style={{ color: "#6b7280" }}>Points: {(scoreADT(adt === "" ? null : Number(adt)) ?? 0)} / 15</small>
+            </label>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              SBR (%)
+              <input
+                type="number"
+                step="0.01"
+                value={sbr as number | string}
+                onChange={(e) => setSbr(e.target.value === "" ? "" : Number(e.target.value))}
+                placeholder="e.g. 78"
+                style={input()}
+              />
+              <small style={{ color: "#6b7280" }}>Points: {(scoreSBR(sbr === "" ? null : Number(sbr)) ?? 0)} / 5</small>
+            </label>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              Extremes (per 1000 orders)
+              <input
+                type="number"
+                step="0.01"
+                value={extPerThousand as number | string}
+                onChange={(e) => setExtPerThousand(e.target.value === "" ? "" : Number(e.target.value))}
+                placeholder="e.g. 18.3"
+                style={input()}
+              />
+              <small style={{ color: "#6b7280" }}>Points: {(scoreExtremes(extPerThousand === "" ? null : Number(extPerThousand)) ?? 0)} / 5</small>
+            </label>
+          </div>
+
+          {/* Sections (accordions) */}
+          <div style={{ display: "grid", gap: 12 }}>
+            {SECTIONS.map((sec) => {
+              const state = sections[sec.key];
+              const checkedCount = sec.items.filter((i) => state[i.key]).length;
+              const secScore = Math.round((checkedCount / sec.items.length) * sec.max);
+              const pct = Math.round((checkedCount / sec.items.length) * 100);
+
+              return (
+                <section key={sec.key} style={{ border: "1px solid #e5e7eb", borderRadius: 12, background: "white" }}>
+                  {/* header */}
+                  <button
+                    type="button"
+                    onClick={() => setExpanded((p) => ({ ...p, [sec.key]: !p[sec.key] }))}
+                    style={{
+                      display: "flex",
+                      width: "100%",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: 12,
+                      background: "white",
+                      border: "none",
+                      borderBottom: expanded[sec.key] ? "1px solid #eef2f7" : "none",
+                      borderRadius: "12px 12px 0 0",
+                      cursor: "pointer",
+                    }}
+                    aria-expanded={expanded[sec.key] ? "true" : "false"}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                      <span style={{ fontSize: 18 }}>{expanded[sec.key] ? "▾" : "▸"}</span>
+                      <h3 style={{ margin: 0, fontSize: 18, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {sec.title}
+                      </h3>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {/* progress bar */}
+                      <div className="progress" style={{ width: 160, height: 8, background: "#f1f5f9", borderRadius: 999, overflow: "hidden" }}>
+                        <div style={{ width: `${pct}%`, height: "100%", background: "#0ea5e9" }} />
+                      </div>
+                      <span style={{ fontSize: 12, color: "#64748b" }}>{checkedCount}/{sec.items.length}</span>
+                      <span style={{ fontWeight: 700 }}>{secScore} / {sec.max}</span>
+                    </div>
+                  </button>
+
+                  {/* body */}
+                  {expanded[sec.key] && (
+                    <div style={{ padding: 12 }}>
+                      {/* quick actions */}
+                      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                        <button type="button" onClick={() => setAllInSection(sec.key, true)} style={ghostBtn()}>Check all</button>
+                        <button type="button" onClick={() => setAllInSection(sec.key, false)} style={ghostBtn()}>Clear all</button>
+                      </div>
+
+                      <div className="items-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
+                        {sec.items.map((it) => (
+                          <label key={it.key} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: 8, border: "1px solid #f1f5f9", borderRadius: 10 }}>
+                            <input
+                              type="checkbox"
+                              checked={!!state?.[it.key]}
+                              onChange={() => toggleItem(sec.key, it.key)}
+                              style={{ marginTop: 4 }}
+                            />
+                            <span>{it.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </section>
+              );
+            })}
+          </div>
+
+          {/* Actions */}
+          <div className="actions" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <button
+              type="submit"
+              disabled={saving}
+              style={{
+                padding: "12px 16px",
+                borderRadius: 10,
+                border: "1px solid #004e73",
+                background: "#006491",
+                color: "white",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {saving ? "Saving…" : "Save Walkthrough"}
+            </button>
+
+            <button type="button" onClick={resetForm} style={ghostBtn()}>
+              Reset form
+            </button>
+
+            {msg && (
+              <span style={{ marginLeft: "auto", color: msg.startsWith("✅") ? "#065f46" : "#7f1d1d", fontWeight: 600 }}>
+                {msg}
+              </span>
+            )}
+          </div>
+        </form>
+      </main>
+
+      {/* Mobile tweaks */}
+      <style jsx global>{`
+        @media (max-width: 640px) {
+          main { padding: 12px; }
+          .two-col { grid-template-columns: 1fr !important; }
+          .three-col { grid-template-columns: 1fr !important; }
+          .items-grid { grid-template-columns: 1fr !important; }
+          .actions { flex-direction: column; align-items: stretch; }
+          .actions button { width: 100%; }
+          .progress { width: 120px !important; }
+          .stickybar small { display: block; width: 100%; margin-top: 6px; }
+          input, select, textarea { font-size: 16px; } /* prevent iOS zoom */
+          label { gap: 4px !important; }
+        }
+      `}</style>
+    </>
   );
 }
 
 // ---- UI helpers ----
 function input(): React.CSSProperties {
-  return { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5e1", outline: "none" };
+  return { width: "100%", padding: "12px 14px", borderRadius: 8, border: "1px solid #cbd5e1", outline: "none" };
 }
 function Badge(props: { label: string; value: string; strong?: boolean }) {
   return (
@@ -662,7 +681,7 @@ function Badge(props: { label: string; value: string; strong?: boolean }) {
 }
 function ghostBtn(): React.CSSProperties {
   return {
-    padding: "8px 12px",
+    padding: "10px 12px",
     borderRadius: 10,
     border: "1px solid #e5e7eb",
     background: "white",
