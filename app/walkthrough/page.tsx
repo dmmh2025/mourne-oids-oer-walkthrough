@@ -3,27 +3,17 @@
 import * as React from "react";
 import { createClient } from "@supabase/supabase-js";
 
-// Supabase client
+// ---- Supabase client ----
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseAnon);
 
-/**
- * ===== Walkthrough sections (TOTAL = 75) =====
- * Latest changes applied:
- * - Temperature Records = 6 (added "Cooking temperatures")
- * - Approved Product & Procedures (APP) = 7 (includes "Pest control")
- * - Great/Remake = 22 (added "Breaded sides")
- * - Uniform & Brand Standards = 5 (added "Drivers vehicle")
- * - Dough = 5 (moved 1 point from APP)
- */
-const SECTIONS: {
-  key: string;
-  title: string;
-  max: number;
-  items: { key: string; label: string }[];
-}[] = [
-  // LEFT COLUMN
+// ---- Sections (TOTAL = 75) ----
+type Item = { key: string; label: string };
+type Section = { key: string; title: string; max: number; items: Item[] };
+
+const SECTIONS: Section[] = [
+  // LEFT COL
   {
     key: "temperature_records",
     title: "Temperature Records",
@@ -52,7 +42,7 @@ const SECTIONS: {
   {
     key: "sanitation",
     title: "Sanitation",
-    max: 4, // trimmed to keep total 75
+    max: 4,
     items: [
       { key: "surfaces_2h", label: "Food surfaces/utensils sanitised every 2h (clock running)" },
       { key: "can_opener", label: "Can opener clean, rust-free, no flaking paint; clean after use" },
@@ -79,7 +69,7 @@ const SECTIONS: {
   {
     key: "dough",
     title: "Dough",
-    max: 5, // +1 from APP per your request
+    max: 5,
     items: [
       { key: "mixed_trays_out", label: "Mixed trays dated; all sizes out at all times, incl. VEGAN" },
       { key: "covered_clean_tray", label: "All dough covered with a clean/sanitised tray" },
@@ -90,7 +80,7 @@ const SECTIONS: {
   {
     key: "approved_product",
     title: "Approved Product & Procedures",
-    max: 7, // reduced by 1 (was 8); includes Pest control
+    max: 7,
     items: [
       { key: "bins_max_2h", label: "Makeline bins MAXIMUM 2 hours of product (1.5 full or less)" },
       { key: "gf_kit_black_bottom", label: "GF kit set up; toppings in black tubs on bottom row of makeline" },
@@ -103,7 +93,7 @@ const SECTIONS: {
     ],
   },
 
-  // RIGHT COLUMN
+  // RIGHT COL
   {
     key: "uniform_grooming",
     title: "Uniform & Brand Standards",
@@ -120,7 +110,7 @@ const SECTIONS: {
   {
     key: "store_interior",
     title: "Store Interior / Customer View",
-    max: 6, // trimmed (was 8)
+    max: 6,
     items: [
       { key: "toilets_lined_bin", label: "ALL toilets MUST have a lined bin with lid" },
       { key: "customer_view_clean", label: "Everything in customer view clean and tidy" },
@@ -131,7 +121,7 @@ const SECTIONS: {
   {
     key: "outside_entry",
     title: "Outside Entry",
-    max: 2, // trimmed (was 3)
+    max: 2,
     items: [
       { key: "no_branded_rubbish", label: "No branded rubbish front/rear; refuse bins not overflowing" },
     ],
@@ -139,7 +129,7 @@ const SECTIONS: {
   {
     key: "baking_equipment",
     title: "Baking Equipment",
-    max: 2, // trimmed (was 3)
+    max: 2,
     items: [
       { key: "oven_clean", label: "Oven clean (not yellowing) — hood/filters/belt/frame" },
       { key: "screens_pans_clean", label: "Screens & pans clean, good repair, no carbon build-up" },
@@ -149,15 +139,13 @@ const SECTIONS: {
   {
     key: "hotbags",
     title: "Hotbags",
-    max: 1, // trimmed (was 2)
-    items: [
-      { key: "brushed_clean_no_rips", label: "Brushed out, clean patches, no rips (isolate if damaged)" },
-    ],
+    max: 1,
+    items: [{ key: "brushed_clean_no_rips", label: "Brushed out, clean patches, no rips (isolate if damaged)" }],
   },
   {
     key: "walk_in_cooler",
     title: "Walk-in Cooler",
-    max: 1, // trimmed (was 2)
+    max: 1,
     items: [
       { key: "surfaces_clean", label: "Fan/floor/ceiling/walls & shelving clean (no mould/debris/rust)" },
       { key: "door_seal_handle", label: "Door seal good and handle clean — no food debris" },
@@ -166,7 +154,7 @@ const SECTIONS: {
   {
     key: "makeline",
     title: "Makeline",
-    max: 1, // trimmed (was 2)
+    max: 1,
     items: [
       { key: "fixtures_clean", label: "Cupboards/doors/handles/shelves/seals/lids clean & in good condition" },
       { key: "catch_trays_good", label: "Catch trays/grills/seals in good condition — no splits/tears/missing rails" },
@@ -175,7 +163,7 @@ const SECTIONS: {
   {
     key: "safety_security",
     title: "Safety & Security",
-    max: 6, // trimmed (was 7)
+    max: 6,
     items: [
       { key: "drivers_drop_cash", label: "Drivers dropping cash (if applicable)" },
       { key: "safe_utilised", label: "Safe utilised, secure & working — time-delay in use, not on day lock" },
@@ -185,41 +173,41 @@ const SECTIONS: {
   {
     key: "prp",
     title: "PRP",
-    max: 1, // trimmed (was 2)
+    max: 1,
     items: [
       { key: "prep_sheet_printed", label: "Prep sheet printed and used for FULL DAY’S TRADE" },
       { key: "all_items_available", label: "ALL ITEMS AVAILABLE (source pre-open if NO)" },
     ],
   },
-]; // === sums to 75 ===
+]; // total = 75
 
-// ===== Service scoring (TOTAL 25) =====
-function scoreADT(adt: number | null): number | null {
-  if (adt == null || Number.isNaN(adt)) return null;
-  if (adt > 30) return 0;
-  if (adt > 28 && adt <= 30) return 4;
-  if (adt > 27 && adt <= 28) return 6;
-  if (adt > 26 && adt <= 27) return 8;
-  if (adt > 25 && adt <= 26) return 10;
-  return 15; // ≤25
+// ---- Service scoring (TOTAL 25) ----
+function scoreADT(n: number | null) {
+  if (n == null || Number.isNaN(n)) return null;
+  if (n > 30) return 0;
+  if (n > 28) return 4;
+  if (n > 27) return 6;
+  if (n > 26) return 8;
+  if (n > 25) return 10;
+  return 15;
 }
-function scoreSBR(sbr: number | null): number | null {
-  if (sbr == null || Number.isNaN(sbr)) return null;
-  if (sbr < 50) return 0;
-  if (sbr < 70) return 3;
-  if (sbr < 75) return 4;
-  return 5; // ≥75%
+function scoreSBR(n: number | null) {
+  if (n == null || Number.isNaN(n)) return null;
+  if (n < 50) return 0;
+  if (n < 70) return 3;
+  if (n < 75) return 4;
+  return 5;
 }
-function scoreExtremes(perThousand: number | null): number | null {
-  if (perThousand == null || Number.isNaN(perThousand)) return null;
-  if (perThousand > 30) return 0;
-  if (perThousand > 25) return 2; // 25.01–30
-  if (perThousand > 20) return 3; // 20.01–25
-  if (perThousand > 15) return 4; // 15.01–20
-  return 5; // 0–15
+function scoreExtremes(n: number | null) {
+  if (n == null || Number.isNaN(n)) return null;
+  if (n > 30) return 0;
+  if (n > 25) return 2;
+  if (n > 20) return 3;
+  if (n > 15) return 4;
+  return 5;
 }
 
-// star grade from Predicted %
+// ---- Stars from predicted % ----
 function starsForPercent(p: number) {
   if (p >= 90) return 5;
   if (p >= 80) return 4;
@@ -229,7 +217,9 @@ function starsForPercent(p: number) {
   return 0;
 }
 
+// ---- helpers ----
 type SectionState = Record<string, boolean>;
+const STORAGE_KEY = "oer_walkthrough_draft_v1";
 
 export default function WalkthroughPage() {
   // Store + name
@@ -253,8 +243,44 @@ export default function WalkthroughPage() {
       )
   );
 
+  // UI state
+  const [expanded, setExpanded] = React.useState<Record<string, boolean>>(() =>
+    Object.fromEntries(SECTIONS.map((s) => [s.key, true]))
+  );
   const [saving, setSaving] = React.useState(false);
   const [msg, setMsg] = React.useState<string | null>(null);
+
+  // ---- Autosave load ----
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const draft = JSON.parse(raw);
+      if (draft && typeof draft === "object") {
+        setStore(draft.store ?? "");
+        setUserName(draft.userName ?? "");
+        setAdt(draft.adt ?? "");
+        setExtPerThousand(draft.extPerThousand ?? "");
+        setSbr(draft.sbr ?? "");
+        if (draft.sections) setSections(draft.sections);
+      }
+    } catch {}
+  }, []);
+
+  // ---- Autosave persist ----
+  React.useEffect(() => {
+    const payload = {
+      store,
+      userName,
+      adt,
+      extPerThousand,
+      sbr,
+      sections,
+    };
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch {}
+  }, [store, userName, adt, extPerThousand, sbr, sections]);
 
   // walkthrough score (/75)
   const walkthroughScore = React.useMemo(() => {
@@ -290,7 +316,35 @@ export default function WalkthroughPage() {
     }));
   }
 
-  // Submit -> save to Supabase + redirect to /success
+  function setAllInSection(sectionKey: string, value: boolean) {
+    const sec = SECTIONS.find((s) => s.key === sectionKey);
+    if (!sec) return;
+    setSections((prev) => ({
+      ...prev,
+      [sectionKey]: Object.fromEntries(sec.items.map((i) => [i.key, value])),
+    }));
+  }
+
+  function expandAll(v: boolean) {
+    setExpanded(Object.fromEntries(SECTIONS.map((s) => [s.key, v])));
+  }
+
+  function resetForm() {
+    setSections(
+      Object.fromEntries(
+        SECTIONS.map((sec) => [
+          sec.key,
+          Object.fromEntries(sec.items.map((i) => [i.key, false])),
+        ])
+      )
+    );
+    setAdt("");
+    setExtPerThousand("");
+    setSbr("");
+    setMsg(null);
+  }
+
+  // ---- Submit -> save to Supabase + redirect ----
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setMsg(null);
@@ -331,7 +385,7 @@ export default function WalkthroughPage() {
           service_total: serviceTotal,
           predicted,
           store,
-          user_name: userName || null, // <-- saving Name here
+          user_name: userName || null,
         },
       ]);
       if (error) throw error;
@@ -343,6 +397,12 @@ export default function WalkthroughPage() {
         walkthrough: String(walkthroughScore),
         service: String(serviceTotal),
       }).toString();
+
+      // Clear local draft on success so the next run starts fresh
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch {}
+
       setTimeout(() => (window.location.href = `/success?${params}`), 900);
     } catch (err: any) {
       setMsg(`❌ ${err.message || "Failed to save"}`);
@@ -353,54 +413,59 @@ export default function WalkthroughPage() {
 
   return (
     <main style={{ maxWidth: 980, margin: "0 auto", padding: 16 }}>
-      <header style={{ marginBottom: 8 }}>
-        <h1 style={{ margin: 0, fontSize: 24 }}>Daily OER Walkthrough</h1>
-        <p style={{ margin: "6px 0 0 0", color: "#475569" }}>
-          Match your paper checklist — Service points auto-calc from ADT / SBR / Extremes.
-        </p>
-      </header>
-
-      {/* Score bar */}
+      {/* Sticky score bar */}
       <div
         style={{
-          display: "flex",
-          gap: 12,
-          alignItems: "center",
-          padding: 12,
-          border: "1px solid #e5e7eb",
-          borderRadius: 12,
-          background: "#fff",
+          position: "sticky",
+          top: 0,
+          zIndex: 10,
+          background: "white",
+          paddingBottom: 8,
           marginBottom: 12,
-          flexWrap: "wrap",
+          borderBottom: "1px solid #e5e7eb",
         }}
       >
-        <Badge label="Walkthrough" value={`${walkthroughScore}/75`} />
-        <Badge label="Service" value={`${serviceTotal}/25`} />
-        <Badge label="Predicted" value={`${predicted}/100`} strong />
-        <Badge
-          label="Grade"
-          value={`${"★".repeat(stars)}${"☆".repeat(5 - stars)} (${stars}-Star)`}
-          strong
-        />
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          <small style={{ color: "#6b7280" }}>
-            90%+ = 5★ • 80–89.99% = 4★ • 70–79.99% = 3★ • 60–69.99% = 2★ • 50–59.99% = 1★ • &lt;50% = 0★
-          </small>
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+            padding: 12,
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            background: "#fff",
+            boxShadow: "0 2px 10px rgba(0,0,0,.04)",
+            flexWrap: "wrap",
+          }}
+        >
+          <Badge label="Walkthrough" value={`${walkthroughScore}/75`} />
+          <Badge label="Service" value={`${serviceTotal}/25`} />
+          <Badge label="Predicted" value={`${predicted}/100`} strong />
+          <Badge label="Grade" value={`${"★".repeat(stars)}${"☆".repeat(5 - stars)} (${stars}-Star)`} strong />
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+            <small style={{ color: "#6b7280" }}>
+              90%+ = 5★ • 80–89.99% = 4★ • 70–79.99% = 3★ • 60–69.99% = 2★ • 50–59.99% = 1★ • &lt;50% = 0★
+            </small>
+            <button onClick={() => expandAll(true)} type="button" style={ghostBtn()}>Expand all</button>
+            <button onClick={() => expandAll(false)} type="button" style={ghostBtn()}>Collapse all</button>
+          </div>
         </div>
       </div>
 
+      <header style={{ marginBottom: 8 }}>
+        <h1 style={{ margin: 0, fontSize: 24 }}>Daily OER Walkthrough</h1>
+        <p style={{ margin: "6px 0 0 0", color: "#475569" }}>
+          Tick each checklist. ADD your ADT / SBR / Extremes to auto-calculate Service points.
+        </p>
+      </header>
+
       {/* Form */}
       <form onSubmit={submit} style={{ display: "grid", gap: 12 }}>
-        {/* Store + name */}
+        {/* Store + Name + KPIs */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <label style={{ display: "grid", gap: 6 }}>
             Store
-            <select
-              value={store}
-              onChange={(e) => setStore(e.target.value)}
-              required
-              style={input()}
-            >
+            <select value={store} onChange={(e) => setStore(e.target.value)} required style={input()}>
               <option value="" disabled>Select a store…</option>
               {stores.map((s) => (
                 <option key={s} value={s}>{s}</option>
@@ -421,7 +486,6 @@ export default function WalkthroughPage() {
           </label>
         </div>
 
-        {/* KPI inputs */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
           <label style={{ display: "grid", gap: 6 }}>
             ADT (mins)
@@ -433,9 +497,7 @@ export default function WalkthroughPage() {
               placeholder="e.g. 26.4"
               style={input()}
             />
-            <small style={{ color: "#6b7280" }}>
-              Points: {(scoreADT(adt === "" ? null : Number(adt)) ?? 0)} / 15
-            </small>
+            <small style={{ color: "#6b7280" }}>Points: {(scoreADT(adt === "" ? null : Number(adt)) ?? 0)} / 15</small>
           </label>
 
           <label style={{ display: "grid", gap: 6 }}>
@@ -448,9 +510,7 @@ export default function WalkthroughPage() {
               placeholder="e.g. 78"
               style={input()}
             />
-            <small style={{ color: "#6b7280" }}>
-              Points: {(scoreSBR(sbr === "" ? null : Number(sbr)) ?? 0)} / 5
-            </small>
+            <small style={{ color: "#6b7280" }}>Points: {(scoreSBR(sbr === "" ? null : Number(sbr)) ?? 0)} / 5</small>
           </label>
 
           <label style={{ display: "grid", gap: 6 }}>
@@ -459,71 +519,122 @@ export default function WalkthroughPage() {
               type="number"
               step="0.01"
               value={extPerThousand as number | string}
-              onChange={(e) =>
-                setExtPerThousand(e.target.value === "" ? "" : Number(e.target.value))
-              }
+              onChange={(e) => setExtPerThousand(e.target.value === "" ? "" : Number(e.target.value))}
               placeholder="e.g. 18.3"
               style={input()}
             />
-            <small style={{ color: "#6b7280" }}>
-              Points: {(scoreExtremes(extPerThousand === "" ? null : Number(extPerThousand)) ?? 0)} / 5
-            </small>
+            <small style={{ color: "#6b7280" }}>Points: {(scoreExtremes(extPerThousand === "" ? null : Number(extPerThousand)) ?? 0)} / 5</small>
           </label>
         </div>
 
-        {/* Sections */}
+        {/* Sections (accordions) */}
         <div style={{ display: "grid", gap: 12 }}>
           {SECTIONS.map((sec) => {
             const state = sections[sec.key];
             const checkedCount = sec.items.filter((i) => state[i.key]).length;
             const secScore = Math.round((checkedCount / sec.items.length) * sec.max);
+            const pct = Math.round((checkedCount / sec.items.length) * 100);
 
             return (
-              <section
-                key={sec.key}
-                style={{ border: "1px solid #e5e7eb", borderRadius: 12, background: "white", padding: 12 }}
-              >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 8 }}>
-                  <h3 style={{ margin: 0 }}>{sec.title}</h3>
-                  <span style={{ fontWeight: 700 }}>{secScore} / {sec.max}</span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
-                  {sec.items.map((it) => (
-                    <label key={it.key} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: 8, border: "1px solid #f1f5f9", borderRadius: 10 }}>
-                      <input
-                        type="checkbox"
-                        checked={!!state?.[it.key]}
-                        onChange={() => toggleItem(sec.key, it.key)}
-                        style={{ marginTop: 4 }}
-                      />
-                      <span>{it.label}</span>
-                    </label>
-                  ))}
-                </div>
+              <section key={sec.key} style={{ border: "1px solid #e5e7eb", borderRadius: 12, background: "white" }}>
+                {/* header */}
+                <button
+                  type="button"
+                  onClick={() => setExpanded((p) => ({ ...p, [sec.key]: !p[sec.key] }))}
+                  style={{
+                    display: "flex",
+                    width: "100%",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: 12,
+                    background: "white",
+                    border: "none",
+                    borderBottom: expanded[sec.key] ? "1px solid #eef2f7" : "none",
+                    borderRadius: "12px 12px 0 0",
+                    cursor: "pointer",
+                  }}
+                  aria-expanded={expanded[sec.key] ? "true" : "false"}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    <span style={{ fontSize: 18 }}>{expanded[sec.key] ? "▾" : "▸"}</span>
+                    <h3 style={{ margin: 0, fontSize: 18, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {sec.title}
+                    </h3>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {/* progress bar */}
+                    <div style={{ width: 160, height: 8, background: "#f1f5f9", borderRadius: 999, overflow: "hidden" }}>
+                      <div style={{ width: `${pct}%`, height: "100%", background: "#0ea5e9" }} />
+                    </div>
+                    <span style={{ fontSize: 12, color: "#64748b" }}>{checkedCount}/{sec.items.length}</span>
+                    <span style={{ fontWeight: 700 }}>{secScore} / {sec.max}</span>
+                  </div>
+                </button>
+
+                {/* body */}
+                {expanded[sec.key] && (
+                  <div style={{ padding: 12 }}>
+                    {/* quick actions */}
+                    <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                      <button type="button" onClick={() => setAllInSection(sec.key, true)} style={ghostBtn()}>Check all</button>
+                      <button type="button" onClick={() => setAllInSection(sec.key, false)} style={ghostBtn()}>Clear all</button>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
+                      {sec.items.map((it) => (
+                        <label key={it.key} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: 8, border: "1px solid #f1f5f9", borderRadius: 10 }}>
+                          <input
+                            type="checkbox"
+                            checked={!!state?.[it.key]}
+                            onChange={() => toggleItem(sec.key, it.key)}
+                            style={{ marginTop: 4 }}
+                          />
+                          <span>{it.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </section>
             );
           })}
         </div>
 
-        <button
-          type="submit"
-          disabled={saving}
-          style={{ padding: "12px 16px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#006491", color: "white", fontWeight: 700, cursor: "pointer" }}
-        >
-          {saving ? "Saving…" : "Save Walkthrough"}
-        </button>
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <button
+            type="submit"
+            disabled={saving}
+            style={{
+              padding: "12px 16px",
+              borderRadius: 10,
+              border: "1px solid #004e73",
+              background: "#006491",
+              color: "white",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            {saving ? "Saving…" : "Save Walkthrough"}
+          </button>
 
-        {msg && (
-          <p style={{ margin: 0, color: msg.startsWith("✅") ? "#065f46" : "#7f1d1d", fontWeight: 600 }}>
-            {msg}
-          </p>
-        )}
+          <button type="button" onClick={resetForm} style={ghostBtn()}>
+            Reset form
+          </button>
+
+          {msg && (
+            <span style={{ marginLeft: "auto", color: msg.startsWith("✅") ? "#065f46" : "#7f1d1d", fontWeight: 600 }}>
+              {msg}
+            </span>
+          )}
+        </div>
       </form>
     </main>
   );
 }
 
-// UI helpers
+// ---- UI helpers ----
 function input(): React.CSSProperties {
   return { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5e1", outline: "none" };
 }
@@ -546,4 +657,15 @@ function Badge(props: { label: string; value: string; strong?: boolean }) {
       <span>{props.value}</span>
     </span>
   );
+}
+function ghostBtn(): React.CSSProperties {
+  return {
+    padding: "8px 12px",
+    borderRadius: 10,
+    border: "1px solid #e5e7eb",
+    background: "white",
+    color: "#111827",
+    fontWeight: 700,
+    cursor: "pointer",
+  };
 }
