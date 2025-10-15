@@ -12,13 +12,13 @@ type Row = {
   id: string;
   created_at: string;
   store: string | null;
-  user_email: string | null;
-  section_total: number;      // /75
-  adt: number | null;         // minutes
+  user_name: string | null;     // 👈 now using user_name
+  section_total: number;        // /75
+  adt: number | null;           // minutes
   extreme_lates: number | null; // per 1000
-  sbr: number | null;         // %
-  service_total: number;      // /25
-  predicted: number;          // /100
+  sbr: number | null;           // %
+  service_total: number;        // /25
+  predicted: number;            // /100
 };
 
 // Stars from % bands
@@ -53,7 +53,7 @@ export default function AdminPage() {
         const { data, error } = await supabase
           .from("walkthrough_submissions")
           .select(
-            "id,created_at,store,user_email,section_total,adt,extreme_lates,sbr,service_total,predicted"
+            "id,created_at,store,user_name,section_total,adt,extreme_lates,sbr,service_total,predicted"
           )
           .order("created_at", { ascending: false })
           .limit(1000);
@@ -67,9 +67,10 @@ export default function AdminPage() {
     })();
   }, []);
 
-  const allStores = React.useMemo(() => {
-    return Array.from(new Set(rows.map((r) => r.store).filter(Boolean))) as string[];
-  }, [rows]);
+  const allStores = React.useMemo(
+    () => Array.from(new Set(rows.map((r) => r.store).filter(Boolean))) as string[],
+    [rows]
+  );
 
   const filtered = rows.filter((r) => {
     const d = new Date(r.created_at).toISOString().slice(0, 10);
@@ -81,7 +82,7 @@ export default function AdminPage() {
     if (!q) return true;
     return (
       (r.store ?? "").toLowerCase().includes(q) ||
-      (r.user_email ?? "").toLowerCase().includes(q)
+      (r.user_name ?? "").toLowerCase().includes(q)
     );
   });
 
@@ -154,7 +155,7 @@ export default function AdminPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="store or email"
+            placeholder="store or name"
             style={{ padding: 8, width: "100%" }}
           />
         </label>
@@ -172,7 +173,7 @@ export default function AdminPage() {
                 {[
                   "Date/Time",
                   "Store",
-                  "Email",
+                  "Name",              // 👈 header changed
                   "Walkthrough (75)",
                   "ADT",
                   "XLates/1000",
@@ -203,7 +204,7 @@ export default function AdminPage() {
                   <tr key={r.id}>
                     <td style={td()}>{new Date(r.created_at).toLocaleString()}</td>
                     <td style={td()}>{r.store ?? "-"}</td>
-                    <td style={td()}>{r.user_email ?? "-"}</td>
+                    <td style={td()}>{r.user_name ?? "-"}</td>
                     <td style={td()}>{r.section_total}</td>
                     <td style={td()}>{r.adt ?? "-"}</td>
                     <td style={td()}>{r.extreme_lates ?? "-"}</td>
