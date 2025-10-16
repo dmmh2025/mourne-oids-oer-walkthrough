@@ -1,94 +1,101 @@
-"use client";
-export const dynamic = "force-dynamic";
+export const dynamic = "force-static";
 
 import * as React from "react";
 
-export default function Home() {
+export default function HomePage() {
   return (
-    <main
-      style={{
-        maxWidth: 1100,
-        margin: "0 auto",
-        padding: "24px",
-        display: "grid",
-        gap: 20,
-      }}
-    >
-      <div
-        style={{
-          borderRadius: 16,
-          overflow: "hidden",
-          boxShadow: "0 8px 24px rgba(0,0,0,.12)",
-        }}
-      >
+    <main>
+      {/* Banner */}
+      <div className="banner">
         <img
           src="/mourneoids_forms_header_1600x400.png"
-          alt="Mourne-oids Header"
-          style={{ width: "100%", height: "auto", display: "block" }}
+          alt="Mourne-oids Header Banner"
         />
       </div>
 
-      <h1
-        style={{
-          textAlign: "center",
-          fontSize: "2.2rem",
-          margin: "10px 0 0 0",
-          color: "#0b5f80",
-          fontWeight: 700,
-        }}
-      >
-        Daily OER Walkthrough
-      </h1>
+      {/* Hero card */}
+      <section style={{ padding: 16, marginBottom: 14 }}>
+        <header>
+          <strong style={{ fontSize: 22 }}>Daily OER Walkthrough</strong>
+          <small style={{ color: "var(--muted)" }}>
+            Quick, consistent, OER-ready checks
+          </small>
+        </header>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <Card
-          title="Start Walkthrough"
-          body="Tick the checklist, enter ADT / Extreme Lates / SBR, and save your predicted OER score."
-          cta={{ href: "/walkthrough", label: "👉 Start Walkthrough" }}
-        />
-        <Card
-          title="Admin"
-          body="See the latest submissions across stores."
-          cta={{ href: "/admin", label: "🧭 Open Admin" }}
-        />
-      </div>
+        <div
+          style={{
+            display: "grid",
+            gap: 12,
+            gridTemplateColumns: "1fr",
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gap: 6,
+              background:
+                "linear-gradient(180deg, rgba(0,100,145,.06), rgba(255,255,255,1))",
+              border: "1px solid var(--softline)",
+              borderRadius: 12,
+              padding: 14,
+            }}
+          >
+            <p style={{ margin: 0, color: "var(--muted)" }}>
+              Use this walkthrough to make your store fully OER-ready before
+              opening. You’ll get a predicted OER score and your results are
+              saved to the dashboard automatically.
+            </p>
+            <ul
+              style={{
+                margin: 0,
+                paddingLeft: 18,
+                color: "var(--muted)",
+                lineHeight: 1.6,
+              }}
+            >
+              <li>Mobile-first, stacked checks for clarity</li>
+              <li>Photo uploads per check (optional but encouraged)</li>
+              <li>Automatic service score + star grade</li>
+            </ul>
+          </div>
+
+          {/* Actions */}
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            <a href="/walkthrough">
+              <button className="brand">Start Walkthrough</button>
+            </a>
+            <a href="/admin">
+              <button>Open Admin Dashboard</button>
+            </a>
+          </div>
+
+          {/* Legend */}
+          <div
+            style={{
+              display: "grid",
+              gap: 8,
+              border: "1px solid var(--softline)",
+              borderRadius: 12,
+              padding: 12,
+              background: "#fff",
+            }}
+          >
+            <strong>Star grading</strong>
+            <div style={{ color: "var(--muted)" }}>
+              90%+ = 5★ &nbsp;•&nbsp; 80–89.99% = 4★ &nbsp;•&nbsp; 70–79.99% =
+              3★ &nbsp;•&nbsp; 60–69.99% = 2★ &nbsp;•&nbsp; 50–59.99% = 1★
+              &nbsp;•&nbsp; &lt;50% = 0★
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
   );
-}
-
-function Card(props: { title: string; body: string; cta: { href: string; label: string } }) {
-  return (
-    <div
-      style={{
-        background: "white",
-        borderRadius: 16,
-        padding: 18,
-        border: "1px solid #eee",
-        boxShadow: "0 6px 20px rgba(0,0,0,.06)",
-        display: "grid",
-        gap: 8,
-      }}
-    >
-      <h2 style={{ margin: 0 }}>{props.title}</h2>
-      <p style={{ margin: 0, color: "#374151" }}>{props.body}</p>
-      <div>
-        <a href={props.cta.href} style={linkBtn()}>
-          {props.cta.label}
-        </a>
-      </div>
-    </div>
-  );
-}
-
-function linkBtn() {
-  return {
-    display: "inline-block",
-    background: "#006491",
-    color: "white",
-    padding: "10px 14px",
-    borderRadius: 10,
-    textDecoration: "none",
-    border: "1px solid #004e73",
-    fontWeight: 600,
-  } as React.CSSProperties;
 }
