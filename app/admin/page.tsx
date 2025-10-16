@@ -496,3 +496,18 @@ function Badge(props: { label: string; value: string; strong?: boolean }) {
     </span>
   );
 }
+// ---- (re)add table style helpers ----
+const th = (): React.CSSProperties => ({
+  textAlign: "left",
+  padding: "8px 10px",
+  fontSize: 13,
+  color: "#475569",
+  userSelect: "none" as React.CSSProperties["userSelect"],
+  cursor: "pointer",
+});
+
+const td = (): React.CSSProperties => ({
+  padding: "8px 10px",
+  fontSize: 13,
+  color: "#111827",
+});
