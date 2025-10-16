@@ -15,29 +15,32 @@ export default function HomePage() {
 
       {/* Hero card */}
       <section style={{ padding: 16, marginBottom: 14 }}>
-        <header>
-          <strong style={{ fontSize: 22 }}>Daily OER Walkthrough</strong>
-          <small style={{ color: "var(--muted)" }}>
+        <header style={{ display: "grid", gap: 4 }}>
+          <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1 }}>
+            Daily OER Walkthrough
+          </div>
+          <div style={{ color: "var(--muted)", fontSize: 14 }}>
             Quick, consistent, OER-ready checks
-          </small>
+          </div>
         </header>
 
         <div
           style={{
             display: "grid",
-            gap: 12,
+            gap: 16,
             gridTemplateColumns: "1fr",
+            maxWidth: 820,
           }}
         >
           <div
             style={{
               display: "grid",
-              gap: 6,
+              gap: 10,
               background:
                 "linear-gradient(180deg, rgba(0,100,145,.06), rgba(255,255,255,1))",
               border: "1px solid var(--softline)",
-              borderRadius: 12,
-              padding: 14,
+              borderRadius: 16,
+              padding: 16,
             }}
           >
             <p style={{ margin: 0, color: "var(--muted)" }}>
@@ -68,11 +71,13 @@ export default function HomePage() {
               alignItems: "center",
             }}
           >
-            <a href="/walkthrough">
-              <button className="brand">Start Walkthrough</button>
+            <a href="/walkthrough" style={{ flex: "1 1 180px", maxWidth: 240 }}>
+              <button className="brand" style={{ width: "100%" }}>
+                Start Walkthrough
+              </button>
             </a>
-            <a href="/admin">
-              <button>Open Admin Dashboard</button>
+            <a href="/admin" style={{ flex: "1 1 180px", maxWidth: 240 }}>
+              <button style={{ width: "100%" }}>Open Admin Dashboard</button>
             </a>
           </div>
 
@@ -80,11 +85,12 @@ export default function HomePage() {
           <div
             style={{
               display: "grid",
-              gap: 8,
+              gap: 6,
               border: "1px solid var(--softline)",
               borderRadius: 12,
               padding: 12,
               background: "#fff",
+              maxWidth: 820,
             }}
           >
             <strong>Star grading</strong>
@@ -96,6 +102,14 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      <style jsx>{`
+        @media (max-width: 640px) {
+          section header div:first-child {
+            font-size: 20px;
+          }
+        }
+      `}</style>
     </main>
   );
 }
