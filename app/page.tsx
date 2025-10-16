@@ -102,14 +102,6 @@ export default function HomePage() {
           </div>
         </div>
       </section>
-
-      <style jsx>{`
-        @media (max-width: 640px) {
-          section header div:first-child {
-            font-size: 20px;
-          }
-        }
-      `}</style>
     </main>
   );
 }
