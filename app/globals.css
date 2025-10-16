@@ -110,3 +110,42 @@ summary::-webkit-details-marker{display:none}
   main{padding:12px}
   table th, table td{font-size:12px}
 }
+/* === Mobile polish: bigger tap targets & clean layout === */
+button, .brand, input[type="text"], input[type="number"], input[type="file"], select, summary {
+  min-height: 44px;       /* comfy thumb area */
+  font-size: 16px;        /* prevents iOS zoom */
+}
+
+.card {
+  border: 1px solid var(--softline);
+  border-radius: 12px;
+  background: #fff;
+  padding: 12px;
+}
+
+.container {
+  padding: 16px;
+  margin: 0 auto;
+  max-width: 680px;
+}
+
+main { padding-bottom: 80px; } /* bottom breathing room */
+
+/* Pretty details/summary for sections */
+details > summary {
+  font-weight: 700;
+  list-style: none;
+  cursor: pointer;
+}
+details > summary::-webkit-details-marker { display: none; }
+
+/* Simple “badge” style (used in several places) */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--softline, #e5e7eb);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  background: #f9fafb;
+}
