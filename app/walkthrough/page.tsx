@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/supabaseClient";
 
 /** ========= Types ========= */
 type CheckItem = {
@@ -9,6 +10,7 @@ type CheckItem = {
   weight: number;      // points for this check
   done: boolean;
   tips?: string[];     // expandable guidance
+  photos: string[];    // public URLs uploaded for this check
 };
 
 type Section = {
@@ -18,35 +20,63 @@ type Section = {
   items: CheckItem[];
 };
 
-/** ========= Sections from your OER doc (total = 75) =========
- * Note: "Image" in your doc summed to 21; merged two 1-pt checks into one 1-pt check
- * so Image = 20 and overall stays at 75.
+/** Small helpers */
+const clamp = (n: number) => (Number.isFinite(n) ? n : 0);
+const slug = (s: string) =>
+  s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+/* ======== Stars (by total %) ======== */
+function starsForPercent(p: number) {
+  if (p >= 90) return 5;
+  if (p >= 80) return 4;
+  if (p >= 70) return 3;
+  if (p >= 60) return 2;
+  if (p >= 50) return 1;
+  return 0;
+}
+
+/* ======== Service scoring (25) ======== */
+function pointsForADT(mins: number) {
+  if (mins < 25) return 15;
+  if (mins <= 26) return 10;
+  if (mins <= 27) return 8;
+  if (mins <= 28) return 6;
+  if (mins <= 30) return 4;
+  return 0;
+}
+function pointsForSBR(pct: number) {
+  if (pct >= 75) return 5;
+  if (pct >= 70) return 4;
+  if (pct >= 50) return 3;
+  return 0;
+}
+function pointsForExtremes(perThousand: number) {
+  if (perThousand <= 15) return 5;
+  if (perThousand <= 20) return 4;
+  if (perThousand <= 25) return 3;
+  if (perThousand <= 30) return 2;
+  return 0;
+}
+
+/** ========= Sections (from your doc, total = 75) =========
+ * Note: "Image" originally summed to 21; we merged 2×1pt checks into 1×1pt
+ * “Walk-in & Makeline clean and working” so Image = 20 and overall stays 75.
  */
-const SECTIONS: Section[] = [
+const SECTIONS_BASE: Omit<Section, "items"> & { items: Omit<CheckItem, "photos">[] }[] = [
   /* ---------------- Food Safety (18) ---------------- */
   {
     title: "Food Safety",
     points: 18,
     items: [
-      {
-        label: "Temps entered on time and within range",
-        weight: 3,
-        done: false,
-      },
+      { label: "Temps entered on time and within range", weight: 3, done: false },
       {
         label: "Products within shelf life – including ambient products, dips & drinks",
-        weight: 3,
-        done: false,
+        weight: 3, done: false
       },
-      {
-        label: "Proper handwashing procedures – 20 seconds",
-        weight: 3,
-        done: false,
-      },
+      { label: "Proper handwashing procedures – 20 seconds", weight: 3, done: false },
       {
         label: "Sanitation procedures followed",
-        weight: 3,
-        done: false,
+        weight: 3, done: false,
         tips: [
           "Timer running",
           "Sanitiser sink correct concentration",
@@ -60,16 +90,8 @@ const SECTIONS: Section[] = [
           "Bins clean and free from sauce stains",
         ],
       },
-      {
-        label: "Proper cooking temp of food",
-        weight: 3,
-        done: false,
-      },
-      {
-        label: "4–6 week pest control service in place",
-        weight: 3,
-        done: false,
-      },
+      { label: "Proper cooking temp of food", weight: 3, done: false },
+      { label: "4–6 week pest control service in place", weight: 3, done: false },
     ],
   },
 
@@ -80,8 +102,7 @@ const SECTIONS: Section[] = [
     items: [
       {
         label: "Dough properly managed",
-        weight: 5,
-        done: false,
+        weight: 5, done: false,
         tips: [
           "All sizes available at stretch table and in good condition",
           "Dough plan created and followed",
@@ -92,8 +113,7 @@ const SECTIONS: Section[] = [
       },
       {
         label: "Bread products properly prepared",
-        weight: 2,
-        done: false,
+        weight: 2, done: false,
         tips: [
           "GPB with garlic spread, sauce and cheese to crust",
           "No dock in dippers",
@@ -102,8 +122,7 @@ const SECTIONS: Section[] = [
       },
       {
         label: "Approved products and procedures (APP)",
-        weight: 2,
-        done: false,
+        weight: 2, done: false,
         tips: [
           "Makeline bins filled for max 2 hours trade",
           "Allergen poster displayed, leaflets available",
@@ -117,8 +136,7 @@ const SECTIONS: Section[] = [
       },
       {
         label: "All sides properly prepared",
-        weight: 1,
-        done: false,
+        weight: 1, done: false,
         tips: [
           "Fries prepped",
           "2 pack and 4 pack cookies prepped and available",
@@ -127,11 +145,7 @@ const SECTIONS: Section[] = [
           "All sides available in makeline cabinet",
         ],
       },
-      {
-        label: "Adequate PRP to handle expected sales volume",
-        weight: 2,
-        done: false,
-      },
+      { label: "Adequate PRP to handle expected sales volume", weight: 2, done: false },
     ],
   },
 
@@ -142,8 +156,7 @@ const SECTIONS: Section[] = [
     items: [
       {
         label: "Team members in proper uniform",
-        weight: 3,
-        done: false,
+        weight: 3, done: false,
         tips: [
           "Jet black trousers/jeans. No leggings, joggers or combats",
           "Plain white/black undershirt with no branding or logos",
@@ -153,8 +166,7 @@ const SECTIONS: Section[] = [
       },
       {
         label: "Grooming standards maintained",
-        weight: 1,
-        done: false,
+        weight: 1, done: false,
         tips: [
           "Clean shaven or neat beard",
           "No visible piercings of any kind. Plasters can not be used to cover",
@@ -162,8 +174,7 @@ const SECTIONS: Section[] = [
       },
       {
         label: "Store interior clean and in good repair",
-        weight: 3,
-        done: false,
+        weight: 3, done: false,
         tips: [
           "All toilets must have lined bin with lid",
           "All bins in customer view must have a lid and be clean",
@@ -174,8 +185,7 @@ const SECTIONS: Section[] = [
       },
       {
         label: "Customer Area and view",
-        weight: 3,
-        done: false,
+        weight: 3, done: false,
         tips: [
           "Customer area clean and welcoming",
           "Tables and chairs clean",
@@ -188,8 +198,7 @@ const SECTIONS: Section[] = [
       },
       {
         label: "Outside",
-        weight: 2,
-        done: false,
+        weight: 2, done: false,
         tips: [
           "No branded rubbish front or rear",
           "Bins not overflowing",
@@ -200,8 +209,7 @@ const SECTIONS: Section[] = [
       },
       {
         label: "Baking Equipment",
-        weight: 3,
-        done: false,
+        weight: 3, done: false,
         tips: [
           "All screens and pans clean and free from food or carbon buildup",
           "SC screens not bent or misshapen",
@@ -214,8 +222,7 @@ const SECTIONS: Section[] = [
       },
       {
         label: "Delivery bags",
-        weight: 2,
-        done: false,
+        weight: 2, done: false,
         tips: [
           "Clean – inside and out with no build up of cornmeal",
           "No sticker residue on bags",
@@ -223,18 +230,11 @@ const SECTIONS: Section[] = [
           "No rips or tears",
         ],
       },
-      {
-        label: "Signage & Menu current, displayed correctly, clean and in good repair",
-        weight: 1,
-        done: false,
-      },
+      { label: "Signage & Menu current, displayed correctly, clean and in good repair", weight: 1, done: false },
       {
         label: "Walk-in & Makeline clean and working",
-        weight: 1,
-        done: false,
+        weight: 1, done: false,
         tips: [
-          // merged the two 1-pt checks into one 1-pt check:
-          // Walk-in clean and working + Makeline clean and working
           "Walk-in: Fan/floor/ceiling/walls & shelving clean (no mould/debris/rust)",
           "Walk-in: Door seal good and handle clean — no food debris",
           "Walk-in: No dating sticker lying on the floors; floors clean",
@@ -242,11 +242,7 @@ const SECTIONS: Section[] = [
           "Makeline: Catch trays/grills/seals in good condition — no splits/tears/missing rails",
         ],
       },
-      {
-        label: "Delivery vehicles represent positive brand image",
-        weight: 1,
-        done: false,
-      },
+      { label: "Delivery vehicles represent positive brand image", weight: 1, done: false },
     ],
   },
 
@@ -281,42 +277,6 @@ const SECTIONS: Section[] = [
   },
 ];
 
-/* ======== Service scoring (25) ======== */
-function pointsForADT(mins: number) {
-  if (mins < 25) return 15;
-  if (mins <= 26) return 10;
-  if (mins <= 27) return 8;
-  if (mins <= 28) return 6;
-  if (mins <= 30) return 4;
-  return 0;
-}
-function pointsForSBR(pct: number) {
-  if (pct >= 75) return 5;
-  if (pct >= 70) return 4;
-  if (pct >= 50) return 3;
-  return 0;
-}
-function pointsForExtremes(perThousand: number) {
-  if (perThousand <= 15) return 5;
-  if (perThousand <= 20) return 4;
-  if (perThousand <= 25) return 3;
-  if (perThousand <= 30) return 2;
-  return 0;
-}
-
-/* ======== Stars (by total %) ======== */
-function starsForPercent(p: number) {
-  if (p >= 90) return 5;
-  if (p >= 80) return 4;
-  if (p >= 70) return 3;
-  if (p >= 60) return 2;
-  if (p >= 50) return 1;
-  return 0;
-}
-
-const clamp = (n: number) => (Number.isFinite(n) ? n : 0);
-
-/** ========= Component ========= */
 export default function WalkthroughPage() {
   const router = useRouter();
 
@@ -329,38 +289,35 @@ export default function WalkthroughPage() {
   const [sbr, setSbr] = React.useState("");
   const [extremes, setExtremes] = React.useState("");
 
-  // Sections state (deep copy)
+  // Sections state (deep copy + photos = [])
   const [sections, setSections] = React.useState<Section[]>(
-    SECTIONS.map((s) => ({
+    SECTIONS_BASE.map((s) => ({
       ...s,
-      items: s.items.map((i) => ({ ...i })),
+      items: s.items.map((i) => ({ ...i, photos: [] })),
     }))
   );
 
   // Collapsible
-  const [open, setOpen] = React.useState<boolean[]>(SECTIONS.map(() => true));
+  const [open, setOpen] = React.useState<boolean[]>(sections.map(() => true));
   const toggleSection = (idx: number) =>
     setOpen((prev) => prev.map((o, i) => (i === idx ? !o : o)));
-  const setAll = (val: boolean) => setOpen(SECTIONS.map(() => val));
+  const setAll = (val: boolean) => setOpen(sections.map(() => val));
 
   // Compute section totals with per-item weights; Product quality all-or-nothing
   const sectionTotals = React.useMemo(() => {
     return sections.map((s) => {
-      const totalPts = s.points;
       if (s.allOrNothing) {
         const allDone = s.items.every((i) => i.done);
-        return allDone ? totalPts : 0;
+        return allDone ? s.points : 0;
       }
-      // sum checked item weights
       const got = s.items.filter((i) => i.done).reduce((a, b) => a + b.weight, 0);
-      // clamp to section max just in case
-      return Math.min(got, totalPts);
+      return Math.min(got, s.points);
     });
   }, [sections]);
 
   const section_total = sectionTotals.reduce((a, b) => a + b, 0); // /75
 
-  // Service calculated points
+  // Service
   const adtNum = clamp(parseFloat(adt));
   const sbrNum = clamp(parseFloat(sbr));
   const extNum = clamp(parseFloat(extremes));
@@ -371,6 +328,67 @@ export default function WalkthroughPage() {
 
   const predicted = section_total + service_total; // /100
   const stars = starsForPercent(predicted);
+
+  /** Upload photos for a specific check */
+  async function handleUpload(si: number, ii: number, files: FileList | null) {
+    if (!files || files.length === 0) return;
+    if (!store) {
+      alert("Please select a store before uploading photos.");
+      return;
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const secSlug = slug(sections[si].title);
+    const itemSlug = slug(sections[si].items[ii].label);
+
+    const newUrls: string[] = [];
+
+    for (let n = 0; n < files.length; n++) {
+      const f = files[n];
+      const ext = f.name.split(".").pop() || "jpg";
+      const path = `${store}/${today}/${secSlug}/${itemSlug}_${Date.now()}_${n}.${ext}`;
+
+      const { error: upErr } = await supabase.storage
+        .from("walkthrough")
+        .upload(path, f, { upsert: false });
+
+      if (upErr) {
+        alert(`Upload failed: ${upErr.message}`);
+        return;
+      }
+
+      const { data: pub } = supabase.storage.from("walkthrough").getPublicUrl(path);
+      if (pub?.publicUrl) newUrls.push(pub.publicUrl);
+    }
+
+    // Update state with new photo URLs
+    setSections((prev) => {
+      const next = [...prev];
+      const sec = { ...next[si] };
+      const item = { ...sec.items[ii] };
+      item.photos = [...item.photos, ...newUrls];
+      sec.items = [...sec.items];
+      sec.items[ii] = item;
+      next[si] = sec;
+      return next;
+    });
+  }
+
+  /** Remove a photo locally (does not delete from storage) */
+  function removePhoto(si: number, ii: number, idx: number) {
+    setSections((prev) => {
+      const next = [...prev];
+      const sec = { ...next[si] };
+      const item = { ...sec.items[ii] };
+      const copy = [...item.photos];
+      copy.splice(idx, 1);
+      item.photos = copy;
+      sec.items = [...sec.items];
+      sec.items[ii] = item;
+      next[si] = sec;
+      return next;
+    });
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -387,7 +405,7 @@ export default function WalkthroughPage() {
         adt: adtNum,
         sbr: sbrNum,
         extremes: extNum,
-        sections,            // full detail
+        sections,            // includes photos arrays on each check
         section_total,       // /75
         service_total,       // /25
         predicted,           // /100
@@ -400,7 +418,6 @@ export default function WalkthroughPage() {
       return;
     }
 
-    // Success → success page
     router.push(
       `/success?store=${encodeURIComponent(store)}&name=${encodeURIComponent(
         name
@@ -508,7 +525,7 @@ export default function WalkthroughPage() {
             <button type="button" onClick={() => setAll(false)}>Collapse all</button>
           </div>
 
-          {/* Sections with vertical checks + expandable guidance */}
+          {/* Sections with vertical checks + photos + expandable guidance */}
           <div style={{ display: "grid", gap: 12 }}>
             {sections.map((sec, si) => {
               const doneItems = sec.items.filter((i) => i.done);
@@ -543,7 +560,6 @@ export default function WalkthroughPage() {
                       </small>
                     </div>
                     <button type="button" onClick={() => toggleSection(si)} style={{ fontSize: 13 }}>
-                      {/* accessible label */}
                       <span aria-hidden>{open[si] ? "Hide" : "Show"}</span>
                     </button>
                   </div>
@@ -552,6 +568,7 @@ export default function WalkthroughPage() {
                     <div style={{ padding: 12, display: "grid", gap: 10 }}>
                       {sec.items.map((it, ii) => (
                         <div key={ii} className="card" style={{ padding: 10 }}>
+                          {/* checkbox + label + weight */}
                           <label style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
                             <input
                               type="checkbox"
@@ -571,12 +588,80 @@ export default function WalkthroughPage() {
                             />
                             <span>
                               {it.label}{" "}
-                              <small style={{ color: "var(--muted)" }}>· {it.weight} pt{it.weight !== 1 ? "s" : ""}</small>
+                              <small style={{ color: "var(--muted)" }}>
+                                · {it.weight} pt{it.weight !== 1 ? "s" : ""}
+                              </small>
                             </span>
                           </label>
 
+                          {/* Photos */}
+                          <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+                            <label style={{ fontSize: 14, fontWeight: 600 }}>
+                              Upload photo(s)
+                            </label>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              onChange={(e) => handleUpload(si, ii, e.target.files)}
+                            />
+
+                            {/* Thumbnails */}
+                            {it.photos.length > 0 && (
+                              <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "repeat(auto-fill, minmax(88px,1fr))",
+                                  gap: 8,
+                                }}
+                              >
+                                {it.photos.map((url, pi) => (
+                                  <div
+                                    key={pi}
+                                    style={{
+                                      position: "relative",
+                                      border: "1px solid var(--softline)",
+                                      borderRadius: 8,
+                                      overflow: "hidden",
+                                    }}
+                                  >
+                                    <img
+                                      src={url}
+                                      alt="upload preview"
+                                      style={{
+                                        width: "100%",
+                                        height: 88,
+                                        objectFit: "cover",
+                                        display: "block",
+                                      }}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => removePhoto(si, ii, pi)}
+                                      style={{
+                                        position: "absolute",
+                                        top: 4,
+                                        right: 4,
+                                        fontSize: 12,
+                                        background: "rgba(0,0,0,.6)",
+                                        color: "#fff",
+                                        padding: "2px 6px",
+                                        borderRadius: 6,
+                                      }}
+                                      aria-label="Remove photo"
+                                      title="Remove photo"
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* expandable guidance */}
                           {it.tips && it.tips.length > 0 && (
-                            <details style={{ marginTop: 6 }}>
+                            <details style={{ marginTop: 8 }}>
                               <summary>Guidance / What good looks like</summary>
                               <ul style={{ margin: "8px 0 0 18px", display: "grid", gap: 4 }}>
                                 {it.tips.map((t, i) => (
