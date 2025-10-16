@@ -47,6 +47,19 @@ const fmt = (n: number | null | undefined) =>
 const starsForPercent = (p: number) =>
   p >= 90 ? 5 : p >= 80 ? 4 : p >= 70 ? 3 : p >= 60 ? 2 : p >= 50 ? 1 : 0;
 
+const gradeColor = (stars: number) =>
+  stars >= 5
+    ? "#22c55e" // green
+    : stars === 4
+    ? "#0ea5e9" // blue
+    : stars === 3
+    ? "#f59e0b" // amber
+    : stars === 2
+    ? "#fb923c" // orange
+    : stars === 1
+    ? "#ef4444" // red
+    : "#9ca3af"; // gray
+
 function toArray<T = any>(v: any): T[] {
   if (Array.isArray(v)) return v as T[];
   if (v == null) return [];
@@ -204,6 +217,15 @@ export default function AdminPage() {
     })();
   }, [fromDate, toDate, storeFilter]);
 
+  // Summary stats (top strip)
+  const summary = React.useMemo(() => {
+    const total = rows.length;
+    const avgTotal = total ? rows.reduce((s, r) => s + (Number(r.predicted || 0)), 0) / total : 0;
+    const avgStars =
+      total ? rows.reduce((s, r) => s + starsForPercent(Number(r.predicted || 0)), 0) / total : 0;
+    return { total, avgTotal, avgStars };
+  }, [rows]);
+
   const allStores = React.useMemo(() => {
     const set = new Set<string>();
     rows.forEach((r) => set.add((r.store || "Unknown").trim()));
@@ -223,6 +245,7 @@ export default function AdminPage() {
     secAvgPoints: number[];
     secMax: number[];
     trendPred: number[];
+    trendDelta: number; // last - prev
   };
 
   const storesAnalytics: StoreStats[] = React.useMemo(() => {
@@ -261,13 +284,31 @@ export default function AdminPage() {
       const secAvgPoints = secLabels.map((k) => secMap.get(k)!.total / Math.max(1, secMap.get(k)!.n));
       const secMax = secLabels.map((k) => secMap.get(k)!.max);
 
-      const trendPred = [...subs]
-        .sort((a, b) => new Date(a.created_at as any).getTime() - new Date(b.created_at as any).getTime())
-        .map((s) => Number(s.predicted || 0));
+      const trendSorted = [...subs].sort(
+        (a, b) => new Date(a.created_at as any).getTime() - new Date(b.created_at as any).getTime()
+      );
+      const trendPred = trendSorted.map((s) => Number(s.predicted || 0));
+      const last = trendPred.at(-1) ?? 0;
+      const prev = trendPred.length >= 2 ? trendPred.at(-2)! : last;
+      const trendDelta = last - prev;
 
-      result.push({ store, count, avgWalk, avgService, avgPred, best, worst, secLabels, secAvgPoints, secMax, trendPred });
+      result.push({
+        store,
+        count,
+        avgWalk,
+        avgService,
+        avgPred,
+        best,
+        worst,
+        secLabels,
+        secAvgPoints,
+        secMax,
+        trendPred,
+        trendDelta,
+      });
     }
 
+    // sort by average predicted (desc) = ranking order
     return result.sort((a, b) => b.avgPred - a.avgPred);
   }, [rows]);
 
@@ -373,6 +414,25 @@ export default function AdminPage() {
           {err && <p style={{ color: "#7f1d1d", fontWeight: 700, margin: 0 }}>❌ {err}</p>}
         </div>
 
+        {/* ===== SUMMARY BAR ===== */}
+        <section
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 8,
+            marginBottom: 12,
+          }}
+        >
+          <SummaryCard label="Total submissions" value={`${summary.total}`} />
+          <SummaryCard label="Average total score" value={`${fmt(summary.avgTotal)}/100`} />
+          <SummaryCard
+            label="Average stars"
+            value={`${"★".repeat(Math.round(summary.avgStars))}${"☆".repeat(5 - Math.round(summary.avgStars))} (${fmt(
+              summary.avgStars
+            )})`}
+          />
+        </section>
+
         {/* ===== COLLAPSIBLE STORE ANALYTICS ===== */}
         <section style={{ border: "1px solid #e5e7eb", borderRadius: 12, background: "white", padding: 12, marginBottom: 14 }}>
           <header
@@ -394,9 +454,12 @@ export default function AdminPage() {
           {storesAnalytics.length === 0 && <p style={{ margin: 0, color: "#6b7280" }}>No submissions for the selected range.</p>}
 
           <div style={{ display: "grid", gap: 10 }}>
-            {storesAnalytics.map((s) => {
+            {storesAnalytics.map((s, idx) => {
               const stars = starsForPercent(s.avgPred);
               const sectionPercents = s.secAvgPoints.map((p, i) => (s.secMax[i] ? p / s.secMax[i] : 0));
+              const rankIcon = idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `#${idx + 1}`;
+              const gradeClr = gradeColor(stars);
+              const trendUp = s.trendDelta >= 0;
 
               return (
                 <details key={s.store} style={{ border: "1px solid #eef2f7", borderRadius: 12, overflow: "hidden", background: "white" }}>
@@ -407,20 +470,39 @@ export default function AdminPage() {
                       padding: 12,
                       background: "#f8fafc",
                       display: "grid",
-                      gridTemplateColumns: "1.3fr 1fr 1fr",
+                      gridTemplateColumns: "1.5fr 1.2fr 1fr",
                       gap: 10,
                       alignItems: "center",
                     }}
                   >
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                      <strong style={{ fontSize: 16 }}>{s.store}</strong>
+                      <strong style={{ fontSize: 16 }}>
+                        {rankIcon} {s.store}
+                      </strong>
                       <Badge label="Avg Walk" value={`${fmt(s.avgWalk)}/75`} />
                       <Badge label="Avg Service" value={`${fmt(s.avgService)}/25`} />
-                      <Badge label="Avg Predicted" value={`${fmt(s.avgPred)}/100`} strong />
-                      <Badge label="Grade" value={`${"★".repeat(stars)}${"☆".repeat(5 - stars)} (${stars})`} />
-                      <Badge label="Submissions" value={`${s.count}`} />
+                      <Badge label="Avg Total" value={`${fmt(s.avgPred)}/100`} />
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "6px 10px",
+                          borderRadius: 999,
+                          border: `1px solid ${gradeClr}`,
+                          color: gradeClr,
+                          background: "#fff",
+                          fontWeight: 800,
+                        }}
+                        title="Grade"
+                      >
+                        <span>{"★".repeat(stars)}{"☆".repeat(5 - stars)}</span>
+                        <span>({stars})</span>
+                      </span>
+                      <Badge label="Subs" value={`${s.count}`} />
                     </div>
-                    <div>
+
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                       <div>
                         <span style={{ fontWeight: 700, color: "#065f46" }}>Best:</span>{" "}
                         {s.best ? (
@@ -442,10 +524,11 @@ export default function AdminPage() {
                         )}
                       </div>
                     </div>
+
                     <div style={{ display: "grid", justifyItems: "end" }}>
                       <Sparkline points={s.trendPred} />
-                      <small style={{ color: "#64748b" }}>
-                        Trend: {s.trendPred.length ? `${fmt(s.trendPred[0])} → ${fmt(s.trendPred.at(-1)!)}` : "—"}
+                      <small style={{ color: trendUp ? "#065f46" : "#7f1d1d", fontWeight: 700 }}>
+                        {trendUp ? "▲" : "▼"} {fmt(Math.abs(s.trendDelta))} vs last
                       </small>
                     </div>
                   </summary>
@@ -541,6 +624,7 @@ export default function AdminPage() {
                 {tableRows.map((r) => {
                   const total = Number(r.predicted || 0);
                   const stars = starsForPercent(total);
+                  const color = gradeColor(stars);
                   return (
                     <tr
                       key={`${r.id}-${r.created_at}`}
@@ -553,7 +637,10 @@ export default function AdminPage() {
                       <td style={td()}>{fmt(r.service_total)}</td>
                       <td style={td()}>{fmt(r.section_total)}</td>
                       <td style={td()}>{fmt(total)}</td>
-                      <td style={td()}>{`${"★".repeat(stars)}${"☆".repeat(5 - stars)} (${stars})`}</td>
+                      <td style={{ ...td(), color, fontWeight: 800 }}>
+                        {"★".repeat(stars)}
+                        {"☆".repeat(5 - stars)} ({stars})
+                      </td>
                     </tr>
                   );
                 })}
@@ -579,6 +666,9 @@ export default function AdminPage() {
           padding: 8px 10px;
           text-align: left;
         }
+        table tbody tr:hover {
+          background: #f8fafc;
+        }
         details + details {
           margin-top: 8px;
         }
@@ -591,6 +681,27 @@ export default function AdminPage() {
 }
 
 // ---------- UI bits ----------
+function SummaryCard(props: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        border: "1px solid #e5e7eb",
+        borderRadius: 12,
+        background: "white",
+        padding: 12,
+        display: "grid",
+        gap: 4,
+        boxShadow: "0 6px 18px rgba(0,0,0,.04)",
+      }}
+    >
+      <div style={{ fontSize: 12, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.4 }}>
+        {props.label}
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 800 }}>{props.value}</div>
+    </div>
+  );
+}
+
 function Badge(props: { label: string; value: string; strong?: boolean }) {
   return (
     <span
