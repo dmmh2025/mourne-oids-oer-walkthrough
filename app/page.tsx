@@ -51,43 +51,28 @@ export default function HomePage() {
             </p>
           </div>
 
-          {/* Actions */}
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              flexWrap: "wrap",
-              alignItems: "center",
-            }}
-          >
-            <a href="/walkthrough" style={{ flex: "1 1 180px", maxWidth: 240 }}>
-              <button className="brand" style={{ width: "100%" }}>
-                Start Walkthrough
-              </button>
-            </a>
-            <a href="/admin" style={{ flex: "1 1 180px", maxWidth: 240 }}>
-              <button style={{ width: "100%" }}>Open Admin Dashboard</button>
-            </a>
-          </div>
+{/* Actions */}
+<div
+  style={{
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+    alignItems: "center",
+  }}
+>
+  <a href="/walkthrough" style={{ flex: "1 1 180px", maxWidth: 240 }}>
+    <button className="brand" style={{ width: "100%" }}>
+      Start Walkthrough
+    </button>
+  </a>
+  <a href="/deep-clean" style={{ flex: "1 1 220px", maxWidth: 260 }}>
+    <button style={{ width: "100%" }}>Autumn Deep Clean Checklist</button>
+  </a>
+  <a href="/admin" style={{ flex: "1 1 180px", maxWidth: 240 }}>
+    <button style={{ width: "100%" }}>Open Admin Dashboard</button>
+  </a>
+</div>
 
-          {/* Legend */}
-          <div
-            style={{
-              display: "grid",
-              gap: 6,
-              border: "1px solid var(--softline)",
-              borderRadius: 12,
-              padding: 12,
-              background: "#fff",
-              maxWidth: 820,
-            }}
-          >
-            <strong>Star grading</strong>
-            <div style={{ color: "var(--muted)" }}>
-              90%+ = 5★ &nbsp;•&nbsp; 80–89.99% = 4★ &nbsp;•&nbsp; 70–79.99% =
-              3★ &nbsp;•&nbsp; 60–69.99% = 2★ &nbsp;•&nbsp; 50–59.99% = 1★
-              &nbsp;•&nbsp; &lt;50% = 0★
-            </div>
           </div>
         </div>
       </section>
