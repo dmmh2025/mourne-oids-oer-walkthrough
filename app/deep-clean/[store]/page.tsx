@@ -224,6 +224,22 @@ export default function StoreDeepCleanPage() {
       <div className="banner">
         <img src="/mourneoids_forms_header_1600x400.png" alt="Mourne-oids Header Banner" />
       </div>
+  {/* Back buttons */}
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "flex-start",
+      gap: 10,
+      padding: "10px 16px",
+    }}
+  >
+    <a href="/deep-clean">
+      <button style={{ fontSize: 14 }}>⬅ Back to Stores</button>
+    </a>
+    <a href="/">
+      <button style={{ fontSize: 14 }}>🏠 Home</button>
+    </a>
+  </div>
 
       <section style={{ padding: 16, marginBottom: 14 }}>
         <header>
