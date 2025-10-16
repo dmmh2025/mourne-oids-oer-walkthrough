@@ -8,171 +8,15 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseAnon);
 
-// ---- Sections (TOTAL = 75) ----
-type Item = { key: string; label: string };
-type Section = { key: string; title: string; max: number; items: Item[] };
+// ---------- Types ----------
+type Item = { key: string; label: string; pts?: number };
+type Section =
+  | { key: string; title: string; max: number; items: Item[]; mode?: "normal" }
+  | { key: "product_quality"; title: string; max: number; items: Item[]; mode: "all_or_nothing" };
 
-const SECTIONS: Section[] = [
-  {
-    key: "temperature_records",
-    title: "Temperature Records",
-    max: 6,
-    items: [
-      { key: "complete_pre_open", label: "Complete and upload PRE-OPEN" },
-      { key: "cooking_temps", label: "Cooking temperatures recorded & in range" },
-    ],
-  },
-  {
-    key: "shelf_life",
-    title: "Shelf Life",
-    max: 3,
-    items: [{ key: "dated_within_shelf", label: "All products (incl. staff food) dated and within shelf life" }],
-  },
-  {
-    key: "hand_washing",
-    title: "Hand Washing",
-    max: 3,
-    items: [{ key: "sinks_stocked_20s", label: "All sinks stocked with soap & hand towels; washing 20s" }],
-  },
-  {
-    key: "sanitation",
-    title: "Sanitation",
-    max: 4,
-    items: [
-      { key: "surfaces_2h", label: "Food surfaces/utensils sanitised every 2h (clock running)" },
-      { key: "can_opener", label: "Can opener clean, rust-free, no flaking paint; clean after use" },
-      { key: "smallwares_clean", label: "Bubble popper/shakers/squeeze bottles/keyboards clean for open" },
-      { key: "sink_concentration", label: "Sanitiser sink correct concentration, checked with strip" },
-      { key: "bottles_filled", label: "Fresh sanitiser bottles filled each morning" },
-      { key: "spray_only_prep", label: "Sanitiser spray is the only chemical allowed in food prep" },
-      { key: "tubs_changed", label: "Dip tubs/silicon/foil/squeeze bottles/gluten kit changed daily" },
-      { key: "nothing_on_floor", label: "Nothing stored on dough trays or directly on floor" },
-    ],
-  },
-  {
-    key: "great_remake",
-    title: "Great/Remake Criteria (scored in Product Section)",
-    max: 22,
-    items: [
-      { key: "no_day1_dough", label: "NO DAY 1 Dough in use — SWAP with other stores" },
-      { key: "bubble_popper_use", label: "Use bubble popper when needed; clean after every use" },
-      { key: "no_sauce_cheese_crust", label: "No sauce or cheese on the crust" },
-      { key: "breaded_sides", label: "Breaded sides cooked correctly (time/temp/quality)" },
-      { key: "five_star_follow", label: "5★ Pizzas — follow Sell/Remake criteria (RIM / SIZE / PORTION / PLACEMENT / BAKE)" },
-    ],
-  },
-  {
-    key: "dough",
-    title: "Dough",
-    max: 5,
-    items: [
-      { key: "mixed_trays_out", label: "Mixed trays dated; all sizes out at all times, incl. VEGAN" },
-      { key: "covered_clean_tray", label: "All dough covered with a clean/sanitised tray" },
-      { key: "discard_blown", label: "Discard blown dough immediately and replace" },
-      { key: "plan_created", label: "Dough plan created for day and used" },
-    ],
-  },
-  {
-    key: "approved_product",
-    title: "Approved Product & Procedures",
-    max: 7,
-    items: [
-      { key: "bins_max_2h", label: "Makeline bins MAXIMUM 2 hours of product (1.5 full or less)" },
-      { key: "gf_kit_black_bottom", label: "GF kit set up; toppings in black tubs on bottom row of makeline" },
-      { key: "no_out_of_products", label: "No out-of-products anywhere — no stickers/bars allowed" },
-      { key: "allergen_poster", label: "Allergen poster (QR version) displayed; leaflets available" },
-      { key: "plant_based_order", label: "Plant-based procedures followed (PB cheese not over first catch tray)" },
-      { key: "separate_scrapers", label: "Separate scrapers for veg/meat doughballs (red/white or green) used" },
-      { key: "back_door_closed", label: "Back door securely closed at ALL TIMES" },
-      { key: "pest_control", label: "Pest control: checks complete, traps in place, no activity" },
-    ],
-  },
-  {
-    key: "uniform_grooming",
-    title: "Uniform & Brand Standards",
-    max: 5,
-    items: [
-      { key: "black_trousers", label: "Jet black trousers/jeans — no leggings/joggers/combat" },
-      { key: "plain_undershirt", label: "Plain white/black undershirts; no visible writing/logos" },
-      { key: "no_jumpers", label: "No jumpers/hoodies/jackets under Domino’s jacket" },
-      { key: "clean_shaven", label: "Clean shaven or beard with clean lines" },
-      { key: "no_piercings", label: "No visible piercings of any kind (not covered with plasters)" },
-      { key: "drivers_vehicle", label: "Drivers vehicle clean/road-legal (lights/plates/insurance)" },
-    ],
-  },
-  {
-    key: "store_interior",
-    title: "Store Interior / Customer View",
-    max: 6,
-    items: [
-      { key: "toilets_lined_bin", label: "ALL toilets MUST have a lined bin with lid" },
-      { key: "customer_view_clean", label: "Everything in customer view clean and tidy" },
-      { key: "no_staff_food_view", label: "No staff food/drink in customer view (cut table/hot rack/driver table)" },
-      { key: "bins_lids_clean", label: "All bins in customer view have lids and are clean" },
-    ],
-  },
-  {
-    key: "outside_entry",
-    title: "Outside Entry",
-    max: 2,
-    items: [{ key: "no_branded_rubbish", label: "No branded rubbish front/rear; refuse bins not overflowing" }],
-  },
-  {
-    key: "baking_equipment",
-    title: "Baking Equipment",
-    max: 2,
-    items: [
-      { key: "oven_clean", label: "Oven clean (not yellowing) — hood/filters/belt/frame" },
-      { key: "screens_pans_clean", label: "Screens & pans clean, good repair, no carbon build-up" },
-      { key: "wedge_gpb_clean", label: "Wedge & GPB pans cleaned daily and dried through oven pre-open" },
-    ],
-  },
-  {
-    key: "hotbags",
-    title: "Hotbags",
-    max: 1,
-    items: [{ key: "brushed_clean_no_rips", label: "Brushed out, clean patches, no rips (isolate if damaged)" }],
-  },
-  {
-    key: "walk_in_cooler",
-    title: "Walk-in Cooler",
-    max: 1,
-    items: [
-      { key: "surfaces_clean", label: "Fan/floor/ceiling/walls & shelving clean (no mould/debris/rust)" },
-      { key: "door_seal_handle", label: "Door seal good and handle clean — no food debris" },
-    ],
-  },
-  {
-    key: "makeline",
-    title: "Makeline",
-    max: 1,
-    items: [
-      { key: "fixtures_clean", label: "Cupboards/doors/handles/shelves/seals/lids clean & in good condition" },
-      { key: "catch_trays_good", label: "Catch trays/grills/seals in good condition — no splits/tears/missing rails" },
-    ],
-  },
-  {
-    key: "safety_security",
-    title: "Safety & Security",
-    max: 6,
-    items: [
-      { key: "drivers_drop_cash", label: "Drivers dropping cash (if applicable)" },
-      { key: "safe_utilised", label: "Safe utilised, secure & working — time-delay in use, not on day lock" },
-      { key: "front_till_locked", label: "Front till locked; no key left at counter — ≤ £100 total" },
-    ],
-  },
-  {
-    key: "prp",
-    title: "PRP",
-    max: 1,
-    items: [
-      { key: "prep_sheet_printed", label: "Prep sheet printed and used for FULL DAY’S TRADE" },
-      { key: "all_items_available", label: "ALL ITEMS AVAILABLE (source pre-open if NO)" },
-    ],
-  },
-];
+type SectionState = Record<string, boolean>;
 
-// ---- Service scoring ----
+// ---------- Service scoring (unchanged) ----------
 function scoreADT(n: number | null) {
   if (n == null || Number.isNaN(n)) return null;
   if (n > 30) return 0;
@@ -197,8 +41,6 @@ function scoreExtremes(n: number | null) {
   if (n > 15) return 4;
   return 5;
 }
-
-// ---- Stars from predicted % ----
 function starsForPercent(p: number) {
   if (p >= 90) return 5;
   if (p >= 80) return 4;
@@ -208,12 +50,97 @@ function starsForPercent(p: number) {
   return 0;
 }
 
-// ---- helpers ----
-type SectionState = Record<string, boolean>;
-const STORAGE_KEY = "oer_walkthrough_draft_v1";
+// ---------- New Sections & Points (total walkthrough = 75) ----------
+// NOTE: We’ve set explicit weights per item to match your totals.
+// If any weight differs from your doc, tell me which item and I’ll adjust the pts value.
+const SECTIONS: Section[] = [
+  // 1) FOOD SAFETY — 18 pts (6 × 3 pts)
+  {
+    key: "food_safety",
+    title: "Food Safety",
+    max: 18,
+    mode: "normal",
+    items: [
+      { key: "temps_in_range", label: "Temps entered on time and within range", pts: 3 },
+      { key: "within_shelf_life", label: "Products within shelf life", pts: 3 },
+      { key: "proper_handwashing", label: "Proper handwashing", pts: 3 },
+      { key: "sanitation_followed", label: "Sanitation procedures followed", pts: 3 },
+      { key: "proper_cooking_temps", label: "Proper cooking temps", pts: 3 },
+      { key: "pest_control_service", label: "4–6 week pest control service in place", pts: 3 },
+    ],
+  },
+  // 2) PRODUCT — 12 pts (weights per your breakdown: 5+2+2+1+2)
+  {
+    key: "product",
+    title: "Product",
+    max: 12,
+    mode: "normal",
+    items: [
+      { key: "dough_managed", label: "Dough properly managed", pts: 5 },
+      { key: "bread_prepped", label: "Bread products properly prepared", pts: 2 },
+      { key: "app", label: "Approved Products & Procedures (APP)", pts: 2 },
+      { key: "sides_prepped", label: "All sides properly prepared", pts: 1 },
+      { key: "prp_adequate", label: "Adequate PRP", pts: 2 },
+    ],
+  },
+  // 3) IMAGE — 20 pts (weights chosen to total 20 neatly for mobile; tweakable)
+  {
+    key: "image",
+    title: "Image",
+    max: 20,
+    mode: "normal",
+    items: [
+      { key: "uniform", label: "Team in proper uniform", pts: 3 },
+      { key: "grooming", label: "Grooming standards", pts: 1 },
+      { key: "store_interior", label: "Store interior clean", pts: 2 },
+      { key: "customer_view", label: "Customer area and view", pts: 2 },
+      { key: "outside", label: "Outside", pts: 2 },
+      { key: "baking_equipment", label: "Baking Equipment", pts: 3 },
+      { key: "delivery_bags", label: "Delivery bags", pts: 2 },
+      { key: "signage_menu", label: "Signage & Menu", pts: 1 },
+      { key: "walk_in_clean", label: "Walk-in clean", pts: 1 },
+      { key: "makeline_clean", label: "Makeline clean", pts: 1 },
+      { key: "delivery_vehicles", label: "Delivery vehicles", pts: 2 },
+    ],
+  },
+  // 4) SAFETY & SECURITY — 5 pts (5 × 1 pt)
+  {
+    key: "safety_security",
+    title: "Safety & Security",
+    max: 5,
+    mode: "normal",
+    items: [
+      { key: "drivers_cash_drops", label: "Drivers making cash drops", pts: 1 },
+      { key: "caller_id_working", label: "Caller ID working", pts: 1 },
+      { key: "safe_secure", label: "Safe secure", pts: 1 },
+      { key: "till_under_100", label: "Till < £100", pts: 1 },
+      { key: "drivers_safe", label: "Drivers safe", pts: 1 },
+    ],
+  },
+  // 5) PRODUCT QUALITY — 20 pts (ALL OR NOTHING)
+  {
+    key: "product_quality",
+    title: "Product Quality",
+    max: 20,
+    mode: "all_or_nothing",
+    items: [
+      { key: "rim", label: "RIM" },
+      { key: "rise", label: "RISE" },
+      { key: "size", label: "SIZE" },
+      { key: "portion", label: "PORTION" },
+      { key: "placement", label: "PLACEMENT" },
+      { key: "bake", label: "BAKE" },
+      { key: "bacon_check", label: "Bacon check" },
+      { key: "no_sauce_cheese_crust", label: "No sauce & cheese on crust" },
+    ],
+  },
+];
 
+const STORAGE_KEY = "oer_walkthrough_v2";
+
+// ---------- Page ----------
 export default function WalkthroughPage() {
-  // Store + name
+  // Store + Name
   const [store, setStore] = React.useState("");
   const [userName, setUserName] = React.useState("");
   const stores = ["Downpatrick", "Kilkeel", "Newcastle"];
@@ -234,31 +161,30 @@ export default function WalkthroughPage() {
       )
   );
 
-  // UI state
-  const [expanded, setExpanded] = React.useState<Record<string, boolean>>(() =>
-    Object.fromEntries(SECTIONS.map((s) => [s.key, true]))
+  // UI
+  const [expanded, setExpanded] = React.useState<Record<string, boolean>>(
+    () => Object.fromEntries(SECTIONS.map((s) => [s.key, true]))
   );
   const [saving, setSaving] = React.useState(false);
   const [msg, setMsg] = React.useState<string | null>(null);
 
-  // ---- Autosave load ----
+  // Load autosave
   React.useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const draft = JSON.parse(raw);
-      if (draft && typeof draft === "object") {
-        setStore(draft.store ?? "");
-        setUserName(draft.userName ?? "");
-        setAdt(draft.adt ?? "");
-        setExtPerThousand(draft.extPerThousand ?? "");
-        setSbr(draft.sbr ?? "");
-        if (draft.sections) setSections(draft.sections);
-      }
+      if (!draft) return;
+      setStore(draft.store ?? "");
+      setUserName(draft.userName ?? "");
+      setAdt(draft.adt ?? "");
+      setExtPerThousand(draft.extPerThousand ?? "");
+      setSbr(draft.sbr ?? "");
+      if (draft.sections) setSections(draft.sections);
     } catch {}
   }, []);
 
-  // ---- Autosave persist ----
+  // Persist autosave
   React.useEffect(() => {
     const payload = { store, userName, adt, extPerThousand, sbr, sections };
     try {
@@ -266,19 +192,31 @@ export default function WalkthroughPage() {
     } catch {}
   }, [store, userName, adt, extPerThousand, sbr, sections]);
 
-  // walkthrough score (/75)
+  // Compute walkthrough score (/75)
   const walkthroughScore = React.useMemo(() => {
     let total = 0;
+
     for (const sec of SECTIONS) {
-      const state = sections[sec.key] || {};
-      const checked = sec.items.filter((i) => state[i.key]).length;
-      const perItem = sec.max / sec.items.length;
-      total += perItem * checked;
+      const st = sections[sec.key] || {};
+      const checked = sec.items.filter((i) => st[i.key]).map((i) => i.key);
+
+      if (sec.key === "product_quality" && sec.mode === "all_or_nothing") {
+        // All-or-nothing: all must be checked to earn 20, else 0
+        const allChecked = sec.items.every((i) => !!st[i.key]);
+        total += allChecked ? sec.max : 0;
+      } else {
+        // Sum explicit item weights (pts)
+        const secPoints = sec.items
+          .filter((i) => st[i.key])
+          .reduce((sum, i) => sum + (i.pts ?? 0), 0);
+        // clamp (safety)
+        total += Math.min(secPoints, sec.max);
+      }
     }
-    return Math.round(total);
+    return total;
   }, [sections]);
 
-  // service score (/25)
+  // Service score (/25)
   const adtNum = adt === "" ? null : Number(adt);
   const extNum = extPerThousand === "" ? null : Number(extPerThousand);
   const sbrNum = sbr === "" ? null : Number(sbr);
@@ -286,20 +224,19 @@ export default function WalkthroughPage() {
   const adtPts = scoreADT(adtNum) ?? 0;
   const extPts = scoreExtremes(extNum) ?? 0;
   const sbrPts = scoreSBR(sbrNum) ?? 0;
-
   const serviceTotal = adtPts + extPts + sbrPts;
 
-  // predicted (/100) + stars
+  // Predicted + stars
   const predicted = walkthroughScore + serviceTotal;
   const stars = starsForPercent(predicted);
 
+  // Handlers
   function toggleItem(sectionKey: string, itemKey: string) {
     setSections((prev) => ({
       ...prev,
       [sectionKey]: { ...prev[sectionKey], [itemKey]: !prev[sectionKey][itemKey] },
     }));
   }
-
   function setAllInSection(sectionKey: string, value: boolean) {
     const sec = SECTIONS.find((s) => s.key === sectionKey);
     if (!sec) return;
@@ -308,11 +245,9 @@ export default function WalkthroughPage() {
       [sectionKey]: Object.fromEntries(sec.items.map((i) => [i.key, value])),
     }));
   }
-
   function expandAll(v: boolean) {
     setExpanded(Object.fromEntries(SECTIONS.map((s) => [s.key, v])));
   }
-
   function resetForm() {
     setSections(
       Object.fromEntries(
@@ -328,7 +263,7 @@ export default function WalkthroughPage() {
     setMsg(null);
   }
 
-  // ---- Submit -> save to Supabase + redirect ----
+  // Submit -> Supabase -> redirect
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setMsg(null);
@@ -352,9 +287,11 @@ export default function WalkthroughPage() {
         key: sec.key,
         title: sec.title,
         max: sec.max,
+        mode: sec.key === "product_quality" ? "all_or_nothing" : "normal",
         items: sec.items.map((i) => ({
           key: i.key,
           label: i.label,
+          pts: i.pts ?? null,
           checked: sections[sec.key]?.[i.key] ?? false,
         })),
       }));
@@ -375,18 +312,18 @@ export default function WalkthroughPage() {
       if (error) throw error;
 
       setMsg("✅ Walkthrough saved! Redirecting…");
+
+      // clear draft
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch {}
+
       const params = new URLSearchParams({
         store,
         predicted: String(predicted),
         walkthrough: String(walkthroughScore),
         service: String(serviceTotal),
       }).toString();
-
-      // Clear local draft on success
-      try {
-        localStorage.removeItem(STORAGE_KEY);
-      } catch {}
-
       setTimeout(() => (window.location.href = `/success?${params}`), 900);
     } catch (err: any) {
       setMsg(`❌ ${err.message || "Failed to save"}`);
@@ -398,7 +335,7 @@ export default function WalkthroughPage() {
   return (
     <>
       <main style={{ maxWidth: 980, margin: "0 auto", padding: 16 }}>
-        {/* Banner with Domino's blue border */}
+        {/* Banner with Domino's blue underline */}
         <div
           style={{
             borderBottom: "4px solid #006491",
@@ -464,13 +401,13 @@ export default function WalkthroughPage() {
 
         {/* Form */}
         <form onSubmit={submit} style={{ display: "grid", gap: 12 }}>
-          {/* Store + Name */}
+          {/* Store + Name (stacked on mobile via CSS) */}
           <div className="two-col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <label style={{ display: "grid", gap: 6 }}>
               Store
               <select value={store} onChange={(e) => setStore(e.target.value)} required style={input()}>
                 <option value="" disabled>Select a store…</option>
-                {stores.map((s) => (
+                {["Downpatrick", "Kilkeel", "Newcastle"].map((s) => (
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>
@@ -531,17 +468,26 @@ export default function WalkthroughPage() {
             </label>
           </div>
 
-          {/* Sections (accordions) */}
+          {/* Sections (collapsible, items vertical) */}
           <div style={{ display: "grid", gap: 12 }}>
             {SECTIONS.map((sec) => {
               const state = sections[sec.key];
+              const totalItems = sec.items.length;
               const checkedCount = sec.items.filter((i) => state[i.key]).length;
-              const secScore = Math.round((checkedCount / sec.items.length) * sec.max);
-              const pct = Math.round((checkedCount / sec.items.length) * 100);
+
+              // Section score preview
+              let secScore = 0;
+              if (sec.key === "product_quality" && sec.mode === "all_or_nothing") {
+                secScore = checkedCount === totalItems ? sec.max : 0;
+              } else {
+                secScore = sec.items.reduce((sum, it) => sum + ((state[it.key] ? (it.pts ?? 0) : 0)), 0);
+                if (secScore > sec.max) secScore = sec.max;
+              }
+              const pct = Math.round((checkedCount / totalItems) * 100);
 
               return (
                 <section key={sec.key} style={{ border: "1px solid #e5e7eb", borderRadius: 12, background: "white" }}>
-                  {/* header */}
+                  {/* Header */}
                   <button
                     type="button"
                     onClick={() => setExpanded((p) => ({ ...p, [sec.key]: !p[sec.key] }))}
@@ -567,34 +513,39 @@ export default function WalkthroughPage() {
                     </div>
 
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      {/* progress bar */}
                       <div className="progress" style={{ width: 160, height: 8, background: "#f1f5f9", borderRadius: 999, overflow: "hidden" }}>
                         <div style={{ width: `${pct}%`, height: "100%", background: "#0ea5e9" }} />
                       </div>
-                      <span style={{ fontSize: 12, color: "#64748b" }}>{checkedCount}/{sec.items.length}</span>
+                      <span style={{ fontSize: 12, color: "#64748b" }}>{checkedCount}/{totalItems}</span>
                       <span style={{ fontWeight: 700 }}>{secScore} / {sec.max}</span>
                     </div>
                   </button>
 
-                  {/* body */}
+                  {/* Body */}
                   {expanded[sec.key] && (
                     <div style={{ padding: 12 }}>
                       {/* quick actions */}
-                      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                      <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
                         <button type="button" onClick={() => setAllInSection(sec.key, true)} style={ghostBtn()}>Check all</button>
                         <button type="button" onClick={() => setAllInSection(sec.key, false)} style={ghostBtn()}>Clear all</button>
                       </div>
 
-                      <div className="items-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
+                      {/* Items as a single vertical column (mobile-friendly) */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
                         {sec.items.map((it) => (
-                          <label key={it.key} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: 8, border: "1px solid #f1f5f9", borderRadius: 10 }}>
+                          <label key={it.key} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: 10, border: "1px solid #f1f5f9", borderRadius: 10 }}>
                             <input
                               type="checkbox"
                               checked={!!state?.[it.key]}
                               onChange={() => toggleItem(sec.key, it.key)}
                               style={{ marginTop: 4 }}
                             />
-                            <span>{it.label}</span>
+                            <div style={{ display: "grid", gap: 2 }}>
+                              <span>{it.label}</span>
+                              {"pts" in it && it.pts !== undefined && (
+                                <small style={{ color: "#6b7280" }}>{it.pts} pts</small>
+                              )}
+                            </div>
                           </label>
                         ))}
                       </div>
@@ -622,11 +573,9 @@ export default function WalkthroughPage() {
             >
               {saving ? "Saving…" : "Save Walkthrough"}
             </button>
-
             <button type="button" onClick={resetForm} style={ghostBtn()}>
               Reset form
             </button>
-
             {msg && (
               <span style={{ marginLeft: "auto", color: msg.startsWith("✅") ? "#065f46" : "#7f1d1d", fontWeight: 600 }}>
                 {msg}
@@ -642,7 +591,6 @@ export default function WalkthroughPage() {
           main { padding: 12px; }
           .two-col { grid-template-columns: 1fr !important; }
           .three-col { grid-template-columns: 1fr !important; }
-          .items-grid { grid-template-columns: 1fr !important; }
           .actions { flex-direction: column; align-items: stretch; }
           .actions button { width: 100%; }
           .progress { width: 120px !important; }
@@ -655,7 +603,7 @@ export default function WalkthroughPage() {
   );
 }
 
-// ---- UI helpers ----
+// ---------- UI helpers ----------
 function input(): React.CSSProperties {
   return { width: "100%", padding: "12px 14px", borderRadius: 8, border: "1px solid #cbd5e1", outline: "none" };
 }
