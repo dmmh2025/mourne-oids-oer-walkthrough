@@ -3,20 +3,25 @@ import { createClient } from "@supabase/supabase-js";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
 const supa = createClient(url, anon);
 
 export async function POST(req: Request) {
   try {
     const body = await req.json(); // { store, sections }
-    if (!body?.store || !body?.sections) {
+    const store = body?.store as string | undefined;
+    const items = body?.sections;
+
+    if (!store || !items) {
       return new NextResponse("Missing store/sections", { status: 400 });
     }
 
-    const { error } = await supa.from("deep_clean_submissions").insert({
-      store: body.store,
-      items: body.sections, // JSONB
-    });
+    // One row per store (thanks to unique index on store)
+    const { error } = await supa
+      .from("deep_clean_submissions")
+      .upsert(
+        { store, items, updated_at: new Date().toISOString() },
+        { onConflict: "store" }
+      );
 
     if (error) {
       console.error(error);
