@@ -15,7 +15,7 @@ type Item = {
 };
 type SectionPayload = {
   key: string;
-  title: string;
+  title?: string;
   max: number;
   mode: "normal" | "all_or_nothing";
   items: Item[];
@@ -45,21 +45,48 @@ const fmt = (n: number | null | undefined) =>
 const starsForPercent = (p: number) =>
   p >= 90 ? 5 : p >= 80 ? 4 : p >= 70 ? 3 : p >= 60 ? 2 : p >= 50 ? 1 : 0;
 
-function computeSectionScore(sec: SectionPayload): number {
-  if (sec.mode === "all_or_nothing") {
-    const allChecked = sec.items.every((i) => !!i.checked);
-    return allChecked ? sec.max : 0;
+// Make sure we always have arrays (handles null, stringified JSON, or objects)
+function toArray<T = any>(v: any): T[] {
+  if (Array.isArray(v)) return v as T[];
+  if (v == null) return [];
+  if (typeof v === "string") {
+    try {
+      const p = JSON.parse(v);
+      if (Array.isArray(p)) return p as T[];
+      if (p && typeof p === "object") return Object.values(p) as T[];
+      return [];
+    } catch {
+      return [];
+    }
   }
-  const raw = sec.items.reduce((s, i) => (i.checked ? s + (i.pts || 0) : s), 0);
-  return Math.min(raw, sec.max);
+  if (typeof v === "object") {
+    return Object.values(v) as T[];
+  }
+  return [];
 }
+
+function computeSectionScore(sec: SectionPayload): number {
+  const mode = (sec.mode as any) === "all_or_nothing" ? "all_or_nothing" : "normal";
+  const max = typeof sec.max === "number" ? sec.max : 0;
+  const items = toArray<Item>(sec.items);
+
+  if (mode === "all_or_nothing") {
+    const allChecked = items.every((i) => !!i.checked);
+    return allChecked ? max : 0;
+  }
+  const raw = items.reduce((s, i) => (i?.checked ? s + (i?.pts || 0) : s), 0);
+  return Math.min(raw, max);
+}
+
 function collectPhotos(sub: Submission) {
   const urls: string[] = [];
-  (sub.sections || []).forEach((s) => (s.items || []).forEach((i) => i.photos?.forEach((u) => urls.push(u))));
+  toArray<SectionPayload>(sub.sections).forEach((s) =>
+    toArray<Item>(s.items).forEach((i) => toArray<string>(i.photos).forEach((u) => urls.push(u)))
+  );
   return urls;
 }
 
-// ---------- Tiny SVG charts (no external chart libs) ----------
+// ---------- Tiny SVG charts ----------
 function Sparkline({
   points,
   width = 220,
@@ -173,17 +200,25 @@ export default function AdminPage() {
         const { data, error } = await query;
         if (error) throw error;
 
-        const normalized: Submission[] = (data as any[]).map((r) => ({
-          ...r,
-          predicted: typeof r.predicted === "number" ? r.predicted : (r.section_total || 0) + (r.service_total || 0),
-          sections: (r.sections || []).map((s: any) => ({
+        const normalized: Submission[] = (data as any[]).map((r) => {
+          const sections = toArray<any>(r.sections).map((s) => ({
             ...s,
-            items: (s.items || []).map((i: any) => ({
+            items: toArray<any>(s?.items).map((i) => ({
               ...i,
-              photos: Array.isArray(i?.photos) ? i.photos : [],
+              photos: toArray<string>(i?.photos),
             })),
-          })),
-        }));
+          }));
+
+          return {
+            ...r,
+            predicted:
+              typeof r.predicted === "number"
+                ? r.predicted
+                : (Number(r.section_total) || 0) + (Number(r.service_total) || 0),
+            sections,
+          };
+        });
+
         setRows(normalized);
       } catch (e: any) {
         setErr(e.message || "Failed to load");
@@ -239,13 +274,14 @@ export default function AdminPage() {
       // section averages
       const secMap = new Map<string, { total: number; max: number; n: number }>();
       subs.forEach((sub) => {
-        (sub.sections || []).forEach((sec) => {
+        toArray<SectionPayload>(sub.sections).forEach((sec) => {
           const pts = computeSectionScore(sec);
-          const entry = secMap.get(sec.title) || { total: 0, max: sec.max, n: 0 };
+          const title = (sec.title || sec.key || "Section").toString();
+          const entry = secMap.get(title) || { total: 0, max: Number(sec.max) || 0, n: 0 };
           entry.total += pts;
-          entry.max = sec.max;
+          entry.max = Number(sec.max) || entry.max || 0;
           entry.n += 1;
-          secMap.set(sec.title, entry);
+          secMap.set(title, entry);
         });
       });
 
@@ -732,10 +768,14 @@ export default function AdminPage() {
 
                   {/* Sections with inline photo galleries */}
                   <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                    {sub.sections?.map((sec) => {
-                      const secPhotos = sec.items.flatMap((i) => i.photos || []);
+                    {toArray<SectionPayload>(sub.sections).map((sec) => {
+                      const secPhotos = toArray<Item>(sec.items).flatMap((i) => toArray<string>(i.photos));
+                      const title = (sec.title || sec.key || "Section").toString();
+                      const max = Number(sec.max) || 0;
+                      const mode = (sec.mode as any) === "all_or_nothing" ? "All-or-nothing" : "Weighted";
+
                       return (
-                        <section key={sec.key} style={{ border: "1px solid #eef2f7", borderRadius: 10 }}>
+                        <section key={`${title}-${max}-${mode}`} style={{ border: "1px solid #eef2f7", borderRadius: 10 }}>
                           <header
                             style={{
                               display: "flex",
@@ -747,21 +787,23 @@ export default function AdminPage() {
                               borderRadius: "10px 10px 0 0",
                             }}
                           >
-                            <strong>{sec.title}</strong>
+                            <strong>{title}</strong>
                             <small style={{ color: "#64748b" }}>
-                              Max {sec.max} • {sec.mode === "all_or_nothing" ? "All-or-nothing" : "Weighted"}
+                              Max {max} • {mode}
                               {secPhotos.length ? ` • ${secPhotos.length} photo${secPhotos.length > 1 ? "s" : ""}` : ""}
                             </small>
                           </header>
 
                           <div style={{ padding: 10, display: "grid", gap: 8 }}>
-                            {sec.items.map((it) => {
-                              const ptsText =
-                                sec.mode === "normal" && typeof it.pts === "number" ? ` (${it.pts} pts)` : "";
-                              const photos = it.photos || [];
+                            {toArray<Item>(sec.items).map((it, idx) => {
+                              const ptsText = it && typeof it.pts === "number" ? ` (${it.pts} pts)` : "";
+                              const photos = toArray<string>(it?.photos);
+                              const label = (it?.label || it?.key || `Item ${idx + 1}`).toString();
+                              const checked = !!it?.checked;
+
                               return (
                                 <div
-                                  key={it.key}
+                                  key={`${label}-${idx}`}
                                   style={{
                                     border: "1px solid #f1f5f9",
                                     borderRadius: 10,
@@ -770,11 +812,11 @@ export default function AdminPage() {
                                   }}
                                 >
                                   <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
-                                    <span title={it.checked ? "Checked" : "Not checked"}>
-                                      {it.checked ? "✅" : "⬜️"}
+                                    <span title={checked ? "Checked" : "Not checked"}>
+                                      {checked ? "✅" : "⬜️"}
                                     </span>
                                     <div style={{ fontWeight: 600 }}>
-                                      {it.label}
+                                      {label}
                                       {ptsText}
                                     </div>
                                   </div>
@@ -782,9 +824,9 @@ export default function AdminPage() {
                                   {/* Gallery */}
                                   {photos.length > 0 && (
                                     <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                                      {photos.map((url, idx) => (
+                                      {photos.map((url, pidx) => (
                                         <button
-                                          key={`${url}-${idx}`}
+                                          key={`${url}-${pidx}`}
                                           type="button"
                                           onClick={() => setLightboxUrl(url)}
                                           style={{
