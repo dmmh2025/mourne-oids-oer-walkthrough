@@ -37,19 +37,88 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseAnon);
 
-// Small helpers
+// Helpers
 const fmt = (n: number | null | undefined) =>
   typeof n === "number" && !Number.isNaN(n) ? n.toFixed(Number.isInteger(n) ? 0 : 2) : "—";
+const starsForPercent = (p: number) => (p >= 90 ? 5 : p >= 80 ? 4 : p >= 70 ? 3 : p >= 60 ? 2 : p >= 50 ? 1 : 0);
+const toDate = (iso: string) => new Date(iso);
 
-function starsForPercent(p: number) {
-  if (p >= 90) return 5;
-  if (p >= 80) return 4;
-  if (p >= 70) return 3;
-  if (p >= 60) return 2;
-  if (p >= 50) return 1;
-  return 0;
+// Compute a section score for a submission from payload (defensive)
+function computeSectionScore(sec: SectionPayload): number {
+  if (sec.mode === "all_or_nothing") {
+    const allChecked = sec.items.every((i) => !!i.checked);
+    return allChecked ? sec.max : 0;
+  }
+  const raw = sec.items.reduce((sum, i) => (i.checked ? sum + (i.pts || 0) : sum), 0);
+  return Math.min(raw, sec.max);
+}
+function collectPhotos(sub: Submission) {
+  const urls: string[] = [];
+  (sub.sections || []).forEach((s) => (s.items || []).forEach((i) => i.photos?.forEach((u) => urls.push(u))));
+  return urls;
 }
 
+// ---- Simple SVG charts (no deps) ----
+function Sparkline({ points, width = 220, height = 64 }: { points: number[]; width?: number; height?: number }) {
+  if (!points.length) return null;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const norm = points.map((v) => (max === min ? 0.5 : (v - min) / (max - min)));
+  const step = width / Math.max(1, points.length - 1);
+  const d = norm.map((n, i) => `${i === 0 ? "M" : "L"} ${i * step} ${height - n * height}`).join(" ");
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      <polyline points={`0,${height} ${width},${height}`} fill="none" stroke="#e5e7eb" strokeWidth="1" />
+      <path d={d} fill="none" stroke="#0ea5e9" strokeWidth="2" />
+    </svg>
+  );
+}
+
+function BarChart({
+  labels,
+  values,   // 0..1
+  width = 420,
+  height = 140,
+}: {
+  labels: string[];
+  values: number[];
+  width?: number;
+  height?: number;
+}) {
+  const pad = 24;
+  const innerW = width - pad * 2;
+  const innerH = height - pad * 2;
+  const barW = innerW / values.length - 8;
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      {/* axes */}
+      <line x1={pad} y1={pad} x2={pad} y2={pad + innerH} stroke="#e5e7eb" />
+      <line x1={pad} y1={pad + innerH} x2={pad + innerW} y2={pad + innerH} stroke="#e5e7eb" />
+      {values.map((v, i) => {
+        const x = pad + i * (barW + 8) + 4;
+        const h = innerH * Math.max(0, Math.min(1, v));
+        const y = pad + innerH - h;
+        return (
+          <g key={i}>
+            <rect x={x} y={y} width={barW} height={h} fill="#0ea5e9" opacity={0.8} />
+            <text x={x + barW / 2} y={pad + innerH + 12} textAnchor="middle" fontSize="10" fill="#64748b">
+              {labels[i]}
+            </text>
+          </g>
+        );
+      })}
+      {/* 100% tick */}
+      <text x={pad - 6} y={pad + 6} textAnchor="end" fontSize="10" fill="#94a3b8">
+        100%
+      </text>
+      <text x={pad - 6} y={pad + innerH} textAnchor="end" fontSize="10" fill="#94a3b8">
+        0%
+      </text>
+    </svg>
+  );
+}
+
+// ---- Admin Page ----
 export default function AdminPage() {
   const [rows, setRows] = React.useState<Submission[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -72,20 +141,21 @@ export default function AdminPage() {
           )
           .gte("created_at", sinceISO)
           .order("created_at", { ascending: false })
-          .limit(200);
+          .limit(500);
         if (error) throw error;
-        // Normalize photos arrays
-        const normalized: Submission[] =
-          (data as any[]).map((r) => ({
-            ...r,
-            sections: (r.sections || []).map((s: any) => ({
-              ...s,
-              items: (s.items || []).map((i: any) => ({
-                ...i,
-                photos: Array.isArray(i?.photos) ? i.photos : [],
-              })),
+
+        // Normalize
+        const normalized: Submission[] = (data as any[]).map((r) => ({
+          ...r,
+          predicted: typeof r.predicted === "number" ? r.predicted : (r.section_total || 0) + (r.service_total || 0),
+          sections: (r.sections || []).map((s: any) => ({
+            ...s,
+            items: (s.items || []).map((i: any) => ({
+              ...i,
+              photos: Array.isArray(i?.photos) ? i.photos : [],
             })),
-          })) || [];
+          })),
+        }));
         setRows(normalized);
       } catch (e: any) {
         setErr(e.message || "Failed to load");
@@ -95,18 +165,76 @@ export default function AdminPage() {
     })();
   }, [sinceDays]);
 
-  // Collect all photo URLs for a submission
-  function collectPhotos(sub: Submission) {
-    const urls: string[] = [];
-    for (const sec of sub.sections || []) {
-      for (const it of sec.items || []) {
-        if (it.photos && it.photos.length) urls.push(...it.photos);
-      }
-    }
-    return urls;
-  }
+  // ---- Build per-store analytics ----
+  type StoreStats = {
+    store: string;
+    count: number;
+    avgWalk: number;
+    avgService: number;
+    avgPred: number;
+    best?: Submission;
+    worst?: Submission;
+    // section averages
+    secLabels: string[];
+    secAvgPoints: number[]; // average raw points per section
+    secMax: number[];       // corresponding maxes
+    // trend
+    trendDates: string[];
+    trendPred: number[];
+  };
 
-  // Download all photos as a ZIP (client-only via CDN libs)
+  const storesAnalytics: StoreStats[] = React.useMemo(() => {
+    const byStore = new Map<string, Submission[]>();
+    rows.forEach((r) => {
+      const key = (r.store || "Unknown").trim();
+      if (!byStore.has(key)) byStore.set(key, []);
+      byStore.get(key)!.push(r);
+    });
+
+    const result: StoreStats[] = [];
+    for (const [store, subs] of byStore.entries()) {
+      const count = subs.length;
+      const avgWalk = subs.reduce((s, r) => s + (r.section_total || 0), 0) / Math.max(1, count);
+      const avgService = subs.reduce((s, r) => s + (r.service_total || 0), 0) / Math.max(1, count);
+      const avgPred = subs.reduce((s, r) => s + (r.predicted || 0), 0) / Math.max(1, count);
+
+      // best/worst by predicted
+      const sorted = [...subs].sort((a, b) => (b.predicted || 0) - (a.predicted || 0));
+      const best = sorted[0];
+      const worst = sorted[sorted.length - 1];
+
+      // build section dictionaries (title -> {totalPoints, max, n})
+      const secMap = new Map<string, { total: number; max: number; n: number }>();
+      subs.forEach((sub) => {
+        (sub.sections || []).forEach((sec) => {
+          const pts = computeSectionScore(sec);
+          const entry = secMap.get(sec.title) || { total: 0, max: sec.max, n: 0 };
+          entry.total += pts;
+          entry.max = sec.max; // assume same across subs
+          entry.n += 1;
+          secMap.set(sec.title, entry);
+        });
+      });
+
+      const secLabels = Array.from(secMap.keys());
+      const secAvgPoints = secLabels.map((k) => secMap.get(k)!.total / Math.max(1, secMap.get(k)!.n));
+      const secMax = secLabels.map((k) => secMap.get(k)!.max);
+
+      // trend
+      const trend = [...subs]
+        .sort((a, b) => toDate(a.created_at).getTime() - toDate(b.created_at).getTime())
+        .map((s) => ({ d: s.created_at, p: s.predicted || 0 }));
+      const trendDates = trend.map((t) => t.d);
+      const trendPred = trend.map((t) => t.p);
+
+      result.push({ store, count, avgWalk, avgService, avgPred, best, worst, secLabels, secAvgPoints, secMax, trendDates, trendPred });
+    }
+
+    // Sort stores by avgPred desc
+    return result.sort((a, b) => b.avgPred - a.avgPred);
+  }, [rows]);
+
+  // Download all photos zip (per submission)
   async function downloadAllPhotos(sub: Submission) {
     const urls = collectPhotos(sub);
     if (urls.length === 0) return alert("No photos attached to this submission.");
@@ -121,10 +249,12 @@ export default function AdminPage() {
 
     const zip = new JSZip();
     const folder = zip.folder(
-      `${(sub.store || "Unknown").replace(/[^a-z0-9_-]/gi, "_")}-${new Date(sub.created_at).toISOString().slice(0, 19).replace(/[:T]/g, "-")}`
+      `${(sub.store || "Unknown").replace(/[^a-z0-9_-]/gi, "_")}-${new Date(sub.created_at)
+        .toISOString()
+        .slice(0, 19)
+        .replace(/[:T]/g, "-")}`
     );
 
-    // Fetch all images as blobs and add to zip
     const failures: string[] = [];
     await Promise.all(
       urls.map(async (url, idx) => {
@@ -140,16 +270,15 @@ export default function AdminPage() {
     );
 
     const zipBlob = await zip.generateAsync({ type: "blob" });
-    saveAs(
+    // @ts-ignore
+    (window as any).saveAs(
       zipBlob,
       `OER-photos-${(sub.store || "Unknown").replace(/[^a-z0-9_-]/gi, "_")}-${new Date(sub.created_at)
         .toISOString()
         .slice(0, 10)}.zip`
     );
 
-    if (failures.length) {
-      alert(`Downloaded with ${failures.length} failed file(s).`);
-    }
+    if (failures.length) alert(`Downloaded with ${failures.length} failed file(s).`);
   }
 
   return (
@@ -158,7 +287,7 @@ export default function AdminPage() {
       <Script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" strategy="afterInteractive" />
       <Script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js" strategy="afterInteractive" />
 
-      <main style={{ maxWidth: 1100, margin: "0 auto", padding: 16 }}>
+      <main style={{ maxWidth: 1200, margin: "0 auto", padding: 16 }}>
         {/* Banner + blue underline */}
         <div
           style={{
@@ -176,8 +305,8 @@ export default function AdminPage() {
           />
         </div>
 
-        {/* Header */}
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+        {/* Header controls */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
           <button
             type="button"
             onClick={() => (window.location.href = "/")}
@@ -193,7 +322,7 @@ export default function AdminPage() {
             ← Back to Home
           </button>
 
-          <h1 style={{ margin: 0, fontSize: 22 }}>Admin — Submissions</h1>
+          <h1 style={{ margin: 0, fontSize: 22 }}>Admin — Analytics & Submissions</h1>
 
           <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
             <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -213,160 +342,324 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Status */}
-        {loading && <p style={{ color: "#64748b" }}>Loading submissions…</p>}
-        {err && (
-          <p style={{ color: "#7f1d1d", fontWeight: 700 }}>
-            ❌ {err}
-          </p>
-        )}
-        {!loading && !err && rows.length === 0 && <p>No submissions found in this period.</p>}
+        {/* ===== ANALYTICS ===== */}
+        <section
+          style={{
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            background: "white",
+            padding: 12,
+            marginBottom: 14,
+          }}
+        >
+          <header
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              borderBottom: "1px solid #eef2f7",
+              paddingBottom: 8,
+              marginBottom: 10,
+            }}
+          >
+            <strong style={{ fontSize: 18 }}>Store Analytics</strong>
+            <small style={{ color: "#64748b" }}>
+              Averages, best/worst, section breakdowns and trends (period: last {sinceDays} day
+              {sinceDays > 1 ? "s" : ""}).
+            </small>
+          </header>
 
-        {/* List */}
-        <div style={{ display: "grid", gap: 14 }}>
-          {rows.map((sub) => {
-            const predicted = sub.predicted ?? (sub.section_total ?? 0) + (sub.service_total ?? 0);
-            const stars = starsForPercent(predicted);
-            const allPhotos = collectPhotos(sub);
-            return (
-              <article
-                key={`${sub.id}-${sub.created_at}`}
-                style={{
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 12,
-                  background: "white",
-                  padding: 12,
-                }}
-              >
-                {/* Top row summary */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "start" }}>
-                  <div style={{ display: "grid", gap: 4 }}>
-                    <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
-                      <strong style={{ fontSize: 18 }}>
-                        {sub.store || "Unknown"} — {sub.user_name || "Anon"}
-                      </strong>
-                      <span style={{ color: "#6b7280" }}>
-                        {new Date(sub.created_at).toLocaleString()}
-                      </span>
-                    </div>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <Badge label="Walkthrough" value={`${fmt(sub.section_total)}/75`} />
-                      <Badge label="Service" value={`${fmt(sub.service_total)}/25`} />
-                      <Badge label="Predicted" value={`${fmt(predicted)}/100`} strong />
+          {storesAnalytics.length === 0 && (
+            <p style={{ margin: 0, color: "#6b7280" }}>No submissions in this period.</p>
+          )}
+
+          <div style={{ display: "grid", gap: 12 }}>
+            {storesAnalytics.map((s) => {
+              const stars = starsForPercent(s.avgPred);
+              const sectionPercents = s.secAvgPoints.map((p, i) => (s.secMax[i] ? p / s.secMax[i] : 0));
+
+              return (
+                <article key={s.store} style={{ border: "1px solid #eef2f7", borderRadius: 12, overflow: "hidden" }}>
+                  {/* Store header row */}
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1.2fr 1fr 1fr",
+                      gap: 10,
+                      padding: 12,
+                      background: "#f8fafc",
+                      borderBottom: "1px solid #eef2f7",
+                    }}
+                  >
+                    {/* Summary cards */}
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                      <strong style={{ fontSize: 16 }}>{s.store}</strong>
+                      <Badge label="Avg Walk" value={`${fmt(s.avgWalk)}/75`} />
+                      <Badge label="Avg Service" value={`${fmt(s.avgService)}/25`} />
+                      <Badge label="Avg Predicted" value={`${fmt(s.avgPred)}/100`} strong />
                       <Badge label="Grade" value={`${"★".repeat(stars)}${"☆".repeat(5 - stars)} (${stars})`} />
-                      <Badge label="ADT" value={fmt(sub.adt)} />
-                      <Badge label="SBR%" value={fmt(sub.sbr)} />
-                      <Badge label="Ext/1000" value={fmt(sub.extreme_lates)} />
+                      <Badge label="Submissions" value={`${s.count}`} />
+                    </div>
+
+                    {/* Best / Worst */}
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div>
+                        <span style={{ fontWeight: 700, color: "#065f46" }}>Best:</span>{" "}
+                        {s.best ? (
+                          <>
+                            <strong>{s.best.user_name || "Anon"}</strong> — {fmt(s.best.predicted)}/100{" "}
+                            <span style={{ color: "#64748b" }}>
+                              ({new Date(s.best.created_at).toLocaleString()})
+                            </span>
+                          </>
+                        ) : (
+                          "—"
+                        )}
+                      </div>
+                      <div>
+                        <span style={{ fontWeight: 700, color: "#7f1d1d" }}>Worst:</span>{" "}
+                        {s.worst ? (
+                          <>
+                            <strong>{s.worst.user_name || "Anon"}</strong> — {fmt(s.worst.predicted)}/100{" "}
+                            <span style={{ color: "#64748b" }}>
+                              ({new Date(s.worst.created_at).toLocaleString()})
+                            </span>
+                          </>
+                        ) : (
+                          "—"
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Trend sparkline */}
+                    <div style={{ display: "grid", justifyItems: "end" }}>
+                      <Sparkline points={s.trendPred} />
+                      <small style={{ color: "#64748b" }}>
+                        Trend (Predicted): {s.trendPred.length ? `${fmt(s.trendPred[0])} → ${fmt(s.trendPred.at(-1)!)}` : "—"}
+                      </small>
                     </div>
                   </div>
 
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    <button
-                      type="button"
-                      onClick={() => downloadAllPhotos(sub)}
-                      disabled={allPhotos.length === 0}
-                      title={allPhotos.length ? `Download ${allPhotos.length} photo(s)` : "No photos"}
-                      style={{
-                        padding: "10px 12px",
-                        borderRadius: 10,
-                        border: "1px solid #004e73",
-                        background: allPhotos.length ? "#006491" : "#9ca3af",
-                        color: "white",
-                        fontWeight: 700,
-                        cursor: allPhotos.length ? "pointer" : "not-allowed",
-                      }}
-                    >
-                      ⬇ Download all photos ({allPhotos.length})
-                    </button>
-                  </div>
-                </div>
-
-                {/* Sections with inline photo galleries */}
-                <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                  {sub.sections?.map((sec) => {
-                    // flatten photos count per section
-                    const secPhotos = sec.items.flatMap((i) => i.photos || []);
-                    return (
-                      <section key={sec.key} style={{ border: "1px solid #eef2f7", borderRadius: 10 }}>
-                        <header
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            padding: "8px 10px",
-                            borderBottom: "1px solid #eef2f7",
-                            background: "#f8fafc",
-                            borderRadius: "10px 10px 0 0",
-                          }}
-                        >
-                          <strong>{sec.title}</strong>
-                          <small style={{ color: "#64748b" }}>
-                            Max {sec.max} • {sec.mode === "all_or_nothing" ? "All-or-nothing" : "Weighted"}
-                            {secPhotos.length ? ` • ${secPhotos.length} photo${secPhotos.length > 1 ? "s" : ""}` : ""}
-                          </small>
-                        </header>
-
-                        <div style={{ padding: 10, display: "grid", gap: 8 }}>
-                          {sec.items.map((it) => {
-                            const ptsText =
-                              sec.mode === "normal" && typeof it.pts === "number" ? ` (${it.pts} pts)` : "";
-                            const photos = it.photos || [];
+                  {/* Section averages table + bar chart */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 12, padding: 12 }}>
+                    {/* Table */}
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr>
+                            <th style={th()}>Section</th>
+                            <th style={th()}>Avg Points</th>
+                            <th style={th()}>Max</th>
+                            <th style={th()}>%</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {s.secLabels.map((lab, i) => {
+                            const avg = s.secAvgPoints[i] || 0;
+                            const max = s.secMax[i] || 0;
+                            const pct = max ? Math.round((avg / max) * 100) : 0;
                             return (
-                              <div
-                                key={it.key}
-                                style={{
-                                  border: "1px solid #f1f5f9",
-                                  borderRadius: 10,
-                                  padding: 10,
-                                  background: "#fff",
-                                }}
-                              >
-                                <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
-                                  <span title={it.checked ? "Checked" : "Not checked"}>
-                                    {it.checked ? "✅" : "⬜️"}
-                                  </span>
-                                  <div style={{ fontWeight: 600 }}>{it.label}{ptsText}</div>
-                                </div>
-
-                                {/* Gallery */}
-                                {photos.length > 0 && (
-                                  <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                                    {photos.map((url, idx) => (
-                                      <button
-                                        key={`${url}-${idx}`}
-                                        type="button"
-                                        onClick={() => setLightboxUrl(url)}
-                                        style={{
-                                          border: "1px solid #e5e7eb",
-                                          padding: 0,
-                                          borderRadius: 8,
-                                          overflow: "hidden",
-                                          cursor: "pointer",
-                                          background: "transparent",
-                                        }}
-                                        title="Click to view"
-                                      >
-                                        <img
-                                          src={url}
-                                          alt="attachment"
-                                          style={{ width: 96, height: 96, objectFit: "cover", display: "block" }}
-                                        />
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
+                              <tr key={lab}>
+                                <td style={td()}>{lab}</td>
+                                <td style={td()}>{fmt(avg)}</td>
+                                <td style={td()}>{max}</td>
+                                <td style={td()}>{pct}%</td>
+                              </tr>
                             );
                           })}
-                        </div>
-                      </section>
-                    );
-                  })}
-                </div>
-              </article>
-            );
-          })}
-        </div>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Bar chart */}
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <BarChart
+                        labels={s.secLabels.map((l) => l.replace(" & ", " / ").split(" ")[0])}
+                        values={sectionPercents}
+                        width={480}
+                        height={180}
+                      />
+                      <small style={{ color: "#64748b" }}>
+                        Section performance (avg % of max)
+                      </small>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* ===== SUBMISSIONS LIST ===== */}
+        <section style={{ border: "1px solid #e5e7eb", borderRadius: 12, background: "white", padding: 12 }}>
+          <header
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              borderBottom: "1px solid #eef2f7",
+              paddingBottom: 8,
+              marginBottom: 10,
+            }}
+          >
+            <strong style={{ fontSize: 18 }}>Submissions</strong>
+            <small style={{ color: "#64748b" }}>
+              Inline photo galleries • Click thumbnail for full view • “Download all photos” per submission
+            </small>
+          </header>
+
+          {loading && <p style={{ color: "#64748b" }}>Loading submissions…</p>}
+          {err && (
+            <p style={{ color: "#7f1d1d", fontWeight: 700 }}>
+              ❌ {err}
+            </p>
+          )}
+          {!loading && !err && rows.length === 0 && <p>No submissions found in this period.</p>}
+
+          <div style={{ display: "grid", gap: 14 }}>
+            {rows.map((sub) => {
+              const predicted = sub.predicted ?? (sub.section_total ?? 0) + (sub.service_total ?? 0);
+              const stars = starsForPercent(predicted);
+              const allPhotos = collectPhotos(sub);
+              return (
+                <article
+                  key={`${sub.id}-${sub.created_at}`}
+                  style={{
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 12,
+                    background: "white",
+                    padding: 12,
+                  }}
+                >
+                  {/* Top row summary */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "start" }}>
+                    <div style={{ display: "grid", gap: 4 }}>
+                      <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+                        <strong style={{ fontSize: 18 }}>
+                          {sub.store || "Unknown"} — {sub.user_name || "Anon"}
+                        </strong>
+                        <span style={{ color: "#6b7280" }}>
+                          {new Date(sub.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <Badge label="Walkthrough" value={`${fmt(sub.section_total)}/75`} />
+                        <Badge label="Service" value={`${fmt(sub.service_total)}/25`} />
+                        <Badge label="Predicted" value={`${fmt(predicted)}/100`} strong />
+                        <Badge label="Grade" value={`${"★".repeat(stars)}${"☆".repeat(5 - stars)} (${stars})`} />
+                        <Badge label="ADT" value={fmt(sub.adt)} />
+                        <Badge label="SBR%" value={fmt(sub.sbr)} />
+                        <Badge label="Ext/1000" value={fmt(sub.extreme_lates)} />
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      <button
+                        type="button"
+                        onClick={() => downloadAllPhotos(sub)}
+                        disabled={allPhotos.length === 0}
+                        title={allPhotos.length ? `Download ${allPhotos.length} photo(s)` : "No photos"}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          border: "1px solid #004e73",
+                          background: allPhotos.length ? "#006491" : "#9ca3af",
+                          color: "white",
+                          fontWeight: 700,
+                          cursor: allPhotos.length ? "pointer" : "not-allowed",
+                        }}
+                      >
+                        ⬇ Download all photos ({allPhotos.length})
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Sections with inline photo galleries */}
+                  <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                    {sub.sections?.map((sec) => {
+                      const secPhotos = sec.items.flatMap((i) => i.photos || []);
+                      return (
+                        <section key={sec.key} style={{ border: "1px solid #eef2f7", borderRadius: 10 }}>
+                          <header
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              padding: "8px 10px",
+                              borderBottom: "1px solid #eef2f7",
+                              background: "#f8fafc",
+                              borderRadius: "10px 10px 0 0",
+                            }}
+                          >
+                            <strong>{sec.title}</strong>
+                            <small style={{ color: "#64748b" }}>
+                              Max {sec.max} • {sec.mode === "all_or_nothing" ? "All-or-nothing" : "Weighted"}
+                              {secPhotos.length ? ` • ${secPhotos.length} photo${secPhotos.length > 1 ? "s" : ""}` : ""}
+                            </small>
+                          </header>
+
+                          <div style={{ padding: 10, display: "grid", gap: 8 }}>
+                            {sec.items.map((it) => {
+                              const ptsText =
+                                sec.mode === "normal" && typeof it.pts === "number" ? ` (${it.pts} pts)` : "";
+                              const photos = it.photos || [];
+                              return (
+                                <div
+                                  key={it.key}
+                                  style={{
+                                    border: "1px solid #f1f5f9",
+                                    borderRadius: 10,
+                                    padding: 10,
+                                    background: "#fff",
+                                  }}
+                                >
+                                  <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+                                    <span title={it.checked ? "Checked" : "Not checked"}>
+                                      {it.checked ? "✅" : "⬜️"}
+                                    </span>
+                                    <div style={{ fontWeight: 600 }}>{it.label}{ptsText}</div>
+                                  </div>
+
+                                  {/* Gallery */}
+                                  {photos.length > 0 && (
+                                    <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                      {photos.map((url, idx) => (
+                                        <button
+                                          key={`${url}-${idx}`}
+                                          type="button"
+                                          onClick={() => setLightboxUrl(url)}
+                                          style={{
+                                            border: "1px solid #e5e7eb",
+                                            padding: 0,
+                                            borderRadius: 8,
+                                            overflow: "hidden",
+                                            cursor: "pointer",
+                                            background: "transparent",
+                                          }}
+                                          title="Click to view"
+                                        >
+                                          <img
+                                            src={url}
+                                            alt="attachment"
+                                            style={{ width: 96, height: 96, objectFit: "cover", display: "block" }}
+                                          />
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </section>
+                      );
+                    })}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
       </main>
 
       {/* Lightbox modal */}
@@ -441,12 +734,13 @@ export default function AdminPage() {
           main { padding: 12px; }
           article { padding: 10px !important; }
         }
+        table th, table td { border-bottom: 1px solid #f1f5f9; }
       `}</style>
     </>
   );
 }
 
-// Badges
+// UI bits
 function Badge(props: { label: string; value: string; strong?: boolean }) {
   return (
     <span
@@ -467,3 +761,5 @@ function Badge(props: { label: string; value: string; strong?: boolean }) {
     </span>
   );
 }
+const th = () => ({ textAlign: "left" as const, padding: "8px 10px", fontSize: 12, color: "#64748b" });
+const td = () => ({ padding: "8px 10px", fontSize: 13, color: "#111827" });
