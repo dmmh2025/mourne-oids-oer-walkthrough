@@ -12,16 +12,16 @@ const supabase = createClient(supabaseUrl, supabaseAnon);
 type Item = {
   key: string;
   label: string;
-  pts?: number;          // item weight (only used for non all-or-nothing)
-  details?: string[];    // collapsible bullet points under the checkbox
+  pts?: number;          // weight
+  details?: string[];    // collapsible notes
 };
 type Section =
   | { key: string; title: string; max: number; items: Item[]; mode?: "normal" }
   | { key: "product_quality"; title: string; max: number; items: Item[]; mode: "all_or_nothing" };
 
 type SectionState = Record<string, boolean>;
+type PhotosState = Record<string, Record<string, string[]>>; // sectionKey -> itemKey -> photo URLs[]
 
-// ---------- Service scoring (unchanged) ----------
 function scoreADT(n: number | null) {
   if (n == null || Number.isNaN(n)) return null;
   if (n > 30) return 0;
@@ -56,30 +56,16 @@ function starsForPercent(p: number) {
 }
 
 // ---------- Sections & detailed guidance (total walkthrough = 75) ----------
-// Details are collapsible per checkbox (Option B)
 const SECTIONS: Section[] = [
-  // 1) FOOD SAFETY — 18 pts
   {
     key: "food_safety",
     title: "Food Safety",
     max: 18,
     mode: "normal",
     items: [
-      {
-        key: "temps_in_range",
-        label: "Temps entered on time and within range",
-        pts: 3,
-      },
-      {
-        key: "within_shelf_life",
-        label: "Products within shelf life (incl. ambient, dips & drinks)",
-        pts: 3,
-      },
-      {
-        key: "proper_handwashing",
-        label: "Proper handwashing (20 seconds)",
-        pts: 3,
-      },
+      { key: "temps_in_range", label: "Temps entered on time and within range", pts: 3 },
+      { key: "within_shelf_life", label: "Products within shelf life (incl. ambient, dips & drinks)", pts: 3 },
+      { key: "proper_handwashing", label: "Proper handwashing (20 seconds)", pts: 3 },
       {
         key: "sanitation_followed",
         label: "Sanitation procedures followed",
@@ -97,20 +83,10 @@ const SECTIONS: Section[] = [
           "Bins clean and free from sauce stains",
         ],
       },
-      {
-        key: "proper_cooking_temps",
-        label: "Proper cooking temps of food",
-        pts: 3,
-      },
-      {
-        key: "pest_control_service",
-        label: "4–6 week pest control service in place",
-        pts: 3,
-      },
+      { key: "proper_cooking_temps", label: "Proper cooking temps of food", pts: 3 },
+      { key: "pest_control_service", label: "4–6 week pest control service in place", pts: 3 },
     ],
   },
-
-  // 2) PRODUCT — 12 pts (5+2+2+1+2)
   {
     key: "product",
     title: "Product",
@@ -166,15 +142,9 @@ const SECTIONS: Section[] = [
           "All sides available in makeline cabinet",
         ],
       },
-      {
-        key: "prp_adequate",
-        label: "Adequate PRP to handle expected sales volume",
-        pts: 2,
-      },
+      { key: "prp_adequate", label: "Adequate PRP to handle expected sales volume", pts: 2 },
     ],
   },
-
-  // 3) IMAGE — 20 pts
   {
     key: "image",
     title: "Image",
@@ -261,11 +231,7 @@ const SECTIONS: Section[] = [
           "No rips or tears",
         ],
       },
-      {
-        key: "signage_menu",
-        label: "Signage & Menu current, displayed correctly, clean & in good repair",
-        pts: 1,
-      },
+      { key: "signage_menu", label: "Signage & Menu current, displayed correctly, clean & in good repair", pts: 1 },
       {
         key: "walk_in_clean",
         label: "Walk-in clean and working",
@@ -285,15 +251,9 @@ const SECTIONS: Section[] = [
           "Catch trays/grills/seals in good condition — no splits/tears/missing rails",
         ],
       },
-      {
-        key: "delivery_vehicles",
-        label: "Delivery vehicles represent positive brand image",
-        pts: 1,
-      },
+      { key: "delivery_vehicles", label: "Delivery vehicles represent positive brand image", pts: 1 },
     ],
   },
-
-  // 4) SAFETY & SECURITY — 5 pts
   {
     key: "safety_security",
     title: "Safety & Security",
@@ -307,8 +267,6 @@ const SECTIONS: Section[] = [
       { key: "drivers_safe", label: "Drivers wearing seatbelts and driving safely", pts: 1 },
     ],
   },
-
-  // 5) PRODUCT QUALITY — 20 pts (ALL OR NOTHING)
   {
     key: "product_quality",
     title: "Product Quality (all must be checked to score)",
@@ -327,7 +285,7 @@ const SECTIONS: Section[] = [
   },
 ];
 
-const STORAGE_KEY = "oer_walkthrough_v3";
+const STORAGE_KEY = "oer_walkthrough_v4";
 
 // ---------- Page ----------
 export default function WalkthroughPage() {
@@ -352,6 +310,9 @@ export default function WalkthroughPage() {
       )
   );
 
+  // Photos state
+  const [photos, setPhotos] = React.useState<PhotosState>({}); // section->item->urls
+
   // Item-details expansion state (per checkbox)
   const [itemOpen, setItemOpen] = React.useState<Record<string, boolean>>({});
 
@@ -375,16 +336,17 @@ export default function WalkthroughPage() {
       setExtPerThousand(draft.extPerThousand ?? "");
       setSbr(draft.sbr ?? "");
       if (draft.sections) setSections(draft.sections);
+      if (draft.photos) setPhotos(draft.photos);
     } catch {}
   }, []);
 
   // Persist autosave
   React.useEffect(() => {
-    const payload = { store, userName, adt, extPerThousand, sbr, sections };
+    const payload = { store, userName, adt, extPerThousand, sbr, sections, photos };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {}
-  }, [store, userName, adt, extPerThousand, sbr, sections]);
+  }, [store, userName, adt, extPerThousand, sbr, sections, photos]);
 
   // Compute walkthrough score (/75)
   const walkthroughScore = React.useMemo(() => {
@@ -448,15 +410,90 @@ export default function WalkthroughPage() {
         ])
       )
     );
+    setPhotos({});
     setAdt("");
     setExtPerThousand("");
     setSbr("");
     setMsg(null);
     setItemOpen({});
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
   }
   function toggleItemDetails(sKey: string, iKey: string) {
     const k = `${sKey}:${iKey}`;
     setItemOpen((p) => ({ ...p, [k]: !p[k] }));
+  }
+
+  // ---- Photo upload per item ----
+  async function handleAddPhotos(sectionKey: string, itemKey: string, files: FileList | null) {
+    if (!files || files.length === 0) return;
+    if (!supabaseUrl || !supabaseAnon) {
+      setMsg("❌ Missing Supabase env vars — cannot upload.");
+      return;
+    }
+
+    const maxFiles = 6; // safety
+    const accepted = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif"];
+    const newUrls: string[] = [];
+
+    setMsg("Uploading photos…");
+    for (let i = 0; i < Math.min(files.length, maxFiles); i++) {
+      const f = files[i];
+      if (!accepted.includes(f.type)) continue;
+      if (f.size > 8 * 1024 * 1024) { // 8MB cap
+        setMsg("⚠️ Skipped a file over 8MB.");
+        continue;
+      }
+
+      const ext = f.name.split(".").pop() || "jpg";
+      const safeStore = (store || "Unknown").replace(/[^a-z0-9\-]/gi, "_");
+      const safeUser = (userName || "Anon").replace(/[^a-z0-9\-]/gi, "_");
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, "0");
+      const d = String(now.getDate()).padStart(2, "0");
+      const ts = now.toISOString().replace(/[:.]/g, "-");
+      const path = `${safeStore}/${y}-${m}-${d}/${safeUser}/${sectionKey}/${itemKey}/${ts}-${i}.${ext}`;
+
+      const { error: upErr } = await supabase.storage
+        .from("walkthrough-photos")
+        .upload(path, f, { cacheControl: "3600", upsert: false, contentType: f.type });
+
+      if (upErr) {
+        setMsg(`❌ Upload failed: ${upErr.message}`);
+        continue;
+      }
+
+      const { data } = supabase.storage.from("walkthrough-photos").getPublicUrl(path);
+      if (data?.publicUrl) newUrls.push(data.publicUrl);
+    }
+
+    setPhotos((prev) => {
+      const sec = prev[sectionKey] || {};
+      const current = sec[itemKey] || [];
+      return {
+        ...prev,
+        [sectionKey]: {
+          ...sec,
+          [itemKey]: [...current, ...newUrls],
+        },
+      };
+    });
+    setMsg(newUrls.length ? "✅ Photos uploaded." : "⚠️ No photos uploaded.");
+  }
+
+  function removePhoto(sectionKey: string, itemKey: string, url: string) {
+    setPhotos((prev) => {
+      const sec = prev[sectionKey] || {};
+      const current = sec[itemKey] || [];
+      return {
+        ...prev,
+        [sectionKey]: {
+          ...sec,
+          [itemKey]: current.filter((u) => u !== url),
+        },
+      };
+    });
+    // Note: we do not delete from bucket (by design). Ask if you want delete support.
   }
 
   // Submit -> Supabase -> redirect
@@ -490,8 +527,18 @@ export default function WalkthroughPage() {
           pts: i.pts ?? null,
           details: i.details ?? null,
           checked: sections[sec.key]?.[i.key] ?? false,
+          photos: photos[sec.key]?.[i.key] ?? [], // include photo URLs
         })),
       }));
+
+      const adtNum = adt === "" ? null : Number(adt);
+      const extNum = extPerThousand === "" ? null : Number(extPerThousand);
+      const sbrNum = sbr === "" ? null : Number(sbr);
+
+      const adtPts = scoreADT(adtNum) ?? 0;
+      const extPts = scoreExtremes(extNum) ?? 0;
+      const sbrPts = scoreSBR(sbrNum) ?? 0;
+      const serviceTotal = adtPts + extPts + sbrPts;
 
       const { error } = await supabase.from("walkthrough_submissions").insert([
         {
@@ -501,7 +548,7 @@ export default function WalkthroughPage() {
           extreme_lates: extNum,
           sbr: sbrNum,
           service_total: serviceTotal,
-          predicted,
+          predicted: walkthroughScore + serviceTotal,
           store,
           user_name: userName || null,
         },
@@ -510,13 +557,11 @@ export default function WalkthroughPage() {
 
       setMsg("✅ Walkthrough saved! Redirecting…");
 
-      try {
-        localStorage.removeItem(STORAGE_KEY);
-      } catch {}
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
 
       const params = new URLSearchParams({
         store,
-        predicted: String(predicted),
+        predicted: String(walkthroughScore + serviceTotal),
         walkthrough: String(walkthroughScore),
         service: String(serviceTotal),
       }).toString();
@@ -576,8 +621,8 @@ export default function WalkthroughPage() {
           >
             <Badge label="Walkthrough" value={`${walkthroughScore}/75`} />
             <Badge label="Service" value={`${serviceTotal}/25`} />
-            <Badge label="Predicted" value={`${predicted}/100`} strong />
-            <Badge label="Grade" value={`${"★".repeat(stars)}${"☆".repeat(5 - stars)} (${stars}-Star)`} strong />
+            <Badge label="Predicted" value={`${walkthroughScore + serviceTotal}/100`} strong />
+            <Badge label="Grade" value={`${"★".repeat(starsForPercent(walkthroughScore + serviceTotal))}${"☆".repeat(5 - starsForPercent(walkthroughScore + serviceTotal))} (${starsForPercent(walkthroughScore + serviceTotal)}-Star)`} strong />
             <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
               <small style={{ color: "#6b7280" }}>
                 90%+ = 5★ • 80–89.99% = 4★ • 70–79.99% = 3★ • 60–69.99% = 2★ • 50–59.99% = 1★ • &lt;50% = 0★
@@ -591,7 +636,7 @@ export default function WalkthroughPage() {
         <header style={{ marginBottom: 8 }}>
           <h1 style={{ margin: 0, fontSize: 24 }}>Daily OER Walkthrough</h1>
           <p style={{ margin: "6px 0 0 0", color: "#475569" }}>
-            Tick each checklist. Tap “Details” for full guidance. Add your ADT / SBR / Extremes to auto-calc Service points.
+            Tick each checklist. Tap “Details” for guidance. Add photos to show proof. Add ADT / SBR / Extremes to auto-calc Service points.
           </p>
         </header>
 
@@ -603,7 +648,7 @@ export default function WalkthroughPage() {
               Store
               <select value={store} onChange={(e) => setStore(e.target.value)} required style={input()}>
                 <option value="" disabled>Select a store…</option>
-                {["Downpatrick", "Kilkeel", "Newcastle"].map((s) => (
+                {stores.map((s) => (
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>
@@ -664,7 +709,7 @@ export default function WalkthroughPage() {
             </label>
           </div>
 
-          {/* Sections (collapsible), items vertical with per-item details toggles */}
+          {/* Sections (collapsible) */}
           <div style={{ display: "grid", gap: 12 }}>
             {SECTIONS.map((sec) => {
               const state = sections[sec.key];
@@ -720,17 +765,19 @@ export default function WalkthroughPage() {
                   {/* Body */}
                   {expanded[sec.key] && (
                     <div style={{ padding: 12 }}>
-                      {/* quick actions */}
+                      {/* Quick actions */}
                       <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
                         <button type="button" onClick={() => setAllInSection(sec.key, true)} style={ghostBtn()}>Check all</button>
                         <button type="button" onClick={() => setAllInSection(sec.key, false)} style={ghostBtn()}>Clear all</button>
                       </div>
 
-                      {/* Items as a single vertical column with Details toggles */}
+                      {/* Items: vertical, each with Details + Photos */}
                       <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
                         {sec.items.map((it) => {
                           const k = `${sec.key}:${it.key}`;
                           const open = !!itemOpen[k];
+                          const itemPhotos = photos[sec.key]?.[it.key] ?? [];
+
                           return (
                             <div key={it.key} style={{ border: "1px solid #f1f5f9", borderRadius: 10, padding: 10 }}>
                               <label style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
@@ -746,12 +793,12 @@ export default function WalkthroughPage() {
                                     {"pts" in it && it.pts !== undefined && (
                                       <small style={{ color: "#6b7280" }}>({it.pts} pts)</small>
                                     )}
+                                    <span style={{ flex: 1 }} />
                                     {it.details && it.details.length > 0 && (
                                       <button
                                         type="button"
                                         onClick={() => toggleItemDetails(sec.key, it.key)}
                                         style={{
-                                          marginLeft: "auto",
                                           padding: "6px 10px",
                                           borderRadius: 8,
                                           border: "1px solid #e5e7eb",
@@ -774,6 +821,70 @@ export default function WalkthroughPage() {
                                       ))}
                                     </ul>
                                   )}
+
+                                  {/* Photos */}
+                                  <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                                      <label
+                                        style={{
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: 8,
+                                          padding: "6px 10px",
+                                          border: "1px solid #e5e7eb",
+                                          borderRadius: 8,
+                                          cursor: "pointer",
+                                          background: "white",
+                                          fontWeight: 700,
+                                        }}
+                                      >
+                                        📷 Add photo
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          multiple
+                                          onChange={(e) => handleAddPhotos(sec.key, it.key, e.target.files)}
+                                          style={{ display: "none" }}
+                                        />
+                                      </label>
+                                      {itemPhotos.length > 0 && (
+                                        <small style={{ color: "#6b7280" }}>{itemPhotos.length} photo{itemPhotos.length>1?"s":""} added</small>
+                                      )}
+                                    </div>
+
+                                    {itemPhotos.length > 0 && (
+                                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                        {itemPhotos.map((url) => (
+                                          <div key={url} style={{ position: "relative" }}>
+                                            <img
+                                              src={url}
+                                              alt="attachment"
+                                              style={{ width: 96, height: 96, objectFit: "cover", borderRadius: 8, border: "1px solid #e5e7eb" }}
+                                            />
+                                            <button
+                                              type="button"
+                                              onClick={() => removePhoto(sec.key, it.key, url)}
+                                              title="Remove (does not delete from storage)"
+                                              style={{
+                                                position: "absolute",
+                                                top: -8,
+                                                right: -8,
+                                                width: 24,
+                                                height: 24,
+                                                borderRadius: "50%",
+                                                border: "1px solid #e5e7eb",
+                                                background: "white",
+                                                cursor: "pointer",
+                                                fontWeight: 800,
+                                              }}
+                                            >
+                                              ×
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               </label>
                             </div>
