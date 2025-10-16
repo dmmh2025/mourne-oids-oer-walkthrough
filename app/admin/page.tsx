@@ -87,11 +87,14 @@ function BarChart({
   const innerW = width - pad * 2;
   const innerH = height - pad * 2;
   const gap = 8;
-  const barW = Math.max(6, innerW / values.length - gap);
+  const barW = Math.max(6, innerW / Math.max(1, values.length) - gap);
+
   return (
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      {/* axes */}
       <line x1={pad} y1={pad} x2={pad} y2={pad + innerH} stroke="#e5e7eb" />
       <line x1={pad} y1={pad + innerH} x2={pad + innerW} y2={pad + innerH} stroke="#e5e7eb" />
+
       {values.map((v, i) => {
         const x = pad + i * (barW + gap) + gap / 2;
         const h = innerH * Math.max(0, Math.min(1, v));
@@ -99,14 +102,26 @@ function BarChart({
         return (
           <g key={i}>
             <rect x={x} y={y} width={barW} height={h} fill="#0ea5e9" opacity={0.85} />
-            <text x={x + barW / 2} y={pad + innerH + 12} textAnchor="middle" fontSize="10" fill="#64748b">
+            <text
+              x={x + barW / 2}
+              y={pad + innerH + 12}
+              textAnchor="middle"
+              fontSize="10"
+              fill="#64748b"
+            >
               {labels[i]}
             </text>
           </g>
         );
       })}
-      <text x={pad - 6} y={pad + 6} textAnchor="end" fontSize="10" fill="#94a3b8">100%</text>
-      <text x={pad - 6} y={pad + innerH} textAnchor="end" fontSize="10" fill="#94a3b8">0%</</text>
+
+      {/* y-axis labels */}
+      <text x={pad - 6} y={pad + 6} textAnchor="end" fontSize="10" fill="#94a3b8">
+        100%
+      </text>
+      <text x={pad - 6} y={pad + innerH} textAnchor="end" fontSize="10" fill="#94a3b8">
+        0%
+      </text>
     </svg>
   );
 }
