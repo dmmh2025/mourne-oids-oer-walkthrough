@@ -22,6 +22,7 @@ type Section =
 type SectionState = Record<string, boolean>;
 type PhotosState = Record<string, Record<string, string[]>>; // sectionKey -> itemKey -> photo URLs[]
 
+// ---------- Service scoring ----------
 function scoreADT(n: number | null) {
   if (n == null || Number.isNaN(n)) return null;
   if (n > 30) return 0;
@@ -109,11 +110,7 @@ const SECTIONS: Section[] = [
         key: "bread_prepped",
         label: "Bread products properly prepared",
         pts: 2,
-        details: [
-          "GPB with garlic spread, sauce and cheese to crust",
-          "No dock in Dippers",
-          "Dough balls not opening",
-        ],
+        details: ["GPB with garlic spread, sauce and cheese to crust", "No dock in Dippers", "Dough balls not opening"],
       },
       {
         key: "app",
@@ -166,10 +163,7 @@ const SECTIONS: Section[] = [
         key: "grooming",
         label: "Grooming standards maintained",
         pts: 1,
-        details: [
-          "Clean shaven or neat beard",
-          "No visible piercings (plasters cannot be used to cover)",
-        ],
+        details: ["Clean shaven or neat beard", "No visible piercings (plasters cannot be used to cover)"],
       },
       {
         key: "store_interior",
@@ -285,7 +279,7 @@ const SECTIONS: Section[] = [
   },
 ];
 
-const STORAGE_KEY = "oer_walkthrough_v4";
+const STORAGE_KEY = "oer_walkthrough_v5";
 
 // ---------- Page ----------
 export default function WalkthroughPage() {
@@ -439,7 +433,7 @@ export default function WalkthroughPage() {
     for (let i = 0; i < Math.min(files.length, maxFiles); i++) {
       const f = files[i];
       if (!accepted.includes(f.type)) continue;
-      if (f.size > 8 * 1024 * 1024) { // 8MB cap
+      if (f.size > 8 * 1024 * 1024) {
         setMsg("⚠️ Skipped a file over 8MB.");
         continue;
       }
@@ -493,7 +487,6 @@ export default function WalkthroughPage() {
         },
       };
     });
-    // Note: we do not delete from bucket (by design). Ask if you want delete support.
   }
 
   // Submit -> Supabase -> redirect
@@ -556,7 +549,6 @@ export default function WalkthroughPage() {
       if (error) throw error;
 
       setMsg("✅ Walkthrough saved! Redirecting…");
-
       try { localStorage.removeItem(STORAGE_KEY); } catch {}
 
       const params = new URLSearchParams({
@@ -621,8 +613,8 @@ export default function WalkthroughPage() {
           >
             <Badge label="Walkthrough" value={`${walkthroughScore}/75`} />
             <Badge label="Service" value={`${serviceTotal}/25`} />
-            <Badge label="Predicted" value={`${walkthroughScore + serviceTotal}/100`} strong />
-            <Badge label="Grade" value={`${"★".repeat(starsForPercent(walkthroughScore + serviceTotal))}${"☆".repeat(5 - starsForPercent(walkthroughScore + serviceTotal))} (${starsForPercent(walkthroughScore + serviceTotal)}-Star)`} strong />
+            <Badge label="Predicted" value={`${predicted}/100`} strong />
+            <Badge label="Grade" value={`${"★".repeat(stars)}${"☆".repeat(5 - stars)} (${stars}-Star)`} strong />
             <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
               <small style={{ color: "#6b7280" }}>
                 90%+ = 5★ • 80–89.99% = 4★ • 70–79.99% = 3★ • 60–69.99% = 2★ • 50–59.99% = 1★ • &lt;50% = 0★
@@ -636,7 +628,7 @@ export default function WalkthroughPage() {
         <header style={{ marginBottom: 8 }}>
           <h1 style={{ margin: 0, fontSize: 24 }}>Daily OER Walkthrough</h1>
           <p style={{ margin: "6px 0 0 0", color: "#475569" }}>
-            Tick each checklist. Tap “Details” for guidance. Add photos to show proof. Add ADT / SBR / Extremes to auto-calc Service points.
+            Tick each checklist. Tap “Details” for guidance (now shown above the upload). Add photos as proof. Enter ADT / SBR / Extremes for Service points.
           </p>
         </header>
 
@@ -771,7 +763,7 @@ export default function WalkthroughPage() {
                         <button type="button" onClick={() => setAllInSection(sec.key, false)} style={ghostBtn()}>Clear all</button>
                       </div>
 
-                      {/* Items: vertical, each with Details + Photos */}
+                      {/* Items: vertical, Details ABOVE Photos */}
                       <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
                         {sec.items.map((it) => {
                           const k = `${sec.key}:${it.key}`;
@@ -780,6 +772,7 @@ export default function WalkthroughPage() {
 
                           return (
                             <div key={it.key} style={{ border: "1px solid #f1f5f9", borderRadius: 10, padding: 10 }}>
+                              {/* Checkbox + label */}
                               <label style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
                                 <input
                                   type="checkbox"
@@ -814,6 +807,7 @@ export default function WalkthroughPage() {
                                     )}
                                   </div>
 
+                                  {/* DETAILS — now ABOVE the photo upload */}
                                   {open && it.details && (
                                     <ul id={`details-${k}`} style={{ margin: "8px 0 0 0", paddingLeft: 18, color: "#374151" }}>
                                       {it.details.map((d, i) => (
@@ -822,7 +816,7 @@ export default function WalkthroughPage() {
                                     </ul>
                                   )}
 
-                                  {/* Photos */}
+                                  {/* PHOTO UPLOAD — below details */}
                                   <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
                                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                                       <label
