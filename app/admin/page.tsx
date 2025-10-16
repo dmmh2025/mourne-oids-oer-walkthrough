@@ -166,7 +166,7 @@ export default function SubmissionDetailPage() {
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <Badge label="Walkthrough" value={`${fmt(sub.section_total)}/75`} />
                 <Badge label="Service" value={`${fmt(sub.service_total)}/25`} />
-                <Badge label="Total" value={`${fmt(sub.predicted || 0)}/100`} strong />
+                <Badge label="Total" value={`${fmt(sub.predicted || 0)}/100`} />
                 <Badge
                   label="Stars"
                   value={`${"★".repeat(starsForPercent(sub.predicted || 0))}${"☆".repeat(
