@@ -4,6 +4,7 @@ import * as React from "react";
 import Script from "next/script";
 import { createClient } from "@supabase/supabase-js";
 
+// ---------- Types ----------
 type Item = {
   key: string;
   label: string;
@@ -33,15 +34,16 @@ type Submission = {
   sections: SectionPayload[];
 };
 
+// ---------- Supabase ----------
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseAnon);
 
-// ---------- helpers ----------
+// ---------- Helpers ----------
 const fmt = (n: number | null | undefined) =>
   typeof n === "number" && !Number.isNaN(n) ? n.toFixed(Number.isInteger(n) ? 0 : 2) : "—";
-const starsForPercent = (p: number) => (p >= 90 ? 5 : p >= 80 ? 4 : p >= 70 ? 3 : p >= 60 ? 2 : p >= 50 ? 1 : 0);
-const toDate = (iso: string) => new Date(iso);
+const starsForPercent = (p: number) =>
+  p >= 90 ? 5 : p >= 80 ? 4 : p >= 70 ? 3 : p >= 60 ? 2 : p >= 50 ? 1 : 0;
 
 function computeSectionScore(sec: SectionPayload): number {
   if (sec.mode === "all_or_nothing") {
@@ -57,8 +59,16 @@ function collectPhotos(sub: Submission) {
   return urls;
 }
 
-// ---------- tiny SVG charts ----------
-function Sparkline({ points, width = 220, height = 64 }: { points: number[]; width?: number; height?: number }) {
+// ---------- Tiny SVG charts (no external chart libs) ----------
+function Sparkline({
+  points,
+  width = 220,
+  height = 64,
+}: {
+  points: number[];
+  width?: number;
+  height?: number;
+}) {
   if (!points.length) return null;
   const min = Math.min(...points);
   const max = Math.max(...points);
@@ -72,6 +82,7 @@ function Sparkline({ points, width = 220, height = 64 }: { points: number[]; wid
     </svg>
   );
 }
+
 function BarChart({
   labels,
   values, // 0..1
@@ -102,13 +113,7 @@ function BarChart({
         return (
           <g key={i}>
             <rect x={x} y={y} width={barW} height={h} fill="#0ea5e9" opacity={0.85} />
-            <text
-              x={x + barW / 2}
-              y={pad + innerH + 12}
-              textAnchor="middle"
-              fontSize="10"
-              fill="#64748b"
-            >
+            <text x={x + barW / 2} y={pad + innerH + 12} textAnchor="middle" fontSize="10" fill="#64748b">
               {labels[i]}
             </text>
           </g>
@@ -126,13 +131,13 @@ function BarChart({
   );
 }
 
-// ---------- Admin page ----------
+// ---------- Admin Page ----------
 export default function AdminPage() {
   const [rows, setRows] = React.useState<Submission[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState<string | null>(null);
 
-  // filters
+  // Filters: date range + store
   const todayISO = new Date().toISOString().slice(0, 10);
   const thirtyAgoISO = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
   const [fromDate, setFromDate] = React.useState(thirtyAgoISO);
@@ -142,7 +147,7 @@ export default function AdminPage() {
   // Lightbox
   const [lightboxUrl, setLightboxUrl] = React.useState<string | null>(null);
 
-  // fetch whenever filters change
+  // Fetch whenever filters change
   React.useEffect(() => {
     (async () => {
       setLoading(true);
@@ -188,7 +193,7 @@ export default function AdminPage() {
     })();
   }, [fromDate, toDate, storeFilter]);
 
-  // unique stores (for dropdown)
+  // Unique stores (for dropdown)
   const allStores = React.useMemo(() => {
     const set = new Set<string>();
     rows.forEach((r) => set.add((r.store || "Unknown").trim()));
@@ -226,10 +231,12 @@ export default function AdminPage() {
       const avgService = subs.reduce((s, r) => s + (r.service_total || 0), 0) / Math.max(1, count);
       const avgPred = subs.reduce((s, r) => s + (r.predicted || 0), 0) / Math.max(1, count);
 
+      // best/worst by predicted
       const sorted = [...subs].sort((a, b) => (b.predicted || 0) - (a.predicted || 0));
       const best = sorted[0];
       const worst = sorted[sorted.length - 1];
 
+      // section averages
       const secMap = new Map<string, { total: number; max: number; n: number }>();
       subs.forEach((sub) => {
         (sub.sections || []).forEach((sec) => {
@@ -246,13 +253,35 @@ export default function AdminPage() {
       const secAvgPoints = secLabels.map((k) => secMap.get(k)!.total / Math.max(1, secMap.get(k)!.n));
       const secMax = secLabels.map((k) => secMap.get(k)!.max);
 
+      // trend (type-safe)
       const trend = [...subs]
-        .sort((a, b) => toDate(a.created_at).getTime() - toDate(b.created_at).getTime())
-        .map((s) => ({ d: s.created_at, p: s.predicted || 0 }));
+        .sort(
+          (a, b) =>
+            new Date(a.created_at as any).getTime() -
+            new Date(b.created_at as any).getTime()
+        )
+        .map((s) => ({
+          d: String(s.created_at),
+          p: Number(s.predicted || 0),
+        }));
+
       const trendDates = trend.map((t) => t.d);
       const trendPred = trend.map((t) => t.p);
 
-      result.push({ store, count, avgWalk, avgService, avgPred, best, worst, secLabels, secAvgPoints, secMax, trendDates, trendPred });
+      result.push({
+        store,
+        count,
+        avgWalk,
+        avgService,
+        avgPred,
+        best,
+        worst,
+        secLabels,
+        secAvgPoints,
+        secMax,
+        trendDates,
+        trendPred,
+      });
     }
 
     return result.sort((a, b) => b.avgPred - a.avgPred);
@@ -347,7 +376,7 @@ export default function AdminPage() {
     download(`oer_raw_submissions_${fromDate}_to_${toDate}.csv`, lines.join("\n"));
   }
 
-  // download .zip of photos per submission
+  // Download .zip of photos (per submission)
   async function downloadAllPhotos(sub: Submission) {
     const urls = collectPhotos(sub);
     if (urls.length === 0) return alert("No photos attached to this submission.");
@@ -375,7 +404,7 @@ export default function AdminPage() {
           const res = await fetch(url);
           const blob = await res.blob();
           const extGuess = (url.split(".").pop() || "jpg").split("?")[0].slice(0, 5);
-          folder.file(`photo-${String(idx + 1).padStart(2, "0")}.${extGuess}`, blob);
+          folder!.file(`photo-${String(idx + 1).padStart(2, "0")}.${extGuess}`, blob);
         } catch {
           failures.push(url);
         }
@@ -393,7 +422,7 @@ export default function AdminPage() {
     if (failures.length) alert(`Downloaded with ${failures.length} failed file(s).`);
   }
 
-  // filtered submissions list (by store if dropdown used)
+  // Visible submissions after store filter
   const visibleRows = React.useMemo(() => {
     if (storeFilter === "All") return rows;
     return rows.filter((r) => (r.store || "").trim() === storeFilter);
@@ -455,9 +484,15 @@ export default function AdminPage() {
 
               <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 Store
-                <select value={storeFilter} onChange={(e) => setStoreFilter(e.target.value)} style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}>
+                <select
+                  value={storeFilter}
+                  onChange={(e) => setStoreFilter(e.target.value)}
+                  style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+                >
                   {allStores.map((s) => (
-                    <option key={s} value={s}>{s}</option>
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -509,9 +544,7 @@ export default function AdminPage() {
             </small>
           </header>
 
-          {storesAnalytics.length === 0 && (
-            <p style={{ margin: 0, color: "#6b7280" }}>No submissions for the selected range.</p>
-          )}
+          {storesAnalytics.length === 0 && <p style={{ margin: 0, color: "#6b7280" }}>No submissions for the selected range.</p>}
 
           <div style={{ display: "grid", gap: 12 }}>
             {storesAnalytics.map((s) => {
@@ -530,6 +563,7 @@ export default function AdminPage() {
                       borderBottom: "1px solid #eef2f7",
                     }}
                   >
+                    {/* Summary cards */}
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                       <strong style={{ fontSize: 16 }}>{s.store}</strong>
                       <Badge label="Avg Walk" value={`${fmt(s.avgWalk)}/75`} />
@@ -539,6 +573,7 @@ export default function AdminPage() {
                       <Badge label="Submissions" value={`${s.count}`} />
                     </div>
 
+                    {/* Best / Worst */}
                     <div style={{ display: "grid", gap: 6 }}>
                       <div>
                         <span style={{ fontWeight: 700, color: "#065f46" }}>Best:</span>{" "}
@@ -547,7 +582,9 @@ export default function AdminPage() {
                             <strong>{s.best.user_name || "Anon"}</strong> — {fmt(s.best.predicted)}/100{" "}
                             <span style={{ color: "#64748b" }}>({new Date(s.best.created_at).toLocaleString()})</span>
                           </>
-                        ) : "—"}
+                        ) : (
+                          "—"
+                        )}
                       </div>
                       <div>
                         <span style={{ fontWeight: 700, color: "#7f1d1d" }}>Worst:</span>{" "}
@@ -556,10 +593,13 @@ export default function AdminPage() {
                             <strong>{s.worst.user_name || "Anon"}</strong> — {fmt(s.worst.predicted)}/100{" "}
                             <span style={{ color: "#64748b" }}>({new Date(s.worst.created_at).toLocaleString()})</span>
                           </>
-                        ) : "—"}
+                        ) : (
+                          "—"
+                        )}
                       </div>
                     </div>
 
+                    {/* Trend sparkline */}
                     <div style={{ display: "grid", justifyItems: "end" }}>
                       <Sparkline points={s.trendPred} />
                       <small style={{ color: "#64748b" }}>
@@ -568,8 +608,9 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  {/* Section table + bar chart */}
+                  {/* Section averages table + bar chart */}
                   <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 12, padding: 12 }}>
+                    {/* Table */}
                     <div style={{ overflowX: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                         <thead>
@@ -598,6 +639,7 @@ export default function AdminPage() {
                       </table>
                     </div>
 
+                    {/* Bar chart */}
                     <div style={{ display: "grid", gap: 6 }}>
                       <BarChart
                         labels={s.secLabels.map((l) => l.replace(" & ", "/").split(" ")[0])}
@@ -645,6 +687,7 @@ export default function AdminPage() {
                     padding: 12,
                   }}
                 >
+                  {/* Top row summary */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "start" }}>
                     <div style={{ display: "grid", gap: 4 }}>
                       <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
@@ -687,7 +730,7 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  {/* per-section with gallery */}
+                  {/* Sections with inline photo galleries */}
                   <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
                     {sub.sections?.map((sec) => {
                       const secPhotos = sec.items.flatMap((i) => i.photos || []);
@@ -730,9 +773,13 @@ export default function AdminPage() {
                                     <span title={it.checked ? "Checked" : "Not checked"}>
                                       {it.checked ? "✅" : "⬜️"}
                                     </span>
-                                    <div style={{ fontWeight: 600 }}>{it.label}{ptsText}</div>
+                                    <div style={{ fontWeight: 600 }}>
+                                      {it.label}
+                                      {ptsText}
+                                    </div>
                                   </div>
 
+                                  {/* Gallery */}
                                   {photos.length > 0 && (
                                     <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
                                       {photos.map((url, idx) => (
@@ -774,7 +821,7 @@ export default function AdminPage() {
         </section>
       </main>
 
-      {/* Lightbox */}
+      {/* Lightbox modal */}
       {lightboxUrl && (
         <div
           onClick={() => setLightboxUrl(null)}
@@ -840,6 +887,7 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* Mobile tweaks */}
       <style jsx global>{`
         @media (max-width: 640px) {
           main { padding: 12px; }
