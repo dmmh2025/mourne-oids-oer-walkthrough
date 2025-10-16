@@ -476,7 +476,6 @@ export default function AdminPage() {
   );
 }
 
-// ---------- UI bits ----------
 function Badge(props: { label: string; value: string; strong?: boolean }) {
   return (
     <span
@@ -489,7 +488,7 @@ function Badge(props: { label: string; value: string; strong?: boolean }) {
         background: "#f1f5f9",
         border: "1px solid #e5e7eb",
         color: "#111827",
-        fontWeight: props.strong ? 800 : 600,
+        fontWeight: props.strong ? 800 : 700,
       }}
     >
       <span style={{ opacity: 0.7 }}>{props.label}</span>
@@ -497,18 +496,3 @@ function Badge(props: { label: string; value: string; strong?: boolean }) {
     </span>
   );
 }
-
-const th = (): React.CSSProperties => ({
-  textAlign: "left",
-  padding: "8px 10px",
-  fontSize: 13,
-  color: "#475569",
-  userSelect: "none" as React.CSSProperties["userSelect"],
-  cursor: "pointer",
-});
-
-const td = (): React.CSSProperties => ({
-  padding: "8px 10px",
-  fontSize: 13,
-  color: "#111827",
-});
