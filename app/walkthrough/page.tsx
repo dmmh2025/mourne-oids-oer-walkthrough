@@ -62,7 +62,17 @@ function pointsForExtremes(perThousand: number) {
  * Note: "Image" originally summed to 21; we merged 2×1pt checks into 1×1pt
  * “Walk-in & Makeline clean and working” so Image = 20 and overall stays 75.
  */
-const SECTIONS_BASE: Omit<Section, "items"> & { items: Omit<CheckItem, "photos">[] }[] = [
+const SECTIONS_BASE: {
+  title: string;
+  points: number;
+  allOrNothing?: boolean;
+  items: {
+    label: string;
+    weight: number;
+    done: boolean;
+    tips?: string[];
+  }[];
+}[] = [
   /* ---------------- Food Safety (18) ---------------- */
   {
     title: "Food Safety",
