@@ -1,28 +1,47 @@
 "use client";
-export const dynamic = "force-dynamic";
 
 import * as React from "react";
+import Script from "next/script";
 import { createClient } from "@supabase/supabase-js";
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const supabase = createClient(url, anon);
-
-type Row = {
-  id: string;
+type Item = {
+  key: string;
+  label: string;
+  pts?: number | null;
+  details?: string[] | null;
+  checked?: boolean;
+  photos?: string[]; // public URLs
+};
+type SectionPayload = {
+  key: string;
+  title: string;
+  max: number;
+  mode: "normal" | "all_or_nothing";
+  items: Item[];
+};
+type Submission = {
+  id: string | number;
   created_at: string;
   store: string | null;
-  user_name: string | null;     // Name (not email)
-  section_total: number;        // /75
-  adt: number | null;           // minutes
-  extreme_lates: number | null; // per 1000
-  sbr: number | null;           // %
-  service_total: number;        // /25
-  predicted: number;            // /100
+  user_name: string | null;
+  section_total: number | null;
+  service_total: number | null;
+  predicted: number | null;
+  adt: number | null;
+  sbr: number | null;
+  extreme_lates: number | null;
+  sections: SectionPayload[];
 };
 
-// Stars from % bands
-function starsFromPercent(p: number) {
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const supabase = createClient(supabaseUrl, supabaseAnon);
+
+// Small helpers
+const fmt = (n: number | null | undefined) =>
+  typeof n === "number" && !Number.isNaN(n) ? n.toFixed(Number.isInteger(n) ? 0 : 2) : "—";
+
+function starsForPercent(p: number) {
   if (p >= 90) return 5;
   if (p >= 80) return 4;
   if (p >= 70) return 3;
@@ -31,119 +50,116 @@ function starsFromPercent(p: number) {
   return 0;
 }
 
-// CSV helpers
-function csvEscape(val: unknown): string {
-  const s = val === null || val === undefined ? "" : String(val);
-  const needsQuotes = /[",\n]/.test(s);
-  const escaped = s.replace(/"/g, '""');
-  return needsQuotes ? `"${escaped}"` : escaped;
-}
-function toISO(dt: string) {
-  const d = new Date(dt);
-  return isNaN(+d) ? dt : d.toISOString();
-}
-
 export default function AdminPage() {
-  const [rows, setRows] = React.useState<Row[]>([]);
+  const [rows, setRows] = React.useState<Submission[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [err, setErr] = React.useState<string | null>(null);
+  const [sinceDays, setSinceDays] = React.useState(30);
 
-  const [storeFilter, setStoreFilter] = React.useState<string>("ALL");
-  const [search, setSearch] = React.useState("");
-
-  const [dateFrom, setDateFrom] = React.useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return d.toISOString().slice(0, 10);
-  });
-  const [dateTo, setDateTo] = React.useState(() => new Date().toISOString().slice(0, 10));
+  // Lightbox
+  const [lightboxUrl, setLightboxUrl] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     (async () => {
+      setLoading(true);
+      setErr(null);
       try {
-        setLoading(true);
+        const sinceISO = new Date(Date.now() - sinceDays * 24 * 3600 * 1000).toISOString();
         const { data, error } = await supabase
           .from("walkthrough_submissions")
           .select(
-            "id,created_at,store,user_name,section_total,adt,extreme_lates,sbr,service_total,predicted"
+            "id, created_at, store, user_name, section_total, service_total, predicted, adt, sbr, extreme_lates, sections"
           )
+          .gte("created_at", sinceISO)
           .order("created_at", { ascending: false })
-          .limit(1000);
+          .limit(200);
         if (error) throw error;
-        setRows((data as Row[]) ?? []);
+        // Normalize photos arrays
+        const normalized: Submission[] =
+          (data as any[]).map((r) => ({
+            ...r,
+            sections: (r.sections || []).map((s: any) => ({
+              ...s,
+              items: (s.items || []).map((i: any) => ({
+                ...i,
+                photos: Array.isArray(i?.photos) ? i.photos : [],
+              })),
+            })),
+          })) || [];
+        setRows(normalized);
       } catch (e: any) {
-        setError(e.message || "Failed to load");
+        setErr(e.message || "Failed to load");
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [sinceDays]);
 
-  const allStores = React.useMemo(
-    () => Array.from(new Set(rows.map((r) => r.store).filter(Boolean))) as string[],
-    [rows]
-  );
+  // Collect all photo URLs for a submission
+  function collectPhotos(sub: Submission) {
+    const urls: string[] = [];
+    for (const sec of sub.sections || []) {
+      for (const it of sec.items || []) {
+        if (it.photos && it.photos.length) urls.push(...it.photos);
+      }
+    }
+    return urls;
+  }
 
-  const filtered = rows.filter((r) => {
-    const d = new Date(r.created_at).toISOString().slice(0, 10);
-    if (dateFrom && d < dateFrom) return false;
-    if (dateTo && d > dateTo) return false;
-    if (storeFilter !== "ALL" && r.store !== storeFilter) return false;
+  // Download all photos as a ZIP (client-only via CDN libs)
+  async function downloadAllPhotos(sub: Submission) {
+    const urls = collectPhotos(sub);
+    if (urls.length === 0) return alert("No photos attached to this submission.");
+    // @ts-ignore
+    const JSZip = (window as any).JSZip;
+    // @ts-ignore
+    const saveAs = (window as any).saveAs;
+    if (!JSZip || !saveAs) {
+      alert("Downloader not ready yet — please wait a second and try again.");
+      return;
+    }
 
-    const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      (r.store ?? "").toLowerCase().includes(q) ||
-      (r.user_name ?? "").toLowerCase().includes(q)
+    const zip = new JSZip();
+    const folder = zip.folder(
+      `${(sub.store || "Unknown").replace(/[^a-z0-9_-]/gi, "_")}-${new Date(sub.created_at).toISOString().slice(0, 19).replace(/[:T]/g, "-")}`
     );
-  });
 
-  function downloadCSV() {
-    const headers = [
-      "DateTimeISO",
-      "Store",
-      "Name",
-      "Walkthrough_75",
-      "ADT_mins",
-      "Extremes_per_1000",
-      "SBR_percent",
-      "Service_25",
-      "Predicted_100",
-      "Stars",
-    ];
-    const lines = filtered.map((r) => {
-      const stars = starsFromPercent(r.predicted);
-      return [
-        csvEscape(toISO(r.created_at)),
-        csvEscape(r.store ?? ""),
-        csvEscape(r.user_name ?? ""),
-        csvEscape(r.section_total),
-        csvEscape(r.adt ?? ""),
-        csvEscape(r.extreme_lates ?? ""),
-        csvEscape(r.sbr ?? ""),
-        csvEscape(r.service_total),
-        csvEscape(r.predicted),
-        csvEscape(stars),
-      ].join(",");
-    });
-    const csv = [headers.join(","), ...lines].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const ts = new Date().toISOString().replace(/[:.]/g, "-");
-    const filename = `oer-walkthrough-export-${ts}.csv`;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    // Fetch all images as blobs and add to zip
+    const failures: string[] = [];
+    await Promise.all(
+      urls.map(async (url, idx) => {
+        try {
+          const res = await fetch(url);
+          const blob = await res.blob();
+          const extGuess = (url.split(".").pop() || "jpg").split("?")[0].slice(0, 5);
+          folder.file(`photo-${String(idx + 1).padStart(2, "0")}.${extGuess}`, blob);
+        } catch {
+          failures.push(url);
+        }
+      })
+    );
+
+    const zipBlob = await zip.generateAsync({ type: "blob" });
+    saveAs(
+      zipBlob,
+      `OER-photos-${(sub.store || "Unknown").replace(/[^a-z0-9_-]/gi, "_")}-${new Date(sub.created_at)
+        .toISOString()
+        .slice(0, 10)}.zip`
+    );
+
+    if (failures.length) {
+      alert(`Downloaded with ${failures.length} failed file(s).`);
+    }
   }
 
   return (
     <>
+      {/* JSZip + FileSaver for in-browser .zip downloads */}
+      <Script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" strategy="afterInteractive" />
+      <Script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js" strategy="afterInteractive" />
+
       <main style={{ maxWidth: 1100, margin: "0 auto", padding: 16 }}>
-        {/* Banner with Domino's blue border */}
+        {/* Banner + blue underline */}
         <div
           style={{
             borderBottom: "4px solid #006491",
@@ -160,182 +176,294 @@ export default function AdminPage() {
           />
         </div>
 
-        {/* Header with Back + Download */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
-          <a
-            href="/"
+        {/* Header */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+          <button
+            type="button"
+            onClick={() => (window.location.href = "/")}
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "8px 12px",
+              padding: "10px 12px",
               borderRadius: 10,
               border: "1px solid #e5e7eb",
-              textDecoration: "none",
               background: "white",
-              boxShadow: "0 2px 6px rgba(0,0,0,.06)",
-              fontWeight: 600,
+              fontWeight: 700,
+              cursor: "pointer",
             }}
-            aria-label="Back to Home"
           >
-            <span style={{ fontSize: 18 }}>←</span> Back to Home
-          </a>
+            ← Back to Home
+          </button>
 
-          <h1 style={{ margin: 0, fontSize: 22 }}>Admin — Walkthrough Submissions</h1>
+          <h1 style={{ margin: 0, fontSize: 22 }}>Admin — Submissions</h1>
 
-          <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-            <button
-              onClick={downloadCSV}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 10,
-                border: "1px solid #004e73",
-                background: "#006491",
-                color: "white",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-              title="Download currently filtered rows as CSV"
-            >
-              ⬇️ Download CSV
-            </button>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              Show last
+              <select
+                value={sinceDays}
+                onChange={(e) => setSinceDays(Number(e.target.value))}
+                style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+              >
+                <option value={7}>7 days</option>
+                <option value={14}>14 days</option>
+                <option value={30}>30 days</option>
+                <option value={90}>90 days</option>
+                <option value={365}>1 year</option>
+              </select>
+            </label>
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="filters-row" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-          <label>
-            Store&nbsp;
-            <select
-              value={storeFilter}
-              onChange={(e) => setStoreFilter(e.target.value)}
-              style={{ padding: 8, minWidth: 160 }}
-            >
-              <option value="ALL">All stores</option>
-              {allStores.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </label>
+        {/* Status */}
+        {loading && <p style={{ color: "#64748b" }}>Loading submissions…</p>}
+        {err && (
+          <p style={{ color: "#7f1d1d", fontWeight: 700 }}>
+            ❌ {err}
+          </p>
+        )}
+        {!loading && !err && rows.length === 0 && <p>No submissions found in this period.</p>}
 
-          <label>
-            From&nbsp;
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              style={{ padding: 8 }}
-            />
-          </label>
+        {/* List */}
+        <div style={{ display: "grid", gap: 14 }}>
+          {rows.map((sub) => {
+            const predicted = sub.predicted ?? (sub.section_total ?? 0) + (sub.service_total ?? 0);
+            const stars = starsForPercent(predicted);
+            const allPhotos = collectPhotos(sub);
+            return (
+              <article
+                key={`${sub.id}-${sub.created_at}`}
+                style={{
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 12,
+                  background: "white",
+                  padding: 12,
+                }}
+              >
+                {/* Top row summary */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "start" }}>
+                  <div style={{ display: "grid", gap: 4 }}>
+                    <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+                      <strong style={{ fontSize: 18 }}>
+                        {sub.store || "Unknown"} — {sub.user_name || "Anon"}
+                      </strong>
+                      <span style={{ color: "#6b7280" }}>
+                        {new Date(sub.created_at).toLocaleString()}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <Badge label="Walkthrough" value={`${fmt(sub.section_total)}/75`} />
+                      <Badge label="Service" value={`${fmt(sub.service_total)}/25`} />
+                      <Badge label="Predicted" value={`${fmt(predicted)}/100`} strong />
+                      <Badge label="Grade" value={`${"★".repeat(stars)}${"☆".repeat(5 - stars)} (${stars})`} />
+                      <Badge label="ADT" value={fmt(sub.adt)} />
+                      <Badge label="SBR%" value={fmt(sub.sbr)} />
+                      <Badge label="Ext/1000" value={fmt(sub.extreme_lates)} />
+                    </div>
+                  </div>
 
-          <label>
-            To&nbsp;
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              style={{ padding: 8 }}
-            />
-          </label>
-
-          <label style={{ flex: 1, minWidth: 220 }}>
-            Search&nbsp;
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="store or name"
-              style={{ padding: 8, width: "100%" }}
-            />
-          </label>
-        </div>
-
-        {loading && <p>Loading…</p>}
-        {error && <p style={{ color: "crimson" }}>Error: {error}</p>}
-        {!loading && !error && filtered.length === 0 && <p>No submissions match your filter.</p>}
-
-        {!loading && !error && filtered.length > 0 && (
-          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  {[
-                    "Date/Time",
-                    "Store",
-                    "Name",
-                    "Walkthrough (75)",
-                    "ADT",
-                    "XLates/1000",
-                    "SBR%",
-                    "Service (25)",
-                    "Predicted (100)",
-                    "Stars",
-                  ].map((h) => (
-                    <th
-                      key={h}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <button
+                      type="button"
+                      onClick={() => downloadAllPhotos(sub)}
+                      disabled={allPhotos.length === 0}
+                      title={allPhotos.length ? `Download ${allPhotos.length} photo(s)` : "No photos"}
                       style={{
-                        textAlign: "left",
-                        borderBottom: "1px solid #ddd",
-                        padding: 8,
-                        whiteSpace: "nowrap",
-                        background: "#fafafa",
-                        position: "sticky",
-                        top: 0,
-                        zIndex: 1,
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: "1px solid #004e73",
+                        background: allPhotos.length ? "#006491" : "#9ca3af",
+                        color: "white",
+                        fontWeight: 700,
+                        cursor: allPhotos.length ? "pointer" : "not-allowed",
                       }}
                     >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((r) => {
-                  const stars = starsFromPercent(r.predicted);
-                  return (
-                    <tr key={r.id}>
-                      <td style={td()}>{new Date(r.created_at).toLocaleString()}</td>
-                      <td style={td()}>{r.store ?? "-"}</td>
-                      <td style={td()}>{r.user_name ?? "-"}</td>
-                      <td style={td()}>{r.section_total}</td>
-                      <td style={td()}>{r.adt ?? "-"}</td>
-                      <td style={td()}>{r.extreme_lates ?? "-"}</td>
-                      <td style={td()}>{r.sbr ?? "-"}</td>
-                      <td style={td()}>{r.service_total}</td>
-                      <td style={{ ...td(), fontWeight: 700 }}>{r.predicted}</td>
-                      <td style={{ ...td(), fontFamily: "system-ui, Segoe UI, Apple Color Emoji" }}>
-                        {"★".repeat(stars)}
-                        {"☆".repeat(5 - stars)} ({stars})
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      ⬇ Download all photos ({allPhotos.length})
+                    </button>
+                  </div>
+                </div>
 
-            {/* Legend */}
-            <div style={{ marginTop: 10, color: "#6b7280", fontSize: 13 }}>
-              90%+ = 5★ • 80–89.99% = 4★ • 70–79.99% = 3★ • 60–69.99% = 2★ • 50–59.99% = 1★ • &lt;50% = 0★
+                {/* Sections with inline photo galleries */}
+                <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                  {sub.sections?.map((sec) => {
+                    // flatten photos count per section
+                    const secPhotos = sec.items.flatMap((i) => i.photos || []);
+                    return (
+                      <section key={sec.key} style={{ border: "1px solid #eef2f7", borderRadius: 10 }}>
+                        <header
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            padding: "8px 10px",
+                            borderBottom: "1px solid #eef2f7",
+                            background: "#f8fafc",
+                            borderRadius: "10px 10px 0 0",
+                          }}
+                        >
+                          <strong>{sec.title}</strong>
+                          <small style={{ color: "#64748b" }}>
+                            Max {sec.max} • {sec.mode === "all_or_nothing" ? "All-or-nothing" : "Weighted"}
+                            {secPhotos.length ? ` • ${secPhotos.length} photo${secPhotos.length > 1 ? "s" : ""}` : ""}
+                          </small>
+                        </header>
+
+                        <div style={{ padding: 10, display: "grid", gap: 8 }}>
+                          {sec.items.map((it) => {
+                            const ptsText =
+                              sec.mode === "normal" && typeof it.pts === "number" ? ` (${it.pts} pts)` : "";
+                            const photos = it.photos || [];
+                            return (
+                              <div
+                                key={it.key}
+                                style={{
+                                  border: "1px solid #f1f5f9",
+                                  borderRadius: 10,
+                                  padding: 10,
+                                  background: "#fff",
+                                }}
+                              >
+                                <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+                                  <span title={it.checked ? "Checked" : "Not checked"}>
+                                    {it.checked ? "✅" : "⬜️"}
+                                  </span>
+                                  <div style={{ fontWeight: 600 }}>{it.label}{ptsText}</div>
+                                </div>
+
+                                {/* Gallery */}
+                                {photos.length > 0 && (
+                                  <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                    {photos.map((url, idx) => (
+                                      <button
+                                        key={`${url}-${idx}`}
+                                        type="button"
+                                        onClick={() => setLightboxUrl(url)}
+                                        style={{
+                                          border: "1px solid #e5e7eb",
+                                          padding: 0,
+                                          borderRadius: 8,
+                                          overflow: "hidden",
+                                          cursor: "pointer",
+                                          background: "transparent",
+                                        }}
+                                        title="Click to view"
+                                      >
+                                        <img
+                                          src={url}
+                                          alt="attachment"
+                                          style={{ width: 96, height: 96, objectFit: "cover", display: "block" }}
+                                        />
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    );
+                  })}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </main>
+
+      {/* Lightbox modal */}
+      {lightboxUrl && (
+        <div
+          onClick={() => setLightboxUrl(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,.7)",
+            display: "grid",
+            placeItems: "center",
+            zIndex: 1000,
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "relative",
+              maxWidth: "95vw",
+              maxHeight: "90vh",
+              borderRadius: 12,
+              overflow: "hidden",
+              background: "#000",
+              boxShadow: "0 10px 30px rgba(0,0,0,.4)",
+            }}
+          >
+            <img
+              src={lightboxUrl}
+              alt="full"
+              style={{ maxWidth: "95vw", maxHeight: "90vh", objectFit: "contain", display: "block" }}
+            />
+            <div style={{ position: "absolute", top: 8, right: 8, display: "flex", gap: 8 }}>
+              <a
+                href={lightboxUrl}
+                download
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  border: "1px solid #e5e7eb",
+                  background: "white",
+                  fontWeight: 700,
+                }}
+              >
+                ⬇ Download
+              </a>
+              <button
+                type="button"
+                onClick={() => setLightboxUrl(null)}
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  border: "1px solid #e5e7eb",
+                  background: "white",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                ✕ Close
+              </button>
             </div>
           </div>
-        )}
-      </main>
+        </div>
+      )}
 
       {/* Mobile tweaks */}
       <style jsx global>{`
         @media (max-width: 640px) {
           main { padding: 12px; }
-          .filters-row { flex-direction: column; gap: 8px; }
-          input, select, textarea { font-size: 16px; } /* prevent iOS zoom */
-          table th, table td { padding: 10px 8px !important; }
-          table { font-size: 14px; }
+          article { padding: 10px !important; }
         }
       `}</style>
     </>
   );
 }
 
-function td(): React.CSSProperties {
-  return { borderBottom: "1px solid #eee", padding: 8, whiteSpace: "nowrap" };
+// Badges
+function Badge(props: { label: string; value: string; strong?: boolean }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 10px",
+        borderRadius: 999,
+        background: "#f1f5f9",
+        border: "1px solid #e5e7eb",
+        color: "#111827",
+        fontWeight: props.strong ? 800 : 600,
+      }}
+    >
+      <span style={{ opacity: 0.7 }}>{props.label}</span>
+      <span>{props.value}</span>
+    </span>
+  );
 }
