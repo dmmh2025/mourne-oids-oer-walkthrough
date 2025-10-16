@@ -2,96 +2,286 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/supabaseClient";
 
-/**
- * Sections and weights (sum to 75).
- * Score per section = (checked items / total items) * section.points (rounded).
+/** ========= Types ========= */
+type CheckItem = {
+  label: string;
+  weight: number;      // points for this check
+  done: boolean;
+  tips?: string[];     // expandable guidance
+};
+
+type Section = {
+  title: string;
+  points: number;      // section total (sum of item weights)
+  allOrNothing?: boolean; // if true, award points only if all checks done
+  items: CheckItem[];
+};
+
+/** ========= Sections from your OER doc (total = 75) =========
+ * Note: "Image" in your doc summed to 21; merged two 1-pt checks into one 1-pt check
+ * so Image = 20 and overall stays at 75.
  */
-type Item = { label: string; done: boolean };
-type Section = { title: string; points: number; items: Item[] };
-
 const SECTIONS: Section[] = [
+  /* ---------------- Food Safety (18) ---------------- */
   {
-    title: "Dough Management",
-    points: 11, // +1 moved from APP
+    title: "Food Safety",
+    points: 18,
     items: [
-      { label: "Correct dough rotation (FIFO), no out-of-date", done: false },
-      { label: "Dough balls correctly tempered / proofed", done: false },
-      { label: "Cold chain maintained (walk-in → line)", done: false },
-      { label: "Waste recorded / lids on totes / no contamination", done: false },
+      {
+        label: "Temps entered on time and within range",
+        weight: 3,
+        done: false,
+      },
+      {
+        label: "Products within shelf life – including ambient products, dips & drinks",
+        weight: 3,
+        done: false,
+      },
+      {
+        label: "Proper handwashing procedures – 20 seconds",
+        weight: 3,
+        done: false,
+      },
+      {
+        label: "Sanitation procedures followed",
+        weight: 3,
+        done: false,
+        tips: [
+          "Timer running",
+          "Sanitiser sink correct concentration",
+          "All bottle lids changed daily",
+          "Can opener clean, rust free with no signs of food debris",
+          "Sanitiser bottles filled and available",
+          "All touch points clean – bubblepopper, sauce bottles, shakers, keyboards",
+          "Sanitiser spray the only chemical in the kitchen area",
+          "All dishes clean",
+          "Mop bucket and sink clean",
+          "Bins clean and free from sauce stains",
+        ],
+      },
+      {
+        label: "Proper cooking temp of food",
+        weight: 3,
+        done: false,
+      },
+      {
+        label: "4–6 week pest control service in place",
+        weight: 3,
+        done: false,
+      },
     ],
   },
+
+  /* ---------------- Product (12) ---------------- */
   {
-    title: "Application (APP)",
-    points: 7, // 8 originally, -1 to Dough
+    title: "Product",
+    points: 12,
     items: [
-      { label: "Right sauce, cheese & topping weights used", done: false },
-      { label: "Even coverage to the edge / no bare patches", done: false },
-      { label: "Correct cutting & portioning in cut table", done: false },
-      { label: "Pest control checks complete (log updated)", done: false },
+      {
+        label: "Dough properly managed",
+        weight: 5,
+        done: false,
+        tips: [
+          "All sizes available at stretch table and in good condition",
+          "Dough plan created and followed",
+          "No blown dough",
+          "No aired dough",
+          "No dough past day 6",
+        ],
+      },
+      {
+        label: "Bread products properly prepared",
+        weight: 2,
+        done: false,
+        tips: [
+          "GPB with garlic spread, sauce and cheese to crust",
+          "No dock in dippers",
+          "Dough balls not opening",
+        ],
+      },
+      {
+        label: "Approved products and procedures (APP)",
+        weight: 2,
+        done: false,
+        tips: [
+          "Makeline bins filled for max 2 hours trade",
+          "Allergen poster displayed, leaflets available",
+          "Back doors securely closed at all times",
+          "GF Kit complete – screens free of carbon",
+          "Toppings in black tubs in bottom row of makeline bin",
+          "PB procedures followed - PB cheese not over 1st tray",
+          "All products available including sides and soft drinks",
+          "Red and white dough scrapers available on makeline for doughballs",
+        ],
+      },
+      {
+        label: "All sides properly prepared",
+        weight: 1,
+        done: false,
+        tips: [
+          "Fries prepped",
+          "2 pack and 4 pack cookies prepped and available",
+          "Double Chocolate cookies prepped and available",
+          "Flavoured wings prepped and available",
+          "All sides available in makeline cabinet",
+        ],
+      },
+      {
+        label: "Adequate PRP to handle expected sales volume",
+        weight: 2,
+        done: false,
+      },
     ],
   },
+
+  /* ---------------- Image (20) ---------------- */
   {
-    title: "Temps",
-    points: 6, // increased to 6 incl. cooking temps
+    title: "Image",
+    points: 20,
     items: [
-      { label: "Walk-in temp in range and logged", done: false },
-      { label: "Makeline temps in range and logged", done: false },
-      { label: "Cooking temps checked & recorded", done: false },
+      {
+        label: "Team members in proper uniform",
+        weight: 3,
+        done: false,
+        tips: [
+          "Jet black trousers/jeans. No leggings, joggers or combats",
+          "Plain white/black undershirt with no branding or logos",
+          "No visible piercings of any kind. Plasters can not be used to cover",
+          "No jumpers/hoodies/jackets – Domino’s uniforms only",
+        ],
+      },
+      {
+        label: "Grooming standards maintained",
+        weight: 1,
+        done: false,
+        tips: [
+          "Clean shaven or neat beard",
+          "No visible piercings of any kind. Plasters can not be used to cover",
+        ],
+      },
+      {
+        label: "Store interior clean and in good repair",
+        weight: 3,
+        done: false,
+        tips: [
+          "All toilets must have lined bin with lid",
+          "All bins in customer view must have a lid and be clean",
+          "No sauce stains on walls",
+          "No build-up of cornmeal in corners of floor",
+          "Store generally clean and presentable",
+        ],
+      },
+      {
+        label: "Customer Area and view",
+        weight: 3,
+        done: false,
+        tips: [
+          "Customer area clean and welcoming",
+          "Tables and chairs clean",
+          "Floors clean",
+          "No cobwebs",
+          "No buildup of leaves/cornmeal in corners",
+          "Everything in customer view clean and tidy",
+          "No staff food/drink in customer view",
+        ],
+      },
+      {
+        label: "Outside",
+        weight: 2,
+        done: false,
+        tips: [
+          "No branded rubbish front or rear",
+          "Bins not overflowing",
+          "No build up of leaves/dirt in corners beside doors",
+          "No buildup of leaves/rubbish/weeds outside shop",
+          "Signage clean and free from cobwebs/stains",
+        ],
+      },
+      {
+        label: "Baking Equipment",
+        weight: 3,
+        done: false,
+        tips: [
+          "All screens and pans clean and free from food or carbon buildup",
+          "SC screens not bent or misshapen",
+          "Oven hood and filters clean",
+          "Oven chambers clean and not discolouring",
+          "Oven windows clean",
+          "Bubble popper clean",
+          "Top of oven not dusty",
+        ],
+      },
+      {
+        label: "Delivery bags",
+        weight: 2,
+        done: false,
+        tips: [
+          "Clean – inside and out with no build up of cornmeal",
+          "No sticker residue on bags",
+          "Patches not worn or logo damaged",
+          "No rips or tears",
+        ],
+      },
+      {
+        label: "Signage & Menu current, displayed correctly, clean and in good repair",
+        weight: 1,
+        done: false,
+      },
+      {
+        label: "Walk-in & Makeline clean and working",
+        weight: 1,
+        done: false,
+        tips: [
+          // merged the two 1-pt checks into one 1-pt check:
+          // Walk-in clean and working + Makeline clean and working
+          "Walk-in: Fan/floor/ceiling/walls & shelving clean (no mould/debris/rust)",
+          "Walk-in: Door seal good and handle clean — no food debris",
+          "Walk-in: No dating sticker lying on the floors; floors clean",
+          "Makeline: Cupboards/doors/handles/shelves/seals/lids clean & in good condition",
+          "Makeline: Catch trays/grills/seals in good condition — no splits/tears/missing rails",
+        ],
+      },
+      {
+        label: "Delivery vehicles represent positive brand image",
+        weight: 1,
+        done: false,
+      },
     ],
   },
+
+  /* ---------------- Safety & security (5) ---------------- */
   {
-    title: "Great / Remake Quality",
-    points: 22, // increased incl. breaded sides
+    title: "Safety & security",
+    points: 5,
     items: [
-      { label: "Pizza appearance meets brand spec", done: false },
-      { label: "Box labels correct / seals applied", done: false },
-      { label: "Order completeness checked at hot rack", done: false },
-      { label: "Breaded sides cooked correctly (golden, crisp)", done: false },
+      { label: "Drivers regularly making cash drops", weight: 1, done: false },
+      { label: "Caller ID working – security call backs being made", weight: 1, done: false },
+      { label: "Safe used and secure", weight: 1, done: false },
+      { label: "No more than £100 in front till", weight: 1, done: false },
+      { label: "Drivers wearing seatbelts and driving safely", weight: 1, done: false },
     ],
   },
+
+  /* ---------------- Product quality (20, all-or-nothing) ---------------- */
   {
-    title: "Hygiene & Back of House",
-    points: 10,
+    title: "Product quality",
+    points: 20,
+    allOrNothing: true, // must check all to get 20
     items: [
-      { label: "Sinks/handwash/saniflow clean & stocked", done: false },
-      { label: "Colour-coded cleaning in use", done: false },
-      { label: "Waste managed; no build-up in prep areas", done: false },
-      { label: "Floors, walls, units clean (no grease)", done: false },
-    ],
-  },
-  {
-    title: "CSR / Front of House",
-    points: 8,
-    items: [
-      { label: "Counter clean & clutter-free", done: false },
-      { label: "Screens, tablets & printers clean", done: false },
-      { label: "Customer area tidy (tables, bins, signage)", done: false },
-    ],
-  },
-  {
-    title: "Routing & Delivery",
-    points: 6,
-    items: [
-      { label: "Hot rack organised; proper rotation", done: false },
-      { label: "Routes optimised; driver briefed", done: false },
-      { label: "Delivery bags clean & heated", done: false },
-    ],
-  },
-  {
-    title: "Uniform & Brand Standards",
-    points: 5, // renamed + drivers vehicle check
-    items: [
-      { label: "Team in clean uniform, hats, name badges", done: false },
-      { label: "Hand hygiene observed regularly", done: false },
-      { label: "Drivers’ vehicles clean & road-safe", done: false },
+      { label: "RIM",       weight: 1, done: false },
+      { label: "RISE",      weight: 1, done: false },
+      { label: "SIZE",      weight: 1, done: false },
+      { label: "PORTION",   weight: 1, done: false },
+      { label: "PLACEMENT", weight: 1, done: false },
+      { label: "BAKE",      weight: 1, done: false },
+      { label: "Have you checked the bacon in the middle", weight: 1, done: false },
+      { label: "No sauce and cheese on crust", weight: 1, done: false },
     ],
   },
 ];
 
-// ----- Service Scoring (25 points total) -----
-
+/* ======== Service scoring (25) ======== */
 function pointsForADT(mins: number) {
   if (mins < 25) return 15;
   if (mins <= 26) return 10;
@@ -100,14 +290,12 @@ function pointsForADT(mins: number) {
   if (mins <= 30) return 4;
   return 0;
 }
-
 function pointsForSBR(pct: number) {
   if (pct >= 75) return 5;
   if (pct >= 70) return 4;
   if (pct >= 50) return 3;
   return 0;
 }
-
 function pointsForExtremes(perThousand: number) {
   if (perThousand <= 15) return 5;
   if (perThousand <= 20) return 4;
@@ -116,7 +304,7 @@ function pointsForExtremes(perThousand: number) {
   return 0;
 }
 
-// ----- Stars (based on total %) -----
+/* ======== Stars (by total %) ======== */
 function starsForPercent(p: number) {
   if (p >= 90) return 5;
   if (p >= 80) return 4;
@@ -126,11 +314,9 @@ function starsForPercent(p: number) {
   return 0;
 }
 
-// Utility
-function clampNum(n: number) {
-  return Number.isFinite(n) ? n : 0;
-}
+const clamp = (n: number) => (Number.isFinite(n) ? n : 0);
 
+/** ========= Component ========= */
 export default function WalkthroughPage() {
   const router = useRouter();
 
@@ -138,96 +324,88 @@ export default function WalkthroughPage() {
   const [store, setStore] = React.useState<"Downpatrick" | "Kilkeel" | "Newcastle" | "">("");
   const [name, setName] = React.useState("");
 
-  // Service inputs (strings for inputs -> numbers for calc)
+  // Service inputs
   const [adt, setAdt] = React.useState("");
   const [sbr, setSbr] = React.useState("");
   const [extremes, setExtremes] = React.useState("");
 
-  // Sections state
+  // Sections state (deep copy)
   const [sections, setSections] = React.useState<Section[]>(
-    SECTIONS.map((s) => ({ ...s, items: s.items.map((i) => ({ ...i })) }))
+    SECTIONS.map((s) => ({
+      ...s,
+      items: s.items.map((i) => ({ ...i })),
+    }))
   );
 
-  // Collapse control (all open initially)
+  // Collapsible
   const [open, setOpen] = React.useState<boolean[]>(SECTIONS.map(() => true));
-  function toggleSection(idx: number) {
-    setOpen((prev) => {
-      const next = [...prev];
-      next[idx] = !next[idx];
-      return next;
-    });
-  }
-  function setAll(val: boolean) {
-    setOpen(SECTIONS.map(() => val));
-  }
+  const toggleSection = (idx: number) =>
+    setOpen((prev) => prev.map((o, i) => (i === idx ? !o : o)));
+  const setAll = (val: boolean) => setOpen(SECTIONS.map(() => val));
 
-  // Derived: section scores (proportional) and totals
-  const sectionScores = React.useMemo(() => {
+  // Compute section totals with per-item weights; Product quality all-or-nothing
+  const sectionTotals = React.useMemo(() => {
     return sections.map((s) => {
-      const total = s.items.length || 0;
-      const done = s.items.filter((i) => i.done).length;
-      const pct = total ? done / total : 0;
-      return Math.round(pct * s.points);
+      const totalPts = s.points;
+      if (s.allOrNothing) {
+        const allDone = s.items.every((i) => i.done);
+        return allDone ? totalPts : 0;
+      }
+      // sum checked item weights
+      const got = s.items.filter((i) => i.done).reduce((a, b) => a + b.weight, 0);
+      // clamp to section max just in case
+      return Math.min(got, totalPts);
     });
   }, [sections]);
 
-  const sectionTotal = sectionScores.reduce((a, b) => a + b, 0); // /75
-  const adtNum = clampNum(parseFloat(adt));
-  const sbrNum = clampNum(parseFloat(sbr));
-  const extremesNum = clampNum(parseFloat(extremes));
+  const section_total = sectionTotals.reduce((a, b) => a + b, 0); // /75
+
+  // Service calculated points
+  const adtNum = clamp(parseFloat(adt));
+  const sbrNum = clamp(parseFloat(sbr));
+  const extNum = clamp(parseFloat(extremes));
   const serviceADT = pointsForADT(adtNum);
   const serviceSBR = pointsForSBR(sbrNum);
-  const serviceExt = pointsForExtremes(extremesNum);
-  const serviceTotal = serviceADT + serviceSBR + serviceExt; // /25
+  const serviceExt = pointsForExtremes(extNum);
+  const service_total = serviceADT + serviceSBR + serviceExt; // /25
 
-  const predicted = sectionTotal + serviceTotal; // /100
+  const predicted = section_total + service_total; // /100
   const stars = starsForPercent(predicted);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!store) return alert("Please select a store.");
+    if (!name.trim()) return alert("Please enter your name.");
 
-    if (!store) {
-      alert("Please select a store.");
+    // Submit to API and redirect
+    const res = await fetch("/api/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        store,
+        name,
+        adt: adtNum,
+        sbr: sbrNum,
+        extremes: extNum,
+        sections,            // full detail
+        section_total,       // /75
+        service_total,       // /25
+        predicted,           // /100
+      }),
+    });
+
+    if (!res.ok) {
+      const txt = await res.text();
+      alert(`Submit failed: ${txt}`);
       return;
     }
-    if (!name.trim()) {
-      alert("Please enter your name.");
-      return;
-    }
 
-    try {
-      // Save to API (and Supabase) then redirect to success
-      const res = await fetch("/api/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          store,
-          name,
-          adt: adtNum,
-          sbr: sbrNum,
-          extremes: extremesNum,
-          sections, // full detail with items + done flags
-          section_total: sectionTotal,
-          service_total: serviceTotal,
-          predicted,
-        }),
-      });
-
-      if (!res.ok) {
-        const msg = await res.text();
-        alert(`Submit failed: ${msg}`);
-        return;
-      }
-
-      // Success → go to success page (shows banner + grade)
-      router.push(
-        `/success?store=${encodeURIComponent(store)}&name=${encodeURIComponent(
-          name
-        )}&predicted=${predicted}&stars=${stars}`
-      );
-    } catch (err: any) {
-      alert(`Submit failed: ${err?.message || "network error"}`);
-    }
+    // Success → success page
+    router.push(
+      `/success?store=${encodeURIComponent(store)}&name=${encodeURIComponent(
+        name
+      )}&predicted=${predicted}&stars=${stars}`
+    );
   }
 
   return (
@@ -250,18 +428,14 @@ export default function WalkthroughPage() {
         />
       </div>
 
-      {/* Content */}
       <section className="container" style={{ display: "grid", gap: 16 }}>
         <h1 style={{ fontSize: 22, marginTop: 8 }}>Daily OER Walkthrough</h1>
 
-        {/* Details */}
         <form onSubmit={onSubmit} style={{ display: "grid", gap: 16 }}>
+          {/* Details */}
           <div className="card" style={{ display: "grid", gap: 8 }}>
             <label style={{ fontWeight: 600 }}>Store</label>
-            <select
-              value={store}
-              onChange={(e) => setStore(e.target.value as any)}
-            >
+            <select value={store} onChange={(e) => setStore(e.target.value as any)}>
               <option value="">Select a store...</option>
               <option value="Downpatrick">Downpatrick</option>
               <option value="Kilkeel">Kilkeel</option>
@@ -277,7 +451,7 @@ export default function WalkthroughPage() {
             />
           </div>
 
-          {/* Service inputs */}
+          {/* Service snapshot */}
           <div className="card" style={{ display: "grid", gap: 12 }}>
             <strong>Service Snapshot</strong>
 
@@ -292,9 +466,7 @@ export default function WalkthroughPage() {
                 value={adt}
                 onChange={(e) => setAdt(e.target.value)}
               />
-              <small style={{ color: "var(--muted)" }}>
-                Points: {serviceADT} / 15
-              </small>
+              <small style={{ color: "var(--muted)" }}>Points: {serviceADT} / 15</small>
             </div>
 
             <div style={{ display: "grid", gap: 6 }}>
@@ -308,9 +480,7 @@ export default function WalkthroughPage() {
                 value={sbr}
                 onChange={(e) => setSbr(e.target.value)}
               />
-              <small style={{ color: "var(--muted)" }}>
-                Points: {serviceSBR} / 5
-              </small>
+              <small style={{ color: "var(--muted)" }}>Points: {serviceSBR} / 5</small>
             </div>
 
             <div style={{ display: "grid", gap: 6 }}>
@@ -324,13 +494,11 @@ export default function WalkthroughPage() {
                 value={extremes}
                 onChange={(e) => setExtremes(e.target.value)}
               />
-              <small style={{ color: "var(--muted)" }}>
-                Points: {serviceExt} / 5
-              </small>
+              <small style={{ color: "var(--muted)" }}>Points: {serviceExt} / 5</small>
             </div>
 
             <div className="badge" style={{ marginTop: 4 }}>
-              Service total: <b style={{ marginLeft: 6 }}>{serviceTotal} / 25</b>
+              Service total: <b style={{ marginLeft: 6 }}>{service_total} / 25</b>
             </div>
           </div>
 
@@ -340,12 +508,15 @@ export default function WalkthroughPage() {
             <button type="button" onClick={() => setAll(false)}>Collapse all</button>
           </div>
 
-          {/* Sections: collapsible, vertical checks */}
+          {/* Sections with vertical checks + expandable guidance */}
           <div style={{ display: "grid", gap: 12 }}>
             {sections.map((sec, si) => {
-              const totalItems = sec.items.length;
-              const doneItems = sec.items.filter((i) => i.done).length;
-              const score = sectionScores[si];
+              const doneItems = sec.items.filter((i) => i.done);
+              const earned = sec.allOrNothing
+                ? doneItems.length === sec.items.length && sec.items.length > 0
+                  ? sec.points
+                  : 0
+                : doneItems.reduce((a, b) => a + b.weight, 0);
 
               return (
                 <div key={sec.title} className="card" style={{ padding: 0 }}>
@@ -358,7 +529,8 @@ export default function WalkthroughPage() {
                       padding: 12,
                       borderBottom: "1px solid var(--softline)",
                       background:
-                        doneItems === totalItems && totalItems > 0
+                        (!sec.allOrNothing && earned >= sec.points) ||
+                        (sec.allOrNothing && earned === sec.points)
                           ? "rgba(0,128,0,.05)"
                           : "#fff",
                     }}
@@ -366,36 +538,56 @@ export default function WalkthroughPage() {
                     <div style={{ display: "grid", gap: 4 }}>
                       <strong>{sec.title}</strong>
                       <small style={{ color: "var(--muted)" }}>
-                        {doneItems}/{totalItems} checks · {score}/{sec.points} pts
+                        {doneItems.length}/{sec.items.length} checks · {earned}/{sec.points} pts
+                        {sec.allOrNothing ? " (all-or-nothing)" : ""}
                       </small>
                     </div>
                     <button type="button" onClick={() => toggleSection(si)} style={{ fontSize: 13 }}>
-                      {open[si] ? "Hide" : "Show"}
+                      {/* accessible label */}
+                      <span aria-hidden>{open[si] ? "Hide" : "Show"}</span>
                     </button>
                   </div>
 
                   {open[si] && (
                     <div style={{ padding: 12, display: "grid", gap: 10 }}>
                       {sec.items.map((it, ii) => (
-                        <label key={ii} style={{ display: "flex", gap: 10 }}>
-                          <input
-                            type="checkbox"
-                            checked={it.done}
-                            onChange={(e) =>
-                              setSections((prev) => {
-                                const next = [...prev];
-                                next[si] = { ...next[si] };
-                                next[si].items = [...next[si].items];
-                                next[si].items[ii] = {
-                                  ...next[si].items[ii],
-                                  done: e.target.checked,
-                                };
-                                return next;
-                              })
-                            }
-                          />
-                          <span>{it.label}</span>
-                        </label>
+                        <div key={ii} className="card" style={{ padding: 10 }}>
+                          <label style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                            <input
+                              type="checkbox"
+                              checked={it.done}
+                              onChange={(e) =>
+                                setSections((prev) => {
+                                  const next = [...prev];
+                                  next[si] = { ...next[si] };
+                                  next[si].items = [...next[si].items];
+                                  next[si].items[ii] = {
+                                    ...next[si].items[ii],
+                                    done: e.target.checked,
+                                  };
+                                  return next;
+                                })
+                              }
+                            />
+                            <span>
+                              {it.label}{" "}
+                              <small style={{ color: "var(--muted)" }}>· {it.weight} pt{it.weight !== 1 ? "s" : ""}</small>
+                            </span>
+                          </label>
+
+                          {it.tips && it.tips.length > 0 && (
+                            <details style={{ marginTop: 6 }}>
+                              <summary>Guidance / What good looks like</summary>
+                              <ul style={{ margin: "8px 0 0 18px", display: "grid", gap: 4 }}>
+                                {it.tips.map((t, i) => (
+                                  <li key={i} style={{ fontSize: 14, color: "var(--muted)" }}>
+                                    {t}
+                                  </li>
+                                ))}
+                              </ul>
+                            </details>
+                          )}
+                        </div>
                       ))}
                     </div>
                   )}
@@ -406,14 +598,10 @@ export default function WalkthroughPage() {
 
           {/* Live totals + star grade */}
           <div className="card" style={{ display: "grid", gap: 8 }}>
-            <div>
-              <b>Walkthrough total:</b> {sectionTotal}/75
-            </div>
-            <div>
-              <b>Service total:</b> {serviceTotal}/25
-            </div>
+            <div><b>Walkthrough total:</b> {section_total}/75</div>
+            <div><b>Service total:</b> {service_total}/25</div>
             <div style={{ fontSize: 18 }}>
-              <b>Predicted OER:</b> {predicted}/100 &nbsp;·&nbsp;{" "}
+              <b>Predicted OER:</b> {predicted}/100 &nbsp;·&nbsp;
               {"★".repeat(stars)}
               {"☆".repeat(5 - stars)}
             </div>
