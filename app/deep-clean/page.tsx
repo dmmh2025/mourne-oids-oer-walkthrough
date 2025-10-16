@@ -18,7 +18,7 @@ type SectionState = {
 
 const STORES = ["Downpatrick", "Kilkeel", "Newcastle"] as const;
 
-// --- Checklist content (from your doc) ---
+// --- Checklist content ---
 const RAW: { title: string; items: string[] }[] = [
   {
     title: "Front of House & CSR",
@@ -132,7 +132,7 @@ const RAW: { title: string; items: string[] }[] = [
       "Clean entrance around shop",
     ],
   },
-]; // Content from your “Mourne-oids autumn deep clean checklist” doc. :contentReference[oaicite:1]{index=1}
+];
 
 function toState(): SectionState[] {
   return RAW.map((s) => ({
@@ -162,6 +162,14 @@ export default function DeepCleanPage() {
     files: FileList | null
   ) {
     if (!files || !store) return;
+
+    // ✅ Non-null Supabase client reference for TS
+    const sb = supabase!;
+    if (!sb) {
+      setMsg("Supabase is not initialised. Check NEXT_PUBLIC_SUPABASE_* env vars.");
+      return;
+    }
+
     const fileArr = Array.from(files);
     const uploaded: PhotoRef[] = [];
 
@@ -170,15 +178,17 @@ export default function DeepCleanPage() {
       const path = `${slug(store)}/${Date.now()}_${slug(
         sections[secIdx].title
       )}_${slug(sections[secIdx].items[itemIdx].label)}_${i}_${f.name}`;
-      const { data, error } = await supabase.storage
+
+      const { error } = await sb.storage
         .from("deep-clean")
         .upload(path, f, { upsert: false });
+
       if (error) {
         console.error(error);
         setMsg("Upload failed for one or more photos.");
         continue;
       }
-      const { data: pub } = supabase.storage.from("deep-clean").getPublicUrl(path);
+      const { data: pub } = sb.storage.from("deep-clean").getPublicUrl(path);
       uploaded.push({ url: pub.publicUrl, path });
     }
 
@@ -198,6 +208,13 @@ export default function DeepCleanPage() {
       setMsg("Please select a store first.");
       return;
     }
+
+    const sb = supabase!;
+    if (!sb) {
+      setMsg("Supabase is not initialised. Check NEXT_PUBLIC_SUPABASE_* env vars.");
+      return;
+    }
+
     setSaving(true);
     setMsg(null);
 
@@ -221,7 +238,7 @@ export default function DeepCleanPage() {
     }
 
     setMsg("Saved! Your deep clean progress has been recorded.");
-    // Optionally reset the form:
+    // Optionally reset:
     // setSections(toState());
   }
 
