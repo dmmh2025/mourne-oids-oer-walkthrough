@@ -1,99 +1,89 @@
-export const dynamic = "force-static";
+"use client";
+
+import * as React from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "@/supabaseClient";
+
+const STORES = ["Downpatrick", "Kilkeel", "Newcastle"] as const;
+
+type Item = { done: boolean };
+type Section = { items: Item[] };
+type Row = { store: string; items: Section[]; updated_at?: string };
+
+function calcPct(items: Section[] | null | undefined) {
+  if (!items) return 0;
+  const flat = items.flatMap((s) => s.items || []);
+  const total = flat.length || 0;
+  const done = flat.filter((i) => i?.done).length;
+  return total ? Math.round((done / total) * 100) : 0;
+}
 
 export default function HomePage() {
+  const [rows, setRows] = useState<Record<string, Row>>({});
+
+  useEffect(() => {
+    (async () => {
+      const sb = supabase!;
+      const { data, error } = await sb.from("deep_clean_submissions").select("*");
+      if (!error && Array.isArray(data)) {
+        const map: Record<string, Row> = {};
+        for (const r of data as any[]) map[r.store] = r;
+        setRows(map);
+      }
+    })();
+  }, []);
+
   return (
     <main>
       {/* Banner */}
       <div className="banner">
-        <img
-          src="/mourneoids_forms_header_1600x400.png"
-          alt="Mourne-oids Header Banner"
-        />
+        <img src="/mourneoids_forms_header_1600x400.png" alt="Mourne-oids Header Banner" />
       </div>
 
-      {/* Hero card */}
-      <section style={{ padding: 16, marginBottom: 14 }}>
-        <header style={{ display: "grid", gap: 4 }}>
-          <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1 }}>
-            Daily OER Walkthrough
-          </div>
-          <div style={{ color: "var(--muted)", fontSize: 14 }}>
-            Quick, consistent, OER-ready checks
-          </div>
-        </header>
+      <section style={{ padding: 24, display: "grid", gap: 16 }}>
+        <h1 style={{ fontSize: 24, marginBottom: 4 }}>Mourne-oids Tools</h1>
+        <p style={{ color: "var(--muted)", marginBottom: 12 }}>
+          Choose a section to get started.
+        </p>
 
-        <div
-          style={{
-            display: "grid",
-            gap: 16,
-            gridTemplateColumns: "1fr",
-            maxWidth: 820,
-          }}
-        >
-          {/* Intro box */}
-          <div
-            style={{
-              display: "grid",
-              gap: 10,
-              background:
-                "linear-gradient(180deg, rgba(0,100,145,.06), rgba(255,255,255,1))",
-              border: "1px solid var(--softline)",
-              borderRadius: 16,
-              padding: 16,
-            }}
-          >
-            <p style={{ margin: 0, color: "var(--muted)" }}>
-              Use this walkthrough to make your store fully OER-ready before
-              opening. You’ll get a predicted OER score and your results are
-              saved to the dashboard automatically.
-            </p>
-          </div>
+        {/* Main buttons */}
+        <div style={{ display: "grid", gap: 14, maxWidth: 400 }}>
+          <a href="/walkthrough">
+            <button className="brand" style={{ width: "100%", fontSize: 16 }}>
+              Daily OER Walkthrough
+            </button>
+          </a>
 
-          {/* Actions */}
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              flexWrap: "wrap",
-              alignItems: "center",
-            }}
-          >
-            <a href="/walkthrough" style={{ flex: "1 1 180px", maxWidth: 240 }}>
-              <button className="brand" style={{ width: "100%" }}>
-                Start Walkthrough
-              </button>
-            </a>
-            <a href="/deep-clean" style={{ flex: "1 1 220px", maxWidth: 260 }}>
-              <button style={{ width: "100%" }}>
-                Autumn Deep Clean Checklist
-              </button>
-            </a>
-            <a href="/admin" style={{ flex: "1 1 180px", maxWidth: 240 }}>
-              <button style={{ width: "100%" }}>Open Admin Dashboard</button>
-            </a>
-          </div>
+          <a href="/deep-clean">
+            <button className="brand" style={{ width: "100%", fontSize: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              Autumn Deep Clean
+              <span style={{
+                background: "#fff",
+                color: "#006491",
+                fontWeight: 600,
+                padding: "2px 10px",
+                borderRadius: 999,
+                fontSize: 13,
+                border: "1px solid #006491",
+              }}>
+                {overallPct(rows)}%
+              </span>
+            </button>
+          </a>
 
-          {/* Legend */}
-          <div
-            style={{
-              display: "grid",
-              gap: 6,
-              border: "1px solid var(--softline)",
-              borderRadius: 12,
-              padding: 12,
-              background: "#fff",
-              maxWidth: 820,
-            }}
-          >
-            <strong>Star grading</strong>
-            <div style={{ color: "var(--muted)" }}>
-              90%+ = 5★ &nbsp;•&nbsp; 80–89.99% = 4★ &nbsp;•&nbsp; 70–79.99% =
-              3★ &nbsp;•&nbsp; 60–69.99% = 2★ &nbsp;•&nbsp; 50–59.99% = 1★
-              &nbsp;•&nbsp; &lt;50% = 0★
-            </div>
-          </div>
+          <a href="/admin">
+            <button style={{ width: "100%", fontSize: 16 }}>Admin Dashboard</button>
+          </a>
         </div>
       </section>
     </main>
   );
+}
+
+function overallPct(rows: Record<string, Row>) {
+  const vals = Object.values(rows);
+  if (!vals.length) return 0;
+  const pcts = vals.map((r) => calcPct(r.items));
+  const avg = Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length);
+  return avg || 0;
 }
