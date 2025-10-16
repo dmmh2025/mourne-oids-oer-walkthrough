@@ -1,7 +1,6 @@
-"use client";
+export const dynamic = "force-dynamic"; // don't pre-render with unknown query params
 
 import * as React from "react";
-import { useSearchParams } from "next/navigation";
 
 const fmt = (n: number | null | undefined) =>
   typeof n === "number" && !Number.isNaN(n)
@@ -11,14 +10,22 @@ const fmt = (n: number | null | undefined) =>
 const starsForPercent = (p: number) =>
   p >= 90 ? 5 : p >= 80 ? 4 : p >= 70 ? 3 : p >= 60 ? 2 : p >= 50 ? 1 : 0;
 
-export default function SuccessPage() {
-  const sp = useSearchParams();
+function num(q: string | string[] | undefined, def = 0) {
+  const v = Array.isArray(q) ? q[0] : q;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : def;
+}
 
-  const store = sp.get("store") || "—";
-  const name = sp.get("name") || "—";
-  const walk = Number(sp.get("walk") || 0);
-  const service = Number(sp.get("service") || 0);
-  const total = Number(sp.get("total") || walk + service);
+export default function SuccessPage({
+  searchParams,
+}: {
+  searchParams: { [key: string]: string | string[] | undefined };
+}) {
+  const store = (searchParams.store as string) ?? "—";
+  const name = (searchParams.name as string) ?? "—";
+  const walk = num(searchParams.walk, 0);
+  const service = num(searchParams.service, 0);
+  const total = num(searchParams.total, walk + service);
   const stars = starsForPercent(total);
 
   return (
