@@ -1,0 +1,112 @@
+:root{
+  --bg:#f6f8fb;
+  --card:#ffffff;
+  --ink:#0f172a;
+  --muted:#64748b;
+  --line:#e5e7eb;
+  --softline:#eef2f7;
+  --brand:#006491;           /* Domino's blue */
+  --brand-ghost: rgba(0,100,145,.10);
+  --good:#22c55e;
+  --warn:#f59e0b;
+  --bad:#ef4444;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+
+html{color-scheme:light}
+body{
+  margin:0;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+  color:var(--ink);
+  background:var(--bg);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+}
+
+/* Containers, cards, sections */
+main{max-width:1200px;margin:0 auto;padding:16px}
+section{
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:12px;
+  box-shadow:0 6px 18px rgba(0,0,0,.04);
+}
+section > header{
+  display:flex;align-items:center;justify-content:space-between;
+  border-bottom:1px solid var(--softline);
+  padding:8px 12px;margin-bottom:8px
+}
+
+/* Banner helpers */
+.banner{
+  border-bottom:4px solid var(--brand);
+  margin-bottom:12px;border-radius:12px;overflow:hidden;
+  box-shadow:0 6px 18px rgba(0,0,0,.06);
+}
+.banner img{width:100%;max-height:200px;object-fit:cover;display:block}
+
+/* Buttons */
+button{
+  font:inherit;
+  background:#fff;
+  border:1px solid var(--line);
+  color:var(--ink);
+  padding:10px 12px;
+  border-radius:10px;
+  cursor:pointer;
+  transition:transform .08s ease, box-shadow .15s ease, background .15s ease;
+}
+button:hover{transform:translateY(-1px); box-shadow:0 6px 14px rgba(0,0,0,.08)}
+button:active{transform:translateY(0)}
+button.brand{
+  background:var(--brand); color:#fff; border-color:transparent;
+}
+button.brand:hover{box-shadow:0 8px 18px var(--brand-ghost)}
+
+/* Inputs/selects */
+input[type="date"], input[type="text"], input[type="number"], select{
+  padding:8px 10px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;
+  font:inherit;color:var(--ink)
+}
+input::placeholder{color:#9ca3af}
+
+/* Table polish */
+table{width:100%;border-collapse:collapse}
+table th, table td{
+  border-bottom:1px solid #f1f5f9;
+  padding:8px 10px;text-align:left;font-size:13px
+}
+table thead th{color:#475569; user-select:none; cursor:pointer}
+table tbody tr{transition:background .15s ease}
+table tbody tr:hover{background:#f8fafc}
+
+/* Collapsibles */
+details{background:#fff;border:1px solid var(--softline);border-radius:12px;overflow:hidden}
+details+details{margin-top:8px}
+summary{
+  cursor:pointer; list-style:none; padding:12px; background:#f8fafc;
+  display:grid; gap:10px; align-items:center;
+}
+summary::-webkit-details-marker{display:none}
+
+/* Chips / badges (generic) */
+.badge{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:6px 10px;border-radius:999px;background:#f1f5f9;border:1px solid #e5e7eb;
+  color:#111827;font-weight:600
+}
+
+/* Stars color by grade (optional utility classes) */
+.stars{font-weight:800}
+.stars.good{color:var(--good)}
+.stars.mid{color:#0ea5e9}
+.stars.warn{color:var(--warn)}
+.stars.bad{color:var(--bad)}
+
+/* Mobile tweaks */
+@media (max-width:640px){
+  main{padding:12px}
+  table th, table td{font-size:12px}
+}
