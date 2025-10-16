@@ -9,7 +9,12 @@ const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseAnon);
 
 // ---------- Types ----------
-type Item = { key: string; label: string; pts?: number };
+type Item = {
+  key: string;
+  label: string;
+  pts?: number;          // item weight (only used for non all-or-nothing)
+  details?: string[];    // collapsible bullet points under the checkbox
+};
 type Section =
   | { key: string; title: string; max: number; items: Item[]; mode?: "normal" }
   | { key: "product_quality"; title: string; max: number; items: Item[]; mode: "all_or_nothing" };
@@ -50,77 +55,263 @@ function starsForPercent(p: number) {
   return 0;
 }
 
-// ---------- New Sections & Points (total walkthrough = 75) ----------
-// NOTE: We’ve set explicit weights per item to match your totals.
-// If any weight differs from your doc, tell me which item and I’ll adjust the pts value.
+// ---------- Sections & detailed guidance (total walkthrough = 75) ----------
+// Details are collapsible per checkbox (Option B)
 const SECTIONS: Section[] = [
-  // 1) FOOD SAFETY — 18 pts (6 × 3 pts)
+  // 1) FOOD SAFETY — 18 pts
   {
     key: "food_safety",
     title: "Food Safety",
     max: 18,
     mode: "normal",
     items: [
-      { key: "temps_in_range", label: "Temps entered on time and within range", pts: 3 },
-      { key: "within_shelf_life", label: "Products within shelf life", pts: 3 },
-      { key: "proper_handwashing", label: "Proper handwashing", pts: 3 },
-      { key: "sanitation_followed", label: "Sanitation procedures followed", pts: 3 },
-      { key: "proper_cooking_temps", label: "Proper cooking temps", pts: 3 },
-      { key: "pest_control_service", label: "4–6 week pest control service in place", pts: 3 },
+      {
+        key: "temps_in_range",
+        label: "Temps entered on time and within range",
+        pts: 3,
+      },
+      {
+        key: "within_shelf_life",
+        label: "Products within shelf life (incl. ambient, dips & drinks)",
+        pts: 3,
+      },
+      {
+        key: "proper_handwashing",
+        label: "Proper handwashing (20 seconds)",
+        pts: 3,
+      },
+      {
+        key: "sanitation_followed",
+        label: "Sanitation procedures followed",
+        pts: 3,
+        details: [
+          "Timer running",
+          "Sanitiser sink correct concentration",
+          "All bottle lids changed daily",
+          "Can opener clean, rust free, no food debris",
+          "Sanitiser bottles filled and available",
+          "All touch points clean — bubble popper, sauce bottles, shakers, keyboards",
+          "Sanitiser spray is the only chemical in kitchen area",
+          "All dishes clean",
+          "Mop bucket and sink clean",
+          "Bins clean and free from sauce stains",
+        ],
+      },
+      {
+        key: "proper_cooking_temps",
+        label: "Proper cooking temps of food",
+        pts: 3,
+      },
+      {
+        key: "pest_control_service",
+        label: "4–6 week pest control service in place",
+        pts: 3,
+      },
     ],
   },
-  // 2) PRODUCT — 12 pts (weights per your breakdown: 5+2+2+1+2)
+
+  // 2) PRODUCT — 12 pts (5+2+2+1+2)
   {
     key: "product",
     title: "Product",
     max: 12,
     mode: "normal",
     items: [
-      { key: "dough_managed", label: "Dough properly managed", pts: 5 },
-      { key: "bread_prepped", label: "Bread products properly prepared", pts: 2 },
-      { key: "app", label: "Approved Products & Procedures (APP)", pts: 2 },
-      { key: "sides_prepped", label: "All sides properly prepared", pts: 1 },
-      { key: "prp_adequate", label: "Adequate PRP", pts: 2 },
+      {
+        key: "dough_managed",
+        label: "Dough properly managed",
+        pts: 5,
+        details: [
+          "All sizes available at stretch table and in good condition",
+          "Dough plan created and followed",
+          "No blown dough",
+          "No aired dough",
+          "No dough past Day 6",
+        ],
+      },
+      {
+        key: "bread_prepped",
+        label: "Bread products properly prepared",
+        pts: 2,
+        details: [
+          "GPB with garlic spread, sauce and cheese to crust",
+          "No dock in Dippers",
+          "Dough balls not opening",
+        ],
+      },
+      {
+        key: "app",
+        label: "Approved Products & Procedures (APP)",
+        pts: 2,
+        details: [
+          "Makeline bins filled for max 2 hours trade",
+          "Allergen poster displayed; leaflets available",
+          "Back doors securely closed at all times",
+          "GF kit complete — screens free of carbon",
+          "Toppings in black tubs on bottom row of makeline bin",
+          "Plant-based procedures followed (PB cheese not over 1st tray)",
+          "All products available (incl. sides & soft drinks)",
+          "Red & white dough scrapers available on makeline for doughballs",
+        ],
+      },
+      {
+        key: "sides_prepped",
+        label: "All sides properly prepared",
+        pts: 1,
+        details: [
+          "Fries prepped",
+          "2-pack & 4-pack cookies prepped and available",
+          "Double Chocolate cookies prepped and available",
+          "Flavoured wings prepped and available",
+          "All sides available in makeline cabinet",
+        ],
+      },
+      {
+        key: "prp_adequate",
+        label: "Adequate PRP to handle expected sales volume",
+        pts: 2,
+      },
     ],
   },
-  // 3) IMAGE — 20 pts (weights chosen to total 20 neatly for mobile; tweakable)
+
+  // 3) IMAGE — 20 pts
   {
     key: "image",
     title: "Image",
     max: 20,
     mode: "normal",
     items: [
-      { key: "uniform", label: "Team in proper uniform", pts: 3 },
-      { key: "grooming", label: "Grooming standards", pts: 1 },
-      { key: "store_interior", label: "Store interior clean", pts: 2 },
-      { key: "customer_view", label: "Customer area and view", pts: 2 },
-      { key: "outside", label: "Outside", pts: 2 },
-      { key: "baking_equipment", label: "Baking Equipment", pts: 3 },
-      { key: "delivery_bags", label: "Delivery bags", pts: 2 },
-      { key: "signage_menu", label: "Signage & Menu", pts: 1 },
-      { key: "walk_in_clean", label: "Walk-in clean", pts: 1 },
-      { key: "makeline_clean", label: "Makeline clean", pts: 1 },
-      { key: "delivery_vehicles", label: "Delivery vehicles", pts: 2 },
+      {
+        key: "uniform",
+        label: "Team members in proper uniform",
+        pts: 3,
+        details: [
+          "Jet black trousers/jeans — no leggings, joggers or combats",
+          "Plain white/black undershirt with no branding/logos",
+          "No visible piercings (plasters cannot be used to cover)",
+          "No jumpers/hoodies/jackets — Domino’s uniforms only",
+        ],
+      },
+      {
+        key: "grooming",
+        label: "Grooming standards maintained",
+        pts: 1,
+        details: [
+          "Clean shaven or neat beard",
+          "No visible piercings (plasters cannot be used to cover)",
+        ],
+      },
+      {
+        key: "store_interior",
+        label: "Store interior clean and in good repair",
+        pts: 3,
+        details: [
+          "All toilets have a lined bin with lid",
+          "All bins in customer view have a lid and are clean",
+          "No sauce stains on walls",
+          "No build-up of cornmeal in floor corners",
+          "Store generally clean and presentable",
+        ],
+      },
+      {
+        key: "customer_view",
+        label: "Customer area and view",
+        pts: 3,
+        details: [
+          "Customer area clean and welcoming",
+          "Tables and chairs clean",
+          "Floors clean, no cobwebs",
+          "No build-up of leaves/cornmeal in corners",
+          "Everything in customer view clean and tidy",
+          "No staff food/drink in customer view",
+        ],
+      },
+      {
+        key: "outside",
+        label: "Outside",
+        pts: 2,
+        details: [
+          "No branded rubbish front or rear",
+          "Bins not overflowing",
+          "No build-up of leaves/dirt in corners beside doors",
+          "No build-up of leaves/rubbish/weeds outside shop",
+          "Signage clean and free from cobwebs/stains",
+        ],
+      },
+      {
+        key: "baking_equipment",
+        label: "Baking Equipment",
+        pts: 3,
+        details: [
+          "All screens & pans clean; no food or carbon build-up",
+          "SC screens not bent or misshapen",
+          "Oven hood & filters clean",
+          "Oven chambers clean and not discolouring; windows clean",
+          "Bubble popper clean; top of oven not dusty",
+        ],
+      },
+      {
+        key: "delivery_bags",
+        label: "Delivery bags",
+        pts: 2,
+        details: [
+          "Clean inside & out; no build-up of cornmeal",
+          "No sticker residue on bags",
+          "Patches not worn; logo not damaged",
+          "No rips or tears",
+        ],
+      },
+      {
+        key: "signage_menu",
+        label: "Signage & Menu current, displayed correctly, clean & in good repair",
+        pts: 1,
+      },
+      {
+        key: "walk_in_clean",
+        label: "Walk-in clean and working",
+        pts: 1,
+        details: [
+          "Fan/floor/ceiling/walls & shelving clean (no mould/debris/rust)",
+          "Door seal good and handle clean — no food debris",
+          "No dating stickers on the floor; floors clean",
+        ],
+      },
+      {
+        key: "makeline_clean",
+        label: "Makeline clean and working",
+        pts: 1,
+        details: [
+          "Cupboards/doors/handles/shelves/seals/lids clean & in good condition",
+          "Catch trays/grills/seals in good condition — no splits/tears/missing rails",
+        ],
+      },
+      {
+        key: "delivery_vehicles",
+        label: "Delivery vehicles represent positive brand image",
+        pts: 1,
+      },
     ],
   },
-  // 4) SAFETY & SECURITY — 5 pts (5 × 1 pt)
+
+  // 4) SAFETY & SECURITY — 5 pts
   {
     key: "safety_security",
     title: "Safety & Security",
     max: 5,
     mode: "normal",
     items: [
-      { key: "drivers_cash_drops", label: "Drivers making cash drops", pts: 1 },
-      { key: "caller_id_working", label: "Caller ID working", pts: 1 },
-      { key: "safe_secure", label: "Safe secure", pts: 1 },
-      { key: "till_under_100", label: "Till < £100", pts: 1 },
-      { key: "drivers_safe", label: "Drivers safe", pts: 1 },
+      { key: "drivers_cash_drops", label: "Drivers regularly making cash drops", pts: 1 },
+      { key: "caller_id_working", label: "Caller ID working — security call backs being made", pts: 1 },
+      { key: "safe_secure", label: "Safe used and secure", pts: 1 },
+      { key: "till_under_100", label: "No more than £100 in front till", pts: 1 },
+      { key: "drivers_safe", label: "Drivers wearing seatbelts and driving safely", pts: 1 },
     ],
   },
+
   // 5) PRODUCT QUALITY — 20 pts (ALL OR NOTHING)
   {
     key: "product_quality",
-    title: "Product Quality",
+    title: "Product Quality (all must be checked to score)",
     max: 20,
     mode: "all_or_nothing",
     items: [
@@ -130,13 +321,13 @@ const SECTIONS: Section[] = [
       { key: "portion", label: "PORTION" },
       { key: "placement", label: "PLACEMENT" },
       { key: "bake", label: "BAKE" },
-      { key: "bacon_check", label: "Bacon check" },
-      { key: "no_sauce_cheese_crust", label: "No sauce & cheese on crust" },
+      { key: "bacon_check", label: "Have you checked the bacon in the middle" },
+      { key: "no_sauce_cheese_crust", label: "No sauce and cheese on crust" },
     ],
   },
 ];
 
-const STORAGE_KEY = "oer_walkthrough_v2";
+const STORAGE_KEY = "oer_walkthrough_v3";
 
 // ---------- Page ----------
 export default function WalkthroughPage() {
@@ -160,6 +351,9 @@ export default function WalkthroughPage() {
         ])
       )
   );
+
+  // Item-details expansion state (per checkbox)
+  const [itemOpen, setItemOpen] = React.useState<Record<string, boolean>>({});
 
   // UI
   const [expanded, setExpanded] = React.useState<Record<string, boolean>>(
@@ -198,18 +392,15 @@ export default function WalkthroughPage() {
 
     for (const sec of SECTIONS) {
       const st = sections[sec.key] || {};
-      const checked = sec.items.filter((i) => st[i.key]).map((i) => i.key);
+      const checkedCount = sec.items.filter((i) => st[i.key]).length;
 
       if (sec.key === "product_quality" && sec.mode === "all_or_nothing") {
-        // All-or-nothing: all must be checked to earn 20, else 0
         const allChecked = sec.items.every((i) => !!st[i.key]);
         total += allChecked ? sec.max : 0;
       } else {
-        // Sum explicit item weights (pts)
         const secPoints = sec.items
           .filter((i) => st[i.key])
           .reduce((sum, i) => sum + (i.pts ?? 0), 0);
-        // clamp (safety)
         total += Math.min(secPoints, sec.max);
       }
     }
@@ -261,6 +452,11 @@ export default function WalkthroughPage() {
     setExtPerThousand("");
     setSbr("");
     setMsg(null);
+    setItemOpen({});
+  }
+  function toggleItemDetails(sKey: string, iKey: string) {
+    const k = `${sKey}:${iKey}`;
+    setItemOpen((p) => ({ ...p, [k]: !p[k] }));
   }
 
   // Submit -> Supabase -> redirect
@@ -292,6 +488,7 @@ export default function WalkthroughPage() {
           key: i.key,
           label: i.label,
           pts: i.pts ?? null,
+          details: i.details ?? null,
           checked: sections[sec.key]?.[i.key] ?? false,
         })),
       }));
@@ -313,7 +510,6 @@ export default function WalkthroughPage() {
 
       setMsg("✅ Walkthrough saved! Redirecting…");
 
-      // clear draft
       try {
         localStorage.removeItem(STORAGE_KEY);
       } catch {}
@@ -395,13 +591,13 @@ export default function WalkthroughPage() {
         <header style={{ marginBottom: 8 }}>
           <h1 style={{ margin: 0, fontSize: 24 }}>Daily OER Walkthrough</h1>
           <p style={{ margin: "6px 0 0 0", color: "#475569" }}>
-            Tick each checklist. Add your ADT / SBR / Extremes to auto-calc Service points.
+            Tick each checklist. Tap “Details” for full guidance. Add your ADT / SBR / Extremes to auto-calc Service points.
           </p>
         </header>
 
         {/* Form */}
         <form onSubmit={submit} style={{ display: "grid", gap: 12 }}>
-          {/* Store + Name (stacked on mobile via CSS) */}
+          {/* Store + Name */}
           <div className="two-col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <label style={{ display: "grid", gap: 6 }}>
               Store
@@ -468,7 +664,7 @@ export default function WalkthroughPage() {
             </label>
           </div>
 
-          {/* Sections (collapsible, items vertical) */}
+          {/* Sections (collapsible), items vertical with per-item details toggles */}
           <div style={{ display: "grid", gap: 12 }}>
             {SECTIONS.map((sec) => {
               const state = sections[sec.key];
@@ -530,24 +726,59 @@ export default function WalkthroughPage() {
                         <button type="button" onClick={() => setAllInSection(sec.key, false)} style={ghostBtn()}>Clear all</button>
                       </div>
 
-                      {/* Items as a single vertical column (mobile-friendly) */}
+                      {/* Items as a single vertical column with Details toggles */}
                       <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
-                        {sec.items.map((it) => (
-                          <label key={it.key} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: 10, border: "1px solid #f1f5f9", borderRadius: 10 }}>
-                            <input
-                              type="checkbox"
-                              checked={!!state?.[it.key]}
-                              onChange={() => toggleItem(sec.key, it.key)}
-                              style={{ marginTop: 4 }}
-                            />
-                            <div style={{ display: "grid", gap: 2 }}>
-                              <span>{it.label}</span>
-                              {"pts" in it && it.pts !== undefined && (
-                                <small style={{ color: "#6b7280" }}>{it.pts} pts</small>
-                              )}
+                        {sec.items.map((it) => {
+                          const k = `${sec.key}:${it.key}`;
+                          const open = !!itemOpen[k];
+                          return (
+                            <div key={it.key} style={{ border: "1px solid #f1f5f9", borderRadius: 10, padding: 10 }}>
+                              <label style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                                <input
+                                  type="checkbox"
+                                  checked={!!state?.[it.key]}
+                                  onChange={() => toggleItem(sec.key, it.key)}
+                                  style={{ marginTop: 4 }}
+                                />
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                    <span>{it.label}</span>
+                                    {"pts" in it && it.pts !== undefined && (
+                                      <small style={{ color: "#6b7280" }}>({it.pts} pts)</small>
+                                    )}
+                                    {it.details && it.details.length > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleItemDetails(sec.key, it.key)}
+                                        style={{
+                                          marginLeft: "auto",
+                                          padding: "6px 10px",
+                                          borderRadius: 8,
+                                          border: "1px solid #e5e7eb",
+                                          background: "white",
+                                          cursor: "pointer",
+                                          fontWeight: 700,
+                                        }}
+                                        aria-expanded={open ? "true" : "false"}
+                                        aria-controls={`details-${k}`}
+                                      >
+                                        {open ? "Hide details ▴" : "Details ▾"}
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {open && it.details && (
+                                    <ul id={`details-${k}`} style={{ margin: "8px 0 0 0", paddingLeft: 18, color: "#374151" }}>
+                                      {it.details.map((d, i) => (
+                                        <li key={i} style={{ marginTop: 4 }}>{d}</li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </div>
+                              </label>
                             </div>
-                          </label>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
