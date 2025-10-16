@@ -9,6 +9,7 @@ type PhotoRef = { url: string; path: string };
 type ItemState = { label: string; done: boolean; by: string; photos: PhotoRef[] };
 type SectionState = { title: string; items: ItemState[] };
 
+/** Deep Clean checklist data */
 const RAW: { title: string; items: string[] }[] = [
   {
     title: "Front of House & CSR",
@@ -126,11 +127,9 @@ function toInitialState(): SectionState[] {
     items: s.items.map((label) => ({ label, done: false, by: "", photos: [] })),
   }));
 }
-
 function slug(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
-
 function fmtSince(date?: Date) {
   if (!date) return "";
   const secs = Math.floor((Date.now() - date.getTime()) / 1000);
@@ -145,7 +144,7 @@ function fmtSince(date?: Date) {
 export default function StoreDeepCleanPage() {
   const params = useParams();
   const storeParam = String(params?.store || "");
-  const store = useMemo(() => {
+  const store = React.useMemo(() => {
     const s = storeParam.toLowerCase();
     if (s === "downpatrick") return "Downpatrick";
     if (s === "kilkeel") return "Kilkeel";
@@ -154,24 +153,36 @@ export default function StoreDeepCleanPage() {
   }, [storeParam]);
 
   const [sections, setSections] = useState<SectionState[]>(toInitialState());
-  // track open/closed per section for smart collapse
   const [open, setOpen] = useState<boolean[]>(RAW.map(() => true));
   const [msg, setMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [lightbox, setLightbox] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Lightbox
-  const [lightbox, setLightbox] = useState<string | null>(null);
-
-  // Derived progress
+  // Derived totals
   const flat = sections.flatMap((s) => s.items);
   const total = flat.length;
   const done = flat.filter((i) => i.done).length;
   const pct = total ? Math.round((done / total) * 100) : 0;
 
-  // Load existing for this store
+  // Local draft key
+  const draftKey = store ? `deepclean:${store}` : null;
+
+  // Load draft (if any) first
+  useEffect(() => {
+    if (!store || !draftKey) return;
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setSections(parsed);
+      }
+    } catch {}
+  }, [store, draftKey]);
+
+  // Fetch server state
   useEffect(() => {
     (async () => {
       if (!store) {
@@ -191,7 +202,6 @@ export default function StoreDeepCleanPage() {
       }
       if (data?.items) {
         setSections(data.items as SectionState[]);
-        // auto-close fully complete sections
         const nextOpen = (data.items as SectionState[]).map((sec) =>
           sec.items.every((i) => i.done) ? false : true
         );
@@ -201,13 +211,16 @@ export default function StoreDeepCleanPage() {
     })();
   }, [store]);
 
-  // Debounced auto-save on changes
+  // Auto-save debounce + save local draft
   useEffect(() => {
+    // local draft
+    if (draftKey) {
+      try { localStorage.setItem(draftKey, JSON.stringify(sections)); } catch {}
+    }
+    // debounce save
     if (!store || loading) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      void saveProgress(true);
-    }, 1500);
+    saveTimer.current = setTimeout(() => { void saveProgress(true); }, 1500);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sections]);
 
@@ -218,7 +231,6 @@ export default function StoreDeepCleanPage() {
       return next;
     });
   }
-
   function setAll(openVal: boolean) {
     setOpen(RAW.map(() => openVal));
   }
@@ -231,36 +243,34 @@ export default function StoreDeepCleanPage() {
 
     for (let i = 0; i < fileArr.length; i++) {
       const f = fileArr[i];
-      const path = `${slug(store)}/${Date.now()}_${slug(
-        sections[secIdx].title
-      )}_${slug(sections[secIdx].items[itemIdx].label)}_${i}_${f.name}`;
-      const { error } = await sb.storage.from("deep-clean").upload(path, f, { upsert: false });
-      if (error) {
-        console.error(error);
-        setMsg("Upload failed for one or more photos.");
+
+      // Reject massive files (5MB+)
+      if (f.size > 5 * 1024 * 1024) {
+        setMsg("One photo was over 5MB and was skipped.");
         continue;
       }
+
+      const path = `${slug(store)}/${Date.now()}_${slug(sections[secIdx].title)}_${slug(sections[secIdx].items[itemIdx].label)}_${i}_${f.name}`;
+      const { error } = await sb.storage.from("deep-clean").upload(path, f, { upsert: false });
+      if (error) { console.error(error); setMsg("Upload failed for one or more photos."); continue; }
       const { data: pub } = sb.storage.from("deep-clean").getPublicUrl(path);
       uploaded.push({ url: pub.publicUrl, path });
     }
 
-    setSections((prev) => {
+    setSections(prev => {
       const next = [...prev];
       next[secIdx] = { ...next[secIdx] };
       next[secIdx].items = [...next[secIdx].items];
       next[secIdx].items[itemIdx] = {
         ...next[secIdx].items[itemIdx],
-        photos: [...next[secIdx].items[itemIdx].photos, ...uploaded],
+        photos: [...next[secIdx].items[itemIdx].photos, ...uploaded]
       };
       return next;
     });
   }
 
   async function saveProgress(silent = false) {
-    if (!store) {
-      if (!silent) setMsg("Unknown store in URL.");
-      return;
-    }
+    if (!store) { if (!silent) setMsg("Unknown store in URL."); return; }
     if (!silent) setSaving(true);
     const res = await fetch("/api/deep-clean/submit", {
       method: "POST",
@@ -280,28 +290,34 @@ export default function StoreDeepCleanPage() {
 
   return (
     <main>
-      <div className="banner">
-        <img src="/mourneoids_forms_header_1600x400.png" alt="Mourne-oids Header Banner" />
-      </div>
-
-      {/* Back buttons */}
+      {/* Banner (centered with blue underline) */}
       <div
         style={{
-          display: "flex",
-          justifyContent: "flex-start",
-          gap: 10,
-          padding: "10px 16px",
+          display: "flex", justifyContent: "center", alignItems: "center",
+          padding: "12px 0", background: "#fff", borderBottom: "3px solid #006491",
         }}
       >
-        <a href="/deep-clean">
-          <button style={{ fontSize: 14 }}>⬅ Back to Stores</button>
-        </a>
-        <a href="/">
-          <button style={{ fontSize: 14 }}>🏠 Home</button>
-        </a>
+        <img
+          src="/mourneoids_forms_header_1600x400.png"
+          alt="Mourne-oids Header Banner"
+          style={{ maxWidth: "90%", height: "auto", display: "block" }}
+        />
       </div>
 
-      <section style={{ padding: 16, marginBottom: 14 }}>
+      {/* Sticky back bar */}
+      <div
+        style={{
+          position: "sticky", top: 0, zIndex: 50, background: "#fff",
+          borderBottom: "1px solid var(--softline)", /* keeps controls visible while scrolling */
+        }}
+      >
+        <div className="container" style={{ display: "flex", gap: 10, padding: "10px 0" }}>
+          <a href="/deep-clean"><button style={{ fontSize: 14 }}>⬅ Back to Stores</button></a>
+          <a href="/"><button style={{ fontSize: 14 }}>🏠 Home</button></a>
+        </div>
+      </div>
+
+      <section className="container" style={{ marginTop: 6 }}>
         <header style={{ display: "grid", gap: 4 }}>
           <strong style={{ fontSize: 22 }}>{store ? `${store} • Autumn Deep Clean` : "Autumn Deep Clean"}</strong>
           <small style={{ color: "var(--muted)" }}>
@@ -314,23 +330,8 @@ export default function StoreDeepCleanPage() {
           <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 6 }}>
             {done} of {total} tasks complete ({pct}%)
           </div>
-          <div
-            style={{
-              height: 10,
-              background: "#eef2f5",
-              borderRadius: 999,
-              border: "1px solid var(--softline)",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                width: `${pct}%`,
-                height: "100%",
-                background: "var(--brand, #006491)",
-                transition: "width .35s ease",
-              }}
-            />
+          <div style={{ height: 10, background: "#eef2f5", borderRadius: 999, border: "1px solid var(--softline)", overflow: "hidden" }}>
+            <div style={{ width: `${pct}%`, height: "100%", background: "var(--brand, #006491)", transition: "width .35s ease" }} />
           </div>
         </div>
 
@@ -341,67 +342,39 @@ export default function StoreDeepCleanPage() {
         </div>
 
         {loading ? (
-          <div className="badge" style={{ marginTop: 12 }}>
-            Loading…
-          </div>
+          <div className="badge" style={{ marginTop: 12 }}>Loading…</div>
         ) : !store ? (
-          <div className="badge" style={{ marginTop: 12 }}>
-            Unknown store. Go back and pick a store.
-          </div>
+          <div className="badge" style={{ marginTop: 12 }}>Unknown store. Go back and pick a store.</div>
         ) : (
           <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
-            {/* Sections */}
             {sections.map((sec, si) => {
               const secTotal = sec.items.length;
               const secDone = sec.items.filter((i) => i.done).length;
               const secComplete = secDone === secTotal && secTotal > 0;
 
               return (
-                <div key={sec.title} style={{ border: "1px solid var(--softline)", borderRadius: 12, overflow: "hidden" }}>
+                <div key={sec.title} className="card" style={{ padding: 0 }}>
                   <div
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 8,
-                      padding: 12,
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      gap: 8, padding: 12,
                       background: secComplete ? "rgba(0,128,0,.05)" : "#fff",
+                      borderBottom: "1px solid var(--softline)"
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <strong>{sec.title}</strong>
-                      <span
-                        className="badge"
-                        style={{
-                          fontSize: 12,
-                          background: "#f3f4f6",
-                          borderColor: "var(--softline)",
-                        }}
-                      >
-                        {secDone}/{secTotal}
-                      </span>
+                      <span className="badge">{secDone}/{secTotal}</span>
                     </div>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button onClick={() => toggleSection(si)} style={{ fontSize: 13 }}>
-                        {open[si] ? "Hide" : "Show"}
-                      </button>
-                    </div>
+                    <button onClick={() => toggleSection(si)} style={{ fontSize: 13 }}>
+                      {open[si] ? "Hide" : "Show"}
+                    </button>
                   </div>
 
                   {open[si] && (
-                    <div style={{ padding: 12, display: "grid", gap: 12, background: "#fff" }}>
+                    <div style={{ padding: 12, display: "grid", gap: 12 }}>
                       {sec.items.map((it, ii) => (
-                        <div
-                          key={`${sec.title}-${ii}`}
-                          style={{
-                            border: "1px solid var(--softline)",
-                            borderRadius: 12,
-                            padding: 12,
-                            background: it.done ? "rgba(0,100,145,.03)" : "#fff",
-                            display: "grid",
-                            gap: 8,
-                          }}
-                        >
+                        <div key={`${sec.title}-${ii}`} className="card">
                           <label style={{ display: "flex", gap: 10 }}>
                             <input
                               type="checkbox"
@@ -412,7 +385,6 @@ export default function StoreDeepCleanPage() {
                                   next[si] = { ...next[si] };
                                   next[si].items = [...next[si].items];
                                   next[si].items[ii] = { ...next[si].items[ii], done: e.target.checked };
-                                  // auto-collapse if a section becomes fully complete
                                   const allDone = next[si].items.every((x) => x.done);
                                   setOpen((prevOpen) => {
                                     const n = [...prevOpen];
@@ -449,6 +421,7 @@ export default function StoreDeepCleanPage() {
                             <input
                               type="file"
                               accept="image/*"
+                              capture="environment"   /* opens rear camera on mobile */
                               multiple
                               onChange={(e) => handlePhotoUpload(si, ii, e.target.files)}
                             />
@@ -457,16 +430,13 @@ export default function StoreDeepCleanPage() {
                                 {it.photos.map((p, idx) => (
                                   <img
                                     key={idx}
+                                    loading="lazy"
                                     src={p.url}
                                     alt="proof"
                                     onClick={() => setLightbox(p.url)}
                                     style={{
-                                      width: 84,
-                                      height: 84,
-                                      objectFit: "cover",
-                                      borderRadius: 8,
-                                      border: "1px solid var(--line)",
-                                      cursor: "zoom-in",
+                                      width: 84, height: 84, objectFit: "cover",
+                                      borderRadius: 8, border: "1px solid var(--line)", cursor: "zoom-in",
                                     }}
                                   />
                                 ))}
@@ -481,28 +451,16 @@ export default function StoreDeepCleanPage() {
               );
             })}
 
-            {/* Actions */}
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button className="brand" onClick={() => saveProgress(false)} disabled={saving}>
                 {saving ? "Saving…" : "Save now"}
               </button>
-              <a href="/deep-clean">
-                <button>Change Store</button>
-              </a>
-              <a href="/">
-                <button>Back to Home</button>
-              </a>
+              <a href="/deep-clean"><button>Change Store</button></a>
+              <a href="/"><button>Back to Home</button></a>
             </div>
 
-            {/* Save toast */}
             {lastSavedAt && (
-              <div
-                className="badge"
-                style={{
-                  background: "rgba(0,100,145,.06)",
-                  borderColor: "var(--softline)",
-                }}
-              >
+              <div className="badge" style={{ background: "rgba(0,100,145,.06)", borderColor: "var(--softline)" }}>
                 ✓ Saved {fmtSince(lastSavedAt)}
               </div>
             )}
@@ -515,30 +473,22 @@ export default function StoreDeepCleanPage() {
         )}
       </section>
 
-      {/* Lightbox Modal */}
+      {/* Lightbox */}
       {lightbox && (
         <div
           onClick={() => setLightbox(null)}
           style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,.8)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 1000,
+            position: "fixed", inset: 0, background: "rgba(0,0,0,.8)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: 16, zIndex: 1000,
           }}
         >
           <img
             src={lightbox}
             alt="preview"
             style={{
-              maxWidth: "95vw",
-              maxHeight: "88vh",
-              objectFit: "contain",
-              boxShadow: "0 10px 40px rgba(0,0,0,.5)",
-              borderRadius: 12,
+              maxWidth: "95vw", maxHeight: "88vh", objectFit: "contain",
+              boxShadow: "0 10px 40px rgba(0,0,0,.5)", borderRadius: 12,
             }}
           />
         </div>
