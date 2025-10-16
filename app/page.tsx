@@ -36,9 +36,28 @@ export default function HomePage() {
   return (
     <main>
       {/* Banner */}
-      <div className="banner">
-        <img src="/mourneoids_forms_header_1600x400.png" alt="Mourne-oids Header Banner" />
-      </div>
+      {/* Banner */}
+<div
+  style={{
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: "12px 0",
+    background: "#fff",
+    borderBottom: "3px solid #006491", // thin Domino’s blue bottom border
+  }}
+>
+  <img
+    src="/mourneoids_forms_header_1600x400.png"
+    alt="Mourne-oids Header Banner"
+    style={{
+      maxWidth: "90%",
+      height: "auto",
+      display: "block",
+    }}
+  />
+</div>
+
 
       <section style={{ padding: 24, display: "grid", gap: 16 }}>
         <h1 style={{ fontSize: 24, marginBottom: 4 }}>Mourne-oids Tools</h1>
