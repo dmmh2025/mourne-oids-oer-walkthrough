@@ -32,6 +32,7 @@ export default function HomePage() {
             maxWidth: 820,
           }}
         >
+          {/* Intro box */}
           <div
             style={{
               display: "grid",
@@ -48,18 +49,6 @@ export default function HomePage() {
               opening. You’ll get a predicted OER score and your results are
               saved to the dashboard automatically.
             </p>
-            <ul
-              style={{
-                margin: 0,
-                paddingLeft: 18,
-                color: "var(--muted)",
-                lineHeight: 1.6,
-              }}
-            >
-              <li>Mobile-first, stacked checks for clarity</li>
-              <li>Photo uploads per check (optional but encouraged)</li>
-              <li>Automatic service score + star grade</li>
-            </ul>
           </div>
 
           {/* Actions */}
