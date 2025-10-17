@@ -36,15 +36,8 @@ export default function HomePage() {
             🧽 Autumn Deep Clean Checklist
           </a>
 
-          {/* Weekly Memomailer */}
-          <a
-            href={MEMO_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn"
-          >
-            📄 Weekly Memomailer
-          </a>
+          <a href="/memomailer" className="btn">📄 Weekly Memomailer</a>
+
 
           {/* Admin */}
           <a href="/admin" className="btn">
