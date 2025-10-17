@@ -1,108 +1,158 @@
 "use client";
 
 import * as React from "react";
-import { useEffect, useState } from "react";
-import { supabase } from "@/supabaseClient";
 
-const STORES = ["Downpatrick", "Kilkeel", "Newcastle"] as const;
-
-type Item = { done: boolean };
-type Section = { items: Item[] };
-type Row = { store: string; items: Section[]; updated_at?: string };
-
-function calcPct(items: Section[] | null | undefined) {
-  if (!items) return 0;
-  const flat = items.flatMap((s) => s.items || []);
-  const total = flat.length || 0;
-  const done = flat.filter((i) => i?.done).length;
-  return total ? Math.round((done / total) * 100) : 0;
-}
+/** Build the public URL for the latest memomailer PDF from env vars */
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const MEMO_URL = SUPABASE_URL
+  ? `${SUPABASE_URL}/storage/v1/object/public/memomailer/latest.pdf`
+  : "#";
 
 export default function HomePage() {
-  const [rows, setRows] = useState<Record<string, Row>>({});
-
-  useEffect(() => {
-    (async () => {
-      const sb = supabase!;
-      const { data, error } = await sb.from("deep_clean_submissions").select("*");
-      if (!error && Array.isArray(data)) {
-        const map: Record<string, Row> = {};
-        for (const r of data as any[]) map[r.store] = r;
-        setRows(map);
-      }
-    })();
-  }, []);
-
   return (
-    <main>
+    <main className="wrap">
       {/* Banner */}
-      {/* Banner */}
-<div
-  style={{
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: "12px 0",
-    background: "#fff",
-    borderBottom: "3px solid #006491", // thin Domino’s blue bottom border
-  }}
->
-  <img
-    src="/mourneoids_forms_header_1600x400.png"
-    alt="Mourne-oids Header Banner"
-    style={{
-      maxWidth: "90%",
-      height: "auto",
-      display: "block",
-    }}
-  />
-</div>
+      <div className="banner">
+        <img
+          src="/mourneoids_forms_header_1600x400.png"
+          alt="Mourne-oids Header Banner"
+        />
+      </div>
 
+      <section className="container">
+        <h1>Welcome</h1>
 
-      <section style={{ padding: 24, display: "grid", gap: 16 }}>
-        <h1 style={{ fontSize: 24, marginBottom: 4 }}>Mourne-oids Tools</h1>
-        <p style={{ color: "var(--muted)", marginBottom: 12 }}>
-          Choose a section to get started.
-        </p>
-
-        {/* Main buttons */}
-        <div style={{ display: "grid", gap: 14, maxWidth: 400 }}>
-          <a href="/walkthrough">
-            <button className="brand" style={{ width: "100%", fontSize: 16 }}>
-              Daily OER Walkthrough
-            </button>
+        <div className="grid">
+          {/* Daily OER Walkthrough */}
+          <a href="/walkthrough" className="btn btn--brand btn--lg">
+            ✅ Daily OER Walkthrough
           </a>
 
-          <a href="/deep-clean">
-            <button className="brand" style={{ width: "100%", fontSize: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              Autumn Deep Clean
-              <span style={{
-                background: "#fff",
-                color: "#006491",
-                fontWeight: 600,
-                padding: "2px 10px",
-                borderRadius: 999,
-                fontSize: 13,
-                border: "1px solid #006491",
-              }}>
-                {overallPct(rows)}%
-              </span>
-            </button>
+          {/* Autumn Deep Clean */}
+          <a href="/deep-clean" className="btn btn--brand btn--lg">
+            🧽 Autumn Deep Clean Checklist
           </a>
 
-          <a href="/admin">
-            <button style={{ width: "100%", fontSize: 16 }}>Admin Dashboard</button>
+          {/* Weekly Memomailer (PDF) */}
+          <a
+            href={MEMO_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn--brand btn--lg"
+          >
+            📄 Weekly Memomailer
+          </a>
+
+          {/* Admin */}
+          <a href="/admin" className="btn btn--ghost btn--lg">
+            📊 Admin Dashboard
           </a>
         </div>
       </section>
+
+      {/* Styles */}
+      <style jsx>{`
+        :root {
+          --bg: #f2f5f9;
+          --paper: #ffffff;
+          --line: #e5e7eb;
+          --muted: #6b7280;
+          --text: #1a1a1a;
+          --brand: #006491;
+          --brand-dk: #00517a;
+          --shadow-card: 0 10px 18px rgba(2,6,23,.08), 0 1px 3px rgba(2,6,23,.06);
+        }
+
+        .wrap {
+          min-height: 100dvh;
+          background: var(--bg);
+          color: var(--text);
+        }
+
+        /* Banner */
+        .banner {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          padding: 6px 0 10px;
+          background: #fff;
+          border-bottom: 3px solid var(--brand);
+          box-shadow: var(--shadow-card);
+        }
+        .banner img {
+          max-width: 92%;
+          height: auto;
+          display: block;
+        }
+
+        /* Content */
+        .container {
+          max-width: 880px;
+          margin: 0 auto;
+          padding: 16px;
+        }
+        h1 {
+          text-align: center;
+          font-size: 22px;
+          font-weight: 800;
+          margin: 16px 0 18px;
+          letter-spacing: 0.2px;
+        }
+
+        /* Button grid */
+        .grid {
+          display: grid;
+          gap: 12px;
+          grid-template-columns: 1fr;
+        }
+        @media (min-width: 640px) {
+          .grid {
+            grid-template-columns: 1fr 1fr;
+          }
+        }
+
+        /* Buttons – match walkthrough look */
+        .btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          text-decoration: none;
+          font-weight: 800;
+          border-radius: 14px;
+          border: 2px solid #d7dbe3;
+          background: #fff;
+          color: var(--text);
+          padding: 12px 14px;
+          box-shadow: 0 1px 0 rgba(255,255,255,0.7);
+          transition: transform 0.08s ease, background 0.2s ease, border-color 0.2s ease;
+        }
+        .btn:hover { transform: translateY(-2px); }
+
+        .btn--lg {
+          padding: 16px 18px;
+          font-size: 17px;
+        }
+
+        .btn--brand {
+          background: var(--brand);
+          border-color: var(--brand-dk);
+          color: #fff;
+        }
+        .btn--brand:hover {
+          background: var(--brand-dk);
+          border-color: var(--brand-dk);
+          color: #fff;
+        }
+
+        .btn--ghost {
+          background: #fff;
+          border-color: #d7dbe3;
+          color: var(--text);
+        }
+        .btn--ghost:hover {
+          border-color: var(--brand);
+        }
+      `}</style>
     </main>
   );
-}
-
-function overallPct(rows: Record<string, Row>) {
-  const vals = Object.values(rows);
-  if (!vals.length) return 0;
-  const pcts = vals.map((r) => calcPct(r.items));
-  const avg = Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length);
-  return avg || 0;
 }
