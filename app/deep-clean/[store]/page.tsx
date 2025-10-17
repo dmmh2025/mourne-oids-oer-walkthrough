@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { createClient } from "@supabase/supabase-js";
-import { useRouter } from "next/navigation";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -35,12 +34,43 @@ function calcPct(sections: Section[] | null | undefined) {
   return total ? Math.round((done / total) * 100) : 0;
 }
 
+/** Starter template – you can replace with your real sections/items */
 const DEFAULT_TEMPLATE: Section[] = [
-  { title: "Front of House", items: [] },
-  { title: "Makeline & Prep", items: [] },
-  { title: "Oven & Baking", items: [] },
-  { title: "Walk-in / Storage", items: [] },
-  { title: "Back of House", items: [] },
+  {
+    title: "Front of House",
+    items: [
+      { label: "Customer area deep-cleaned", done: false, by: "", photos: [] },
+      { label: "Menu boards & signage spotless", done: false, by: "", photos: [] },
+    ],
+  },
+  {
+    title: "Makeline & Prep",
+    items: [
+      { label: "Makeline lids/seals cleaned", done: false, by: "", photos: [] },
+      { label: "Prep surfaces sanitised", done: false, by: "", photos: [] },
+    ],
+  },
+  {
+    title: "Oven & Baking",
+    items: [
+      { label: "Oven hood/filters cleaned", done: false, by: "", photos: [] },
+      { label: "Screens/pans free of carbon", done: false, by: "", photos: [] },
+    ],
+  },
+  {
+    title: "Walk-in / Storage",
+    items: [
+      { label: "Walk-in walls/floor/shelves cleaned", done: false, by: "", photos: [] },
+      { label: "Door seals/handles cleaned", done: false, by: "", photos: [] },
+    ],
+  },
+  {
+    title: "Back of House",
+    items: [
+      { label: "Sinks/mop area cleaned", done: false, by: "", photos: [] },
+      { label: "Bins sanitised and clean", done: false, by: "", photos: [] },
+    ],
+  },
 ];
 
 export default function DeepCleanStorePage({
@@ -48,7 +78,6 @@ export default function DeepCleanStorePage({
 }: {
   params: { store: string };
 }) {
-  const router = useRouter();
   const storeParam = params.store;
   const storeName =
     storeParam.toLowerCase() === "kilkeel"
@@ -62,7 +91,6 @@ export default function DeepCleanStorePage({
   const [open, setOpen] = React.useState<boolean[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
-  const [note, setNote] = React.useState<string>("");
 
   React.useEffect(() => {
     (async () => {
@@ -73,23 +101,19 @@ export default function DeepCleanStorePage({
         .eq("store", storeName)
         .maybeSingle();
 
-      if (error) {
-        setRow(null);
-        setSections(DEFAULT_TEMPLATE);
-        setOpen(DEFAULT_TEMPLATE.map(() => true));
-        setNote(`Load error: ${error.message}`);
-      } else if (!data) {
+      if (error || !data) {
         const fresh: Row = { store: storeName, items: DEFAULT_TEMPLATE };
         setRow(fresh);
         setSections(fresh.items);
         setOpen(fresh.items.map(() => true));
       } else {
-        const fixed: Section[] = (data.items || []).map((sec: Section) => ({
+        const fixed: Section[] = (data.items || []).map((sec: any) => ({
           ...sec,
-          items: (sec.items || []).map((it) => ({
-            ...it,
-            photos: Array.isArray(it.photos) ? it.photos : [],
+          items: (sec.items || []).map((it: any) => ({
+            label: String(it.label ?? ""),
+            done: Boolean(it.done),
             by: typeof it.by === "string" ? it.by : "",
+            photos: Array.isArray(it.photos) ? it.photos : [],
           })),
         }));
         setRow({ ...data, items: fixed });
@@ -116,6 +140,7 @@ export default function DeepCleanStorePage({
       const f = files[n];
       const ext = f.name.split(".").pop() || "jpg";
       const path = `${storeName}/${today}/${secSlug}/${itemSlug}_${Date.now()}_${n}.${ext}`;
+
       const { error: upErr } = await supabase.storage
         .from("deep-clean")
         .upload(path, f, { upsert: false });
@@ -187,6 +212,7 @@ export default function DeepCleanStorePage({
 
   return (
     <main className="wrap">
+      {/* Sticky top bar */}
       <div className="sticky">
         <div className="sticky__inner">
           <div className="sticky__left">
@@ -205,6 +231,7 @@ export default function DeepCleanStorePage({
         </div>
       </div>
 
+      {/* Banner */}
       <div className="banner">
         <img
           src="/mourneoids_forms_header_1600x400.png"
@@ -339,6 +366,7 @@ export default function DeepCleanStorePage({
                 className="btn btn--brand"
                 onClick={saveProgress}
                 disabled={saving}
+                title="Saves your current progress"
               >
                 {saving ? "Saving…" : "Save Progress"}
               </button>
@@ -347,6 +375,7 @@ export default function DeepCleanStorePage({
         )}
       </section>
 
+      {/* Sticky bottom Save bar */}
       <div className="submitbar">
         <div className="submitbar__inner">
           <button
@@ -354,6 +383,7 @@ export default function DeepCleanStorePage({
             type="button"
             onClick={saveProgress}
             disabled={saving}
+            title="Saves your current progress"
           >
             {saving ? "Saving…" : "Save Progress"}
           </button>
@@ -398,10 +428,10 @@ export default function DeepCleanStorePage({
         .bigbox { width:20px; height:20px; accent-color:var(--brand); }
         .check__text { font-weight:700; }
 
-        input[type="text"], select {
+        input[type="text"] {
           border:2px solid #d7dbe3; border-radius:12px; padding:10px 14px; font-size:16px; background:#fff;
         }
-        input:focus, select:focus { border-color:var(--brand); }
+        input:focus { border-color:var(--brand); }
 
         .upload { margin-top:10px; display:grid; gap:8px; }
         .thumbs { display:grid; grid-template-columns:repeat(auto-fill, minmax(90px,1fr)); gap:10px; }
@@ -409,7 +439,7 @@ export default function DeepCleanStorePage({
         .thumb img { width:100%; height:90px; object-fit:cover; }
         .thumb__remove { position:absolute; top:6px; right:6px; background:#111827dd; color:#fff; border:none; border-radius:8px; width:26px; height:26px; font-size:16px; }
 
-        /* Buttons */
+        /* Buttons (match Walkthrough style) */
         .btn {
           background:#fff;
           border:3px solid var(--brand);
@@ -426,16 +456,46 @@ export default function DeepCleanStorePage({
         }
         .btn:hover { background:var(--brand); color:#fff; transform:translateY(-1px); }
         .btn--brand {
-          background:#fff;
-          color:#000;
+          background:#fff;       /* white background */
+          color:#000;            /* black text as requested */
           border-color:var(--brand);
         }
         .btn--brand:hover { background:var(--brand); color:#fff; }
         .btn--ghost { background:#fff; color:var(--brand); }
+        .btn--lg { padding:14px 18px; font-size:17px; border-radius:14px; }
 
+        /* Chips */
+        .chip { display:inline-block; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:#fff; font-size:13px; font-weight:800; box-shadow:0 1px 0 rgba(255,255,255,.8); }
+        .chip--blue { background:#e6f0fb; }
+        .chip--teal { background:#e6fbf6; }
+        .chip--gold { background:#fff6e0; }
+
+        /* Sticky top */
         .sticky { position:sticky; top:0; z-index:60; background:rgba(255,255,255,.95); border-bottom:1px solid var(--line); box-shadow:0 2px 10px rgba(2,6,23,.06); }
         .sticky__inner { max-width:980px; margin:0 auto; display:flex; justify-content:space-between; align-items:center; padding:8px 12px; }
         .sticky__left { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
         .sticky__right { display:flex; gap:8px; }
 
-        .chip { display:inline-block; padding:6px 10px; border-radius:999px
+        /* Sticky bottom Save bar */
+        .submitbar {
+          position: sticky;
+          bottom: 0;
+          z-index: 70;
+          background: rgba(255,255,255,.98);
+          border-top: 1px solid var(--line);
+          box-shadow: 0 -4px 10px rgba(2,6,23,.06);
+          padding: 10px 0;
+        }
+        .submitbar__inner {
+          max-width: 880px;
+          margin: 0 auto;
+          padding: 0 12px;
+          display: flex;
+          justify-content: center;
+        }
+        .lbl { display:grid; gap:6px; font-weight:700; }
+        .lbl--tight { font-weight:700; margin-bottom:4px; }
+      `}</style>
+    </main>
+  );
+}
