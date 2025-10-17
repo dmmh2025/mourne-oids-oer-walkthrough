@@ -64,7 +64,7 @@ function pointsForExtremes(perThousand: number) {
   return 0;
 }
 
-/* ---------- Sections + items (content & weights unchanged) ---------- */
+/* ---------- Sections + items (content & weights) ---------- */
 const SECTIONS_BASE: {
   title: string;
   points: number;
@@ -482,7 +482,6 @@ export default function WalkthroughPage() {
           </div>
         </div>
 
-        {/* NOTE: add id="walkForm" so the sticky submit can reference it */}
         <form id="walkForm" onSubmit={onSubmit} className="stack">
           {/* Details */}
           <div className="card card--raised">
@@ -685,10 +684,17 @@ export default function WalkthroughPage() {
               );
             })}
           </div>
+
+          {/* Inline fallback submit (only visible on small screens if needed) */}
+          <div className="inlineSubmit">
+            <button type="submit" className="btn btn--brand btn--lg">
+              Submit &amp; View Report
+            </button>
+          </div>
         </form>
       </section>
 
-      {/* Sticky bottom submit bar (always visible) */}
+      {/* Fixed bottom submit bar (always visible) */}
       <div className="submitbar">
         <div className="submitbar__inner">
           <button form="walkForm" className="btn btn--brand btn--lg" type="submit">
@@ -717,7 +723,10 @@ export default function WalkthroughPage() {
           --shadow-strong: 0 14px 28px rgba(2,6,23,.1), 0 2px 6px rgba(2,6,23,.06);
           --shadow-card: 0 10px 18px rgba(2,6,23,.08), 0 1px 3px rgba(2,6,23,.06);
         }
-        .wrap { background: var(--bg); min-height: 100dvh; color: var(--text); }
+
+        /* extra bottom padding so fixed bar never covers content */
+        .wrap { background: var(--bg); min-height: 100dvh; color: var(--text); padding-bottom: 84px; }
+
         .banner { display:flex; justify-content:center; align-items:center; padding:6px 0 10px; border-bottom:3px solid #006491; background:#fff; box-shadow: var(--shadow-card); }
         .banner img { max-width:92%; height:auto; display:block; }
         .container { max-width:880px; margin:0 auto; padding:16px; }
@@ -741,12 +750,14 @@ export default function WalkthroughPage() {
         input:focus, select:focus { border-color:var(--brand); box-shadow:0 0 0 4px rgba(0,100,145,0.15); }
         .muted { color:var(--muted); }
         .controls { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+
         .section__head { display:grid; grid-template-columns:8px 1fr auto; align-items:center; gap:12px; padding:14px 14px; background:linear-gradient(90deg,#ffffff,#f7fbff); border-bottom:1px solid #dde3ec; }
         .section__badge { width:8px; height:100%; background:linear-gradient(#0ea5e9,#006491); border-radius:0 6px 6px 0; }
         .section__titlewrap { display:grid; gap:4px; }
         .section__title { font-weight:900; letter-spacing:.2px; }
         .section__sub { color:var(--muted); font-size:13px; }
         .section__chips { display:flex; gap:8px; align-items:center; }
+
         .checks { display:grid; }
         .check { padding:12px; border-top:1px solid #edf0f5; background:#ffffff; }
         .check--alt { background:#fafcff; }
@@ -755,14 +766,17 @@ export default function WalkthroughPage() {
         .check__label { display:flex; align-items:start; gap:8px; flex-wrap:wrap; }
         .check__text { font-weight:700; line-height:1.3; }
         .pill { background:#eef7ff; border:1px solid #cfe4ff; color:#0b4a6b; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:800; }
+
         .upload { margin-top:10px; display:grid; gap:8px; }
         .thumbs { display:grid; grid-template-columns:repeat(auto-fill, minmax(90px,1fr)); gap:10px; }
         .thumb { position:relative; border:2px solid #dde3ec; border-radius:12px; overflow:hidden; background:#f8fafc; box-shadow: inset 0 1px 0 rgba(255,255,255,.6); }
         .thumb img { display:block; width:100%; height:90px; object-fit:cover; }
         .thumb__remove { position:absolute; top:6px; right:6px; background:#111827dd; color:#fff; border:none; border-radius:8px; width:26px; height:26px; line-height:25px; text-align:center; font-size:16px; }
+
         .tips { margin-top:10px; border:1px solid #e7ecf3; border-radius:10px; background:#fbfeff; padding:8px 10px; }
         .tips summary { cursor:pointer; font-weight:700; }
         .tips ul { margin:8px 0 0 18px; display:grid; gap:4px; color:var(--muted); }
+
         .btn { background:#fff; border:2px solid #d7dbe3; padding:10px 14px; border-radius:12px; font-weight:800; }
         .btn--brand { background:var(--brand); color:#fff; border-color:var(--brand-dk); }
         .btn--brand:hover { background:var(--brand-dk); }
@@ -774,19 +788,22 @@ export default function WalkthroughPage() {
         .chip--gold { background:#fff6e0; }
         .chip--green { background:#e9f9f1; color:#15803d; border-color:#bfe9cf; }
         .chip--grey { background:#f3f4f6; }
+
         .sticky { position:sticky; top:0; z-index:60; backdrop-filter:saturate(180%) blur(6px); background:rgba(255,255,255,.92); border-bottom:1px solid var(--line); box-shadow:0 2px 10px rgba(2,6,23,.06); }
         .sticky__inner { max-width:980px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px; }
         .sticky__left { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
 
-        /* Sticky bottom submit bar */
+        /* Fixed bottom submit bar (reliable on mobile) */
         .submitbar {
-          position: sticky;
-          bottom: 0;
-          z-index: 70;
+          position: fixed;
+          left: 0;
+          right: 0;
+          bottom: env(safe-area-inset-bottom);
+          z-index: 100;
           background: rgba(255,255,255,.98);
           border-top: 1px solid var(--line);
-          box-shadow: 0 -4px 10px rgba(2,6,23,.06);
-          padding: 10px 0;
+          box-shadow: 0 -6px 16px rgba(2,6,23,.08);
+          padding: 10px 0 calc(10px + env(safe-area-inset-bottom));
         }
         .submitbar__inner {
           max-width: 880px;
@@ -795,6 +812,10 @@ export default function WalkthroughPage() {
           display: flex;
           justify-content: center;
         }
+
+        /* Inline fallback submit inside the form (for very small screens) */
+        .inlineSubmit { display: block; margin: 12px auto 0; text-align: center; }
+        @media (min-width: 640px) { .inlineSubmit { display: none; } }
       `}</style>
     </main>
   );
