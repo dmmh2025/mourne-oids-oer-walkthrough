@@ -4,34 +4,34 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
-/** Create a browser supabase client (never undefined) */
+/* ---------- Supabase (browser) ---------- */
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-/** ========= Types ========= */
+/* ---------- Types ---------- */
 type CheckItem = {
   label: string;
-  weight: number;      // points for this check
+  weight: number;
   done: boolean;
-  tips?: string[];     // expandable guidance
-  photos: string[];    // public URLs uploaded for this check
+  tips?: string[];
+  photos: string[];
 };
 
 type Section = {
   title: string;
-  points: number;      // section total (sum of item weights)
-  allOrNothing?: boolean; // if true, award points only if all checks done
+  points: number;
+  allOrNothing?: boolean;
   items: CheckItem[];
 };
 
-/** Small helpers */
+/* ---------- Helpers ---------- */
 const clamp = (n: number) => (Number.isFinite(n) ? n : 0);
 const slug = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
-/* ======== Stars (by total %) ======== */
+/* ---------- Stars rule ---------- */
 function starsForPercent(p: number) {
   if (p >= 90) return 5;
   if (p >= 80) return 4;
@@ -41,7 +41,7 @@ function starsForPercent(p: number) {
   return 0;
 }
 
-/* ======== Service scoring (25) ======== */
+/* ---------- Service scoring ---------- */
 function pointsForADT(mins: number) {
   if (mins < 25) return 15;
   if (mins <= 26) return 10;
@@ -64,14 +64,14 @@ function pointsForExtremes(perThousand: number) {
   return 0;
 }
 
-/** ========= Sections (total = 75) ========= */
+/* ---------- Sections + items (unchanged content/weights) ---------- */
 const SECTIONS_BASE: {
   title: string;
   points: number;
   allOrNothing?: boolean;
   items: { label: string; weight: number; done: boolean; tips?: string[] }[];
 }[] = [
-  /* ---------------- Food Safety (18) ---------------- */
+  // Food Safety (18)
   {
     title: "Food Safety",
     points: 18,
@@ -79,12 +79,14 @@ const SECTIONS_BASE: {
       { label: "Temps entered on time and within range", weight: 3, done: false },
       {
         label: "Products within shelf life – including ambient products, dips & drinks",
-        weight: 3, done: false
+        weight: 3,
+        done: false,
       },
       { label: "Proper handwashing procedures – 20 seconds", weight: 3, done: false },
       {
         label: "Sanitation procedures followed",
-        weight: 3, done: false,
+        weight: 3,
+        done: false,
         tips: [
           "Timer running",
           "Sanitiser sink correct concentration",
@@ -103,14 +105,15 @@ const SECTIONS_BASE: {
     ],
   },
 
-  /* ---------------- Product (12) ---------------- */
+  // Product (12)
   {
     title: "Product",
     points: 12,
     items: [
       {
         label: "Dough properly managed",
-        weight: 5, done: false,
+        weight: 5,
+        done: false,
         tips: [
           "All sizes available at stretch table and in good condition",
           "Dough plan created and followed",
@@ -121,7 +124,8 @@ const SECTIONS_BASE: {
       },
       {
         label: "Bread products properly prepared",
-        weight: 2, done: false,
+        weight: 2,
+        done: false,
         tips: [
           "GPB with garlic spread, sauce and cheese to crust",
           "No dock in dippers",
@@ -130,7 +134,8 @@ const SECTIONS_BASE: {
       },
       {
         label: "Approved products and procedures (APP)",
-        weight: 2, done: false,
+        weight: 2,
+        done: false,
         tips: [
           "Makeline bins filled for max 2 hours trade",
           "Allergen poster displayed, leaflets available",
@@ -144,7 +149,8 @@ const SECTIONS_BASE: {
       },
       {
         label: "All sides properly prepared",
-        weight: 1, done: false,
+        weight: 1,
+        done: false,
         tips: [
           "Fries prepped",
           "2 pack and 4 pack cookies prepped and available",
@@ -157,14 +163,15 @@ const SECTIONS_BASE: {
     ],
   },
 
-  /* ---------------- Image (20) ---------------- */
+  // Image (20) – with Baking Equipment (2) and Walk-in/Makeline split 1+1
   {
     title: "Image",
     points: 20,
     items: [
       {
         label: "Team members in proper uniform",
-        weight: 3, done: false,
+        weight: 3,
+        done: false,
         tips: [
           "Jet black trousers/jeans. No leggings, joggers or combats",
           "Plain white/black undershirt with no branding or logos",
@@ -174,7 +181,8 @@ const SECTIONS_BASE: {
       },
       {
         label: "Grooming standards maintained",
-        weight: 1, done: false,
+        weight: 1,
+        done: false,
         tips: [
           "Clean shaven or neat beard",
           "No visible piercings of any kind. Plasters can not be used to cover",
@@ -182,7 +190,8 @@ const SECTIONS_BASE: {
       },
       {
         label: "Store interior clean and in good repair",
-        weight: 3, done: false,
+        weight: 3,
+        done: false,
         tips: [
           "All toilets must have lined bin with lid",
           "All bins in customer view must have a lid and be clean",
@@ -193,20 +202,22 @@ const SECTIONS_BASE: {
       },
       {
         label: "Customer Area and view",
-        weight: 3, done: false,
+        weight: 3,
+        done: false,
         tips: [
           "Customer area clean and welcoming",
           "Tables and chairs clean",
           "Floors clean",
           "No cobwebs",
-          "No buildup of leaves/cornmeal in corners",
+          "No buildup of leaves/cornmeal in corners beside doors",
           "Everything in customer view clean and tidy",
           "No staff food/drink in customer view",
         ],
       },
       {
         label: "Outside",
-        weight: 2, done: false,
+        weight: 2,
+        done: false,
         tips: [
           "No branded rubbish front or rear",
           "Bins not overflowing",
@@ -217,7 +228,8 @@ const SECTIONS_BASE: {
       },
       {
         label: "Baking Equipment",
-        weight: 2, done: false,
+        weight: 2,
+        done: false,
         tips: [
           "All screens and pans clean and free from food or carbon buildup",
           "SC screens not bent or misshapen",
@@ -230,7 +242,8 @@ const SECTIONS_BASE: {
       },
       {
         label: "Walk-in clean and working",
-        weight: 1, done: false,
+        weight: 1,
+        done: false,
         tips: [
           "Fan, floor, ceiling, walls & shelving clean (no mould/debris/rust)",
           "Door seal good and handle clean — no food debris",
@@ -239,7 +252,8 @@ const SECTIONS_BASE: {
       },
       {
         label: "Makeline clean and working",
-        weight: 1, done: false,
+        weight: 1,
+        done: false,
         tips: [
           "Cupboards, doors, handles, shelves, seals and lids clean & in good condition",
           "Catch trays, grills and seals in good condition — no splits/tears/missing rails",
@@ -247,7 +261,8 @@ const SECTIONS_BASE: {
       },
       {
         label: "Delivery bags",
-        weight: 2, done: false,
+        weight: 2,
+        done: false,
         tips: [
           "Clean – inside and out with no build up of cornmeal",
           "No sticker residue on bags",
@@ -260,7 +275,7 @@ const SECTIONS_BASE: {
     ],
   },
 
-  /* ---------------- Safety & security (5) ---------------- */
+  // Safety & security (5)
   {
     title: "Safety & security",
     points: 5,
@@ -273,37 +288,38 @@ const SECTIONS_BASE: {
     ],
   },
 
-  /* ---------------- Product quality (20, all-or-nothing) ---------------- */
+  // Product quality (20, all-or-nothing)
   {
     title: "Product quality",
     points: 20,
-    allOrNothing: true, // must check all to get 20
+    allOrNothing: true,
     items: [
-      { label: "RIM",       weight: 1, done: false },
-      { label: "RISE",      weight: 1, done: false },
-      { label: "SIZE",      weight: 1, done: false },
-      { label: "PORTION",   weight: 1, done: false },
+      { label: "RIM", weight: 1, done: false },
+      { label: "RISE", weight: 1, done: false },
+      { label: "SIZE", weight: 1, done: false },
+      { label: "PORTION", weight: 1, done: false },
       { label: "PLACEMENT", weight: 1, done: false },
-      { label: "BAKE",      weight: 1, done: false },
+      { label: "BAKE", weight: 1, done: false },
       { label: "Have you checked the bacon in the middle", weight: 1, done: false },
       { label: "No sauce and cheese on crust", weight: 1, done: false },
     ],
   },
 ];
 
+/* ---------- Page ---------- */
 export default function WalkthroughPage() {
   const router = useRouter();
 
   // Details
-  const [store, setStore] = React.useState<"Downpatrick" | "Kilkeel" | "Newcastle" | "">("");
+  const [store, setStore] = React.useState<"" | "Downpatrick" | "Kilkeel" | "Newcastle">("");
   const [name, setName] = React.useState("");
 
-  // Service inputs
+  // Service
   const [adt, setAdt] = React.useState("");
   const [sbr, setSbr] = React.useState("");
   const [extremes, setExtremes] = React.useState("");
 
-  // Sections state (deep copy + photos = [])
+  // Sections state (photos arrays added)
   const [sections, setSections] = React.useState<Section[]>(
     SECTIONS_BASE.map((s) => ({
       ...s,
@@ -317,7 +333,7 @@ export default function WalkthroughPage() {
     setOpen((prev) => prev.map((o, i) => (i === idx ? !o : o)));
   const setAll = (val: boolean) => setOpen(sections.map(() => val));
 
-  // Compute section totals with per-item weights; Product quality all-or-nothing
+  /* ---------- Totals ---------- */
   const sectionTotals = React.useMemo(() => {
     return sections.map((s) => {
       if (s.allOrNothing) {
@@ -328,22 +344,19 @@ export default function WalkthroughPage() {
       return Math.min(got, s.points);
     });
   }, [sections]);
+  const section_total = sectionTotals.reduce((a, b) => a + b, 0);
 
-  const section_total = sectionTotals.reduce((a, b) => a + b, 0); // /75
-
-  // Service
   const adtNum = clamp(parseFloat(adt));
   const sbrNum = clamp(parseFloat(sbr));
   const extNum = clamp(parseFloat(extremes));
   const serviceADT = pointsForADT(adtNum);
   const serviceSBR = pointsForSBR(sbrNum);
   const serviceExt = pointsForExtremes(extNum);
-  const service_total = serviceADT + serviceSBR + serviceExt; // /25
-
-  const predicted = section_total + service_total; // /100
+  const service_total = serviceADT + serviceSBR + serviceExt;
+  const predicted = section_total + service_total;
   const stars = starsForPercent(predicted);
 
-  /** Upload photos for a specific check */
+  /* ---------- Uploads ---------- */
   async function handleUpload(si: number, ii: number, files: FileList | null) {
     if (!files || files.length === 0) return;
     if (!store) {
@@ -354,7 +367,6 @@ export default function WalkthroughPage() {
     const today = new Date().toISOString().slice(0, 10);
     const secSlug = slug(sections[si].title);
     const itemSlug = slug(sections[si].items[ii].label);
-
     const newUrls: string[] = [];
 
     for (let n = 0; n < files.length; n++) {
@@ -366,16 +378,12 @@ export default function WalkthroughPage() {
         .from("walkthrough")
         .upload(path, f, { upsert: false });
 
-      if (upErr) {
-        alert(`Upload failed: ${upErr.message}`);
-        return;
-      }
+      if (upErr) return alert(`Upload failed: ${upErr.message}`);
 
       const { data: pub } = supabase.storage.from("walkthrough").getPublicUrl(path);
       if (pub?.publicUrl) newUrls.push(pub.publicUrl);
     }
 
-    // Update state with new photo URLs
     setSections((prev) => {
       const next = [...prev];
       const sec = { ...next[si] };
@@ -388,7 +396,6 @@ export default function WalkthroughPage() {
     });
   }
 
-  /** Remove a photo locally (does not delete from storage) */
   function removePhoto(si: number, ii: number, idx: number) {
     setSections((prev) => {
       const next = [...prev];
@@ -404,12 +411,12 @@ export default function WalkthroughPage() {
     });
   }
 
+  /* ---------- Submit ---------- */
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!store) return alert("Please select a store.");
     if (!name.trim()) return alert("Please enter your name.");
 
-    // Submit to API and redirect
     const res = await fetch("/api/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -419,18 +426,14 @@ export default function WalkthroughPage() {
         adt: adtNum,
         sbr: sbrNum,
         extremes: extNum,
-        sections,            // includes photos arrays on each check
-        section_total,       // /75
-        service_total,       // /25
-        predicted,           // /100
+        sections,
+        section_total,
+        service_total,
+        predicted,
       }),
     });
 
-    if (!res.ok) {
-      const txt = await res.text();
-      alert(`Submit failed: ${txt}`);
-      return;
-    }
+    if (!res.ok) return alert(`Submit failed: ${await res.text()}`);
 
     router.push(
       `/success?store=${encodeURIComponent(store)}&name=${encodeURIComponent(
@@ -439,128 +442,136 @@ export default function WalkthroughPage() {
     );
   }
 
+  /* ---------- UI ---------- */
   return (
-    <main>
+    <main className="wrap">
+      {/* Sticky live bar */}
+      <div className="sticky">
+        <div className="sticky__inner">
+          <div className="sticky__left">
+            <span className="chip chip--blue">Walkthrough: {section_total}/75</span>
+            <span className="chip chip--teal">Service: {service_total}/25</span>
+            <span className="chip chip--gold">
+              Total: {predicted}/100&nbsp;·&nbsp;
+              {"★".repeat(stars)}
+              {"☆".repeat(5 - stars)}
+            </span>
+          </div>
+          <a href="/" className="btn btn--ghost">Home</a>
+        </div>
+      </div>
+
       {/* Banner */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          padding: "12px 0",
-          background: "#fff",
-          borderBottom: "3px solid #006491",
-        }}
-      >
+      <div className="banner">
         <img
           src="/mourneoids_forms_header_1600x400.png"
           alt="Mourne-oids Header Banner"
-          style={{ maxWidth: "90%", height: "auto", display: "block" }}
         />
       </div>
 
-      <section className="container" style={{ display: "grid", gap: 16 }}>
-        <h1 style={{ fontSize: 22, marginTop: 8, textAlign: "center" }}>
-          Daily OER Walkthrough
-        </h1>
+      <section className="container">
+        <h1>Daily OER Walkthrough</h1>
 
-        {/* Star grading legend */}
-        <div
-          className="card"
-          style={{
-            display: "grid",
-            gap: 6,
-            fontSize: 14,
-          }}
-        >
-          <div><b>Star grading</b></div>
-          <div>90%+ = ⭐⭐⭐⭐⭐</div>
-          <div>80–89.99% = ⭐⭐⭐⭐</div>
-          <div>70–79.99% = ⭐⭐⭐</div>
-          <div>60–69.99% = ⭐⭐</div>
-          <div>50–59.99% = ⭐</div>
-          <div>Below 50% = 0 ⭐</div>
+        {/* Legend */}
+        <div className="card legend">
+          <div className="legend__row">
+            <span>Star grading</span>
+            <span className="legend__stars">
+              90%+ = ⭐⭐⭐⭐⭐ · 80–89.99% = ⭐⭐⭐⭐ · 70–79.99% = ⭐⭐⭐ · 60–69.99% = ⭐⭐ ·
+              50–59.99% = ⭐ · &lt;50% = 0 ⭐
+            </span>
+          </div>
         </div>
 
-        <form onSubmit={onSubmit} style={{ display: "grid", gap: 16 }}>
+        <form onSubmit={onSubmit} className="stack">
           {/* Details */}
-          <div className="card" style={{ display: "grid", gap: 8 }}>
-            <label style={{ fontWeight: 600 }}>Store</label>
-            <select value={store} onChange={(e) => setStore(e.target.value as any)}>
-              <option value="">Select a store...</option>
-              <option value="Downpatrick">Downpatrick</option>
-              <option value="Kilkeel">Kilkeel</option>
-              <option value="Newcastle">Newcastle</option>
-            </select>
+          <div className="card">
+            <div className="grid">
+              <label className="lbl">
+                Store
+                <select
+                  value={store}
+                  onChange={(e) => setStore(e.target.value as any)}
+                >
+                  <option value="">Select a store...</option>
+                  <option value="Downpatrick">Downpatrick</option>
+                  <option value="Kilkeel">Kilkeel</option>
+                  <option value="Newcastle">Newcastle</option>
+                </select>
+              </label>
 
-            <label style={{ fontWeight: 600, marginTop: 6 }}>Your Name</label>
-            <input
-              type="text"
-              placeholder="Type your name…"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-
-          {/* Service snapshot */}
-          <div className="card" style={{ display: "grid", gap: 12 }}>
-            <strong>Service Snapshot</strong>
-
-            <div style={{ display: "grid", gap: 6 }}>
-              <label>ADT (minutes)</label>
-              <input
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0"
-                placeholder="e.g. 24.75"
-                value={adt}
-                onChange={(e) => setAdt(e.target.value)}
-              />
-              <small style={{ color: "var(--muted)" }}>Points: {serviceADT} / 15</small>
-            </div>
-
-            <div style={{ display: "grid", gap: 6 }}>
-              <label>SBR (%)</label>
-              <input
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0"
-                placeholder="e.g. 82.5"
-                value={sbr}
-                onChange={(e) => setSbr(e.target.value)}
-              />
-              <small style={{ color: "var(--muted)" }}>Points: {serviceSBR} / 5</small>
-            </div>
-
-            <div style={{ display: "grid", gap: 6 }}>
-              <label>Extremes (per 1000)</label>
-              <input
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0"
-                placeholder="e.g. 12.5"
-                value={extremes}
-                onChange={(e) => setExtremes(e.target.value)}
-              />
-              <small style={{ color: "var(--muted)" }}>Points: {serviceExt} / 5</small>
-            </div>
-
-            <div className="badge" style={{ marginTop: 4 }}>
-              Service total: <b style={{ marginLeft: 6 }}>{service_total} / 25</b>
+              <label className="lbl">
+                Your name
+                <input
+                  type="text"
+                  placeholder="Type your name…"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </label>
             </div>
           </div>
 
-          {/* Section controls */}
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" onClick={() => setAll(true)}>Expand all</button>
-            <button type="button" onClick={() => setAll(false)}>Collapse all</button>
+          {/* Service */}
+          <div className="card">
+            <div className="card__title">Service snapshot</div>
+            <div className="grid">
+              <label className="lbl">
+                ADT (minutes)
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0"
+                  placeholder="e.g. 24.75"
+                  value={adt}
+                  onChange={(e) => setAdt(e.target.value)}
+                />
+                <small className="muted">Points: {serviceADT} / 15</small>
+              </label>
+
+              <label className="lbl">
+                SBR (%)
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0"
+                  placeholder="e.g. 82.5"
+                  value={sbr}
+                  onChange={(e) => setSbr(e.target.value)}
+                />
+                <small className="muted">Points: {serviceSBR} / 5</small>
+              </label>
+
+              <label className="lbl">
+                Extremes (per 1000)
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0"
+                  placeholder="e.g. 12.5"
+                  value={extremes}
+                  onChange={(e) => setExtremes(e.target.value)}
+                />
+                <small className="muted">Points: {serviceExt} / 5</small>
+              </label>
+            </div>
           </div>
 
-          {/* Sections with vertical checks + photos + expandable guidance */}
-          <div style={{ display: "grid", gap: 12 }}>
+          {/* Expand/Collapse controls */}
+          <div className="controls">
+            <button type="button" className="btn" onClick={() => setAll(true)}>
+              Expand all
+            </button>
+            <button type="button" className="btn" onClick={() => setAll(false)}>
+              Collapse all
+            </button>
+          </div>
+
+          {/* Sections */}
+          <div className="stack">
             {sections.map((sec, si) => {
               const doneItems = sec.items.filter((i) => i.done);
               const earned = sec.allOrNothing
@@ -569,41 +580,39 @@ export default function WalkthroughPage() {
                   : 0
                 : doneItems.reduce((a, b) => a + b.weight, 0);
 
+              const full = sec.allOrNothing
+                ? earned === sec.points
+                : earned >= sec.points;
+
               return (
-                <div key={sec.title} className="card" style={{ padding: 0 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 8,
-                      padding: 12,
-                      borderBottom: "1px solid var(--softline)",
-                      background:
-                        (!sec.allOrNothing && earned >= sec.points) ||
-                        (sec.allOrNothing && earned === sec.points)
-                          ? "rgba(0,128,0,.05)"
-                          : "#fff",
-                    }}
-                  >
-                    <div style={{ display: "grid", gap: 4 }}>
-                      <strong>{sec.title}</strong>
-                      <small style={{ color: "var(--muted)" }}>
+                <div key={sec.title} className="card section">
+                  <div className="section__head">
+                    <div>
+                      <div className="section__title">{sec.title}</div>
+                      <div className="section__sub">
                         {doneItems.length}/{sec.items.length} checks · {earned}/{sec.points} pts
                         {sec.allOrNothing ? " (all-or-nothing)" : ""}
-                      </small>
+                      </div>
                     </div>
-                    <button type="button" onClick={() => toggleSection(si)} style={{ fontSize: 13 }}>
-                      <span aria-hidden>{open[si] ? "Hide" : "Show"}</span>
-                    </button>
+                    <div className="section__chips">
+                      <span className={`chip ${full ? "chip--green" : "chip--grey"}`}>
+                        {earned}/{sec.points}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        onClick={() => toggleSection(si)}
+                      >
+                        {open[si] ? "Hide" : "Show"}
+                      </button>
+                    </div>
                   </div>
 
                   {open[si] && (
-                    <div style={{ padding: 12, display: "grid", gap: 10 }}>
+                    <div className="checks">
                       {sec.items.map((it, ii) => (
-                        <div key={ii} className="card" style={{ padding: 10 }}>
-                          {/* checkbox + label + weight */}
-                          <label style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                        <div key={ii} className="check">
+                          <label className="check__row">
                             <input
                               type="checkbox"
                               checked={it.done}
@@ -620,72 +629,32 @@ export default function WalkthroughPage() {
                                 })
                               }
                             />
-                            <span>
+                            <span className="check__label">
                               {it.label}{" "}
-                              <small style={{ color: "var(--muted)" }}>
-                                · {it.weight} pt{it.weight !== 1 ? "s" : ""}
-                              </small>
+                              <span className="muted">· {it.weight} pt{it.weight !== 1 ? "s" : ""}</span>
                             </span>
                           </label>
 
                           {/* Photos */}
-                          <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
-                            <label style={{ fontSize: 14, fontWeight: 600 }}>
-                              Upload photo(s)
-                            </label>
+                          <div className="upload">
+                            <label className="lbl lbl--tight">Upload photo(s)</label>
                             <input
                               type="file"
                               accept="image/*"
                               multiple
                               onChange={(e) => handleUpload(si, ii, e.target.files)}
                             />
-
-                            {/* Thumbnails */}
                             {it.photos.length > 0 && (
-                              <div
-                                style={{
-                                  display: "grid",
-                                  gridTemplateColumns: "repeat(auto-fill, minmax(88px,1fr))",
-                                  gap: 8,
-                                }}
-                              >
+                              <div className="thumbs">
                                 {it.photos.map((url, pi) => (
-                                  <div
-                                    key={pi}
-                                    style={{
-                                      position: "relative",
-                                      border: "1px solid var(--softline)",
-                                      borderRadius: 8,
-                                      overflow: "hidden",
-                                    }}
-                                  >
-                                    <img
-                                      src={url}
-                                      alt="upload preview"
-                                      style={{
-                                        width: "100%",
-                                        height: 88,
-                                        objectFit: "cover",
-                                        display: "block",
-                                      }}
-                                    />
+                                  <div key={pi} className="thumb">
+                                    <img src={url} alt="upload" />
                                     <button
                                       type="button"
+                                      className="thumb__remove"
                                       onClick={() => removePhoto(si, ii, pi)}
-                                      style={{
-                                        position: "absolute",
-                                        top: 4,
-                                        right: 4,
-                                        fontSize: 12,
-                                        background: "rgba(0,0,0,.6)",
-                                        color: "#fff",
-                                        padding: "2px 6px",
-                                        borderRadius: 6,
-                                      }}
-                                      aria-label="Remove photo"
-                                      title="Remove photo"
                                     >
-                                      Remove
+                                      ×
                                     </button>
                                   </div>
                                 ))}
@@ -693,15 +662,13 @@ export default function WalkthroughPage() {
                             )}
                           </div>
 
-                          {/* expandable guidance */}
+                          {/* Guidance */}
                           {it.tips && it.tips.length > 0 && (
-                            <details style={{ marginTop: 8 }}>
+                            <details className="tips">
                               <summary>Guidance / What good looks like</summary>
-                              <ul style={{ margin: "8px 0 0 18px", display: "grid", gap: 4 }}>
+                              <ul>
                                 {it.tips.map((t, i) => (
-                                  <li key={i} style={{ fontSize: 14, color: "var(--muted)" }}>
-                                    {t}
-                                  </li>
+                                  <li key={i}>{t}</li>
                                 ))}
                               </ul>
                             </details>
@@ -715,57 +682,214 @@ export default function WalkthroughPage() {
             })}
           </div>
 
-          {/* Live totals + star grade */}
-          <div className="card" style={{ display: "grid", gap: 8 }}>
-            <div><b>Walkthrough total:</b> {section_total}/75</div>
-            <div><b>Service total:</b> {service_total}/25</div>
-            <div style={{ fontSize: 18 }}>
-              <b>Predicted OER:</b> {predicted}/100 &nbsp;·&nbsp;
-              {"★".repeat(stars)}
-              {"☆".repeat(5 - stars)}
-            </div>
-          </div>
-
           {/* Actions */}
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button className="brand" type="submit">Submit & View Report</button>
-            <a href="/"><button type="button">Back to Home</button></a>
+          <div className="actions">
+            <button className="btn btn--brand" type="submit">
+              Submit & View Report
+            </button>
+            <a href="/" className="btn btn--ghost">Back to Home</a>
           </div>
         </form>
       </section>
 
-      {/* Minimal styles for nice mobile cards */}
+      {/* Styles */}
       <style jsx>{`
-        .container { max-width: 780px; margin: 0 auto; padding: 12px; }
+        :root {
+          --bg: radial-gradient(1000px 600px at 50% -200px, #eef6fb 0%, #f8fbfe 30%, #ffffff 60%);
+          --line: #e6e9ef;
+          --muted: #6b7280;
+          --text: #0f172a;
+          --brand: #006491;
+          --brand-dk: #00517a;
+          --blue: #e6f0fb;
+          --teal: #e6fbf6;
+          --gold: #fff6e0;
+          --green: #eaf8ee;
+          --grey: #f3f4f6;
+          --shadow: 0 1px 2px rgba(0,0,0,0.05), 0 8px 24px rgba(2, 6, 23, 0.06);
+        }
+        .wrap {
+          background: var(--bg);
+          min-height: 100dvh;
+          color: var(--text);
+        }
+        .banner {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          padding: 8px 0 12px;
+          border-bottom: 3px solid #006491;
+          background: #fff;
+        }
+        .banner img {
+          max-width: 92%;
+          height: auto;
+          display: block;
+        }
+        .container {
+          max-width: 860px;
+          margin: 0 auto;
+          padding: 16px;
+        }
+        h1 {
+          font-size: 22px;
+          margin: 10px 0 12px;
+          text-align: center;
+        }
+        .stack { display: grid; gap: 14px; }
         .card {
           background: #fff;
-          border: 1px solid var(--softline);
+          border: 1px solid var(--line);
+          border-radius: 14px;
+          padding: 14px;
+          box-shadow: var(--shadow);
+        }
+        .legend { font-size: 14px; }
+        .legend__row {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+        }
+        .legend__stars { color: var(--muted); }
+        .grid {
+          display: grid;
+          gap: 12px;
+        }
+        @media (min-width: 640px) {
+          .grid { grid-template-columns: repeat(3, minmax(0,1fr)); }
+        }
+        .lbl {
+          display: grid;
+          gap: 6px;
+          font-weight: 600;
+        }
+        .lbl--tight { font-weight: 600; margin-bottom: 4px; }
+        input[type="text"], input[type="number"], select {
+          border: 1px solid var(--line);
+          border-radius: 10px;
+          padding: 10px 12px;
+          outline: none;
+          font-size: 16px;
+          background: #fff;
+        }
+        input:focus, select:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(0,100,145,0.12); }
+        .muted { color: var(--muted); }
+
+        .controls { display: flex; gap: 10px; flex-wrap: wrap; }
+
+        .section__head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          border-bottom: 1px solid var(--line);
+          padding-bottom: 10px;
+        }
+        .section__title { font-weight: 700; }
+        .section__sub { color: var(--muted); font-size: 13px; }
+        .section__chips { display: flex; gap: 8px; align-items: center; }
+
+        .checks { display: grid; gap: 10px; margin-top: 10px; }
+
+        .check {
+          border: 1px dashed var(--line);
           border-radius: 12px;
-          padding: 12px;
-          box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+          padding: 10px;
+          background: #fff;
         }
-        .badge {
-          background: #f6f8fa;
-          border: 1px solid #e5e7eb;
-          padding: 8px 10px;
-          border-radius: 8px;
-          display: inline-block;
+        .check__row { display: flex; gap: 10px; align-items: flex-start; }
+        .check__label { line-height: 1.35; }
+
+        .upload { margin-top: 10px; display: grid; gap: 8px; }
+        .thumbs {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+          gap: 8px;
         }
-        button {
-          background: #f3f4f6;
-          border: 1px solid #e5e7eb;
-          padding: 8px 12px;
-          border-radius: 8px;
+        .thumb {
+          position: relative;
+          border: 1px solid var(--line);
+          border-radius: 10px;
+          overflow: hidden;
+          background: #fafafa;
         }
-        button.brand {
-          background: #006491;
+        .thumb img {
+          display: block;
+          width: 100%;
+          height: 84px;
+          object-fit: cover;
+        }
+        .thumb__remove {
+          position: absolute;
+          top: 4px;
+          right: 4px;
+          background: rgba(0,0,0,.6);
           color: #fff;
-          border-color: #00517a;
+          border: none;
+          border-radius: 8px;
+          width: 24px;
+          height: 24px;
+          line-height: 22px;
+          text-align: center;
+          font-size: 16px;
         }
-        :root { --softline: #e5e7eb; --muted: #6b7280; }
-        @media (hover:hover) {
-          button.brand:hover { background: #00517a; }
+
+        .tips summary { cursor: pointer; }
+        .tips ul { margin: 8px 0 0 18px; display: grid; gap: 4px; color: var(--muted); }
+
+        .actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
+        .btn {
+          background: #f4f6f8;
+          border: 1px solid var(--line);
+          padding: 10px 14px;
+          border-radius: 10px;
+          font-weight: 600;
         }
+        .btn--brand {
+          background: var(--brand);
+          color: #fff;
+          border-color: var(--brand-dk);
+        }
+        .btn--brand:hover { background: var(--brand-dk); }
+        .btn--ghost { background: #fff; }
+
+        .chip {
+          display: inline-block;
+          padding: 6px 10px;
+          border-radius: 999px;
+          border: 1px solid var(--line);
+          background: #fff;
+          font-size: 13px;
+          font-weight: 700;
+        }
+        .chip--blue { background: var(--blue); }
+        .chip--teal { background: var(--teal); }
+        .chip--gold { background: var(--gold); }
+        .chip--green { background: var(--green); }
+        .chip--grey { background: var(--grey); }
+
+        /* Sticky score bar */
+        .sticky {
+          position: sticky;
+          top: 0;
+          z-index: 50;
+          backdrop-filter: saturate(180%) blur(6px);
+          background: rgba(255,255,255,.8);
+          border-bottom: 1px solid var(--line);
+        }
+        .sticky__inner {
+          max-width: 960px;
+          margin: 0 auto;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          padding: 8px 12px;
+        }
+        .sticky__left { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
       `}</style>
     </main>
   );
