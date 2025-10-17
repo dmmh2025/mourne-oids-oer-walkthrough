@@ -10,54 +10,84 @@ const supabase = createClient(
 
 type FileObj = {
   name: string;
+  id?: string;
   updated_at?: string;
   created_at?: string;
   metadata?: any;
 };
 
+async function listAll(prefix = ""): Promise<{ path: string; file: FileObj }[]> {
+  // Breadth-first traversal of folders in the bucket
+  const queue: string[] = [prefix];
+  const out: { path: string; file: FileObj }[] = [];
+
+  while (queue.length) {
+    const p = queue.shift()!;
+    const { data, error } = await supabase.storage.from("memomailer").list(p, {
+      limit: 1000,
+      sortBy: { column: "updated_at", order: "desc" },
+    });
+    if (error || !data) continue;
+
+    for (const entry of data) {
+      // Folders have no '.' and are marked as type 'folder' internally
+      const isFolder = !entry.name.includes(".") && (entry as any).id === undefined;
+      if (isFolder) {
+        queue.push(p ? `${p}/${entry.name}` : entry.name);
+      } else {
+        const path = p ? `${p}/${entry.name}` : entry.name;
+        out.push({ path, file: entry });
+      }
+    }
+  }
+  return out;
+}
+
 export default function MemoMailerPage() {
   const [url, setUrl] = React.useState<string | null>(null);
   const [fileName, setFileName] = React.useState<string>("");
   const [loading, setLoading] = React.useState(true);
+  const [note, setNote] = React.useState<string>("");
 
   React.useEffect(() => {
     (async () => {
       try {
-        // List files in the memomailer bucket (root)
-        const { data: files, error: listErr } = await supabase
-          .storage
-          .from("memomailer")
-          .list("", { limit: 1000 });
-
-        if (listErr) throw listErr;
-        const list = (files || []) as FileObj[];
-
-        // Prefer latest.pdf if present
-        const hasLatest = list.some(f => f.name === "latest.pdf");
-        if (hasLatest) {
-          const latest = supabase.storage.from("memomailer").getPublicUrl("latest.pdf");
+        // 1) Try root/latest.pdf for the simple workflow
+        const latest = supabase.storage.from("memomailer").getPublicUrl("latest.pdf");
+        if (latest?.data?.publicUrl) {
+          // We can’t HEAD the file here easily; just try to use it first.
           setUrl(latest.data.publicUrl);
           setFileName("latest.pdf");
           setLoading(false);
           return;
         }
 
-        // Fallback to newest by updated_at/created_at
-        if (list.length > 0) {
-          const sorted = [...list].sort((a, b) => {
-            const da = new Date(a.updated_at || a.created_at || 0).getTime();
-            const db = new Date(b.updated_at || b.created_at || 0).getTime();
+        // 2) Otherwise, recursively list everything and pick newest PDF
+        const all = await listAll("");
+        // Filter PDFs only (optional—remove this if you want any newest file)
+        const pdfs = all.filter((f) => f.path.toLowerCase().endsWith(".pdf"));
+
+        if (pdfs.length) {
+          const newest = [...pdfs].sort((a, b) => {
+            const da =
+              new Date(a.file.updated_at || a.file.created_at || 0).getTime() || 0;
+            const db =
+              new Date(b.file.updated_at || b.file.created_at || 0).getTime() || 0;
             return db - da;
-          });
-          const newest = sorted[0];
-          const full = supabase.storage.from("memomailer").getPublicUrl(newest.name);
+          })[0];
+
+          const full = supabase.storage.from("memomailer").getPublicUrl(newest.path);
           setUrl(full.data.publicUrl);
-          setFileName(newest.name);
+          setFileName(newest.path);
         } else {
           setUrl(null);
+          setNote(
+            "No PDF found. Upload a file to the 'memomailer' bucket (root or any folder)."
+          );
         }
-      } catch {
+      } catch (e) {
         setUrl(null);
+        setNote("Could not list the bucket. Check bucket name and public access.");
       } finally {
         setLoading(false);
       }
@@ -98,14 +128,20 @@ export default function MemoMailerPage() {
             <div className="viewer">
               <iframe title="Memomailer" src={url} />
             </div>
+            <p className="hint">
+              Tip: upload a file named <code>latest.pdf</code> to update this page
+              without changing links.
+            </p>
           </div>
         ) : (
           <div className="card empty">
-            <strong>No memomailer uploaded yet.</strong>
-            <p>
-              Upload a PDF to the public bucket <code>memomailer</code> as{" "}
-              <code>latest.pdf</code> (or any file name—this page uses the newest).
-            </p>
+            <strong>No memomailer to show.</strong>
+            <p>{note}</p>
+            <ol>
+              <li>Bucket name must be <code>memomailer</code>.</li>
+              <li>Set bucket to <b>public</b> (or use signed URLs).</li>
+              <li>Upload your PDF (root or any folder). Optional: call it <code>latest.pdf</code>.</li>
+            </ol>
           </div>
         )}
       </section>
@@ -143,6 +179,7 @@ export default function MemoMailerPage() {
         .actions { display:flex; gap:8px; flex-wrap:wrap; }
         .viewer { height: 75vh; }
         .viewer iframe { width:100%; height:100%; border:0; background:#fff; }
+        .hint { color:#6b7280; margin-top:10px; font-size:13px; }
 
         .btn {
           display:inline-flex; align-items:center; justify-content:center;
