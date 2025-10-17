@@ -27,12 +27,12 @@ export default function HomePage() {
 
         <div className="grid">
           {/* Walkthrough */}
-          <a href="/walkthrough" className="btn btn--primary">
+          <a href="/walkthrough" className="btn">
             ✅ Daily OER Walkthrough
           </a>
 
           {/* Deep Clean */}
-          <a href="/deep-clean" className="btn btn--primary">
+          <a href="/deep-clean" className="btn">
             🧽 Autumn Deep Clean Checklist
           </a>
 
@@ -41,13 +41,13 @@ export default function HomePage() {
             href={MEMO_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="btn btn--primary"
+            className="btn"
           >
             📄 Weekly Memomailer
           </a>
 
           {/* Admin */}
-          <a href="/admin" className="btn btn--secondary">
+          <a href="/admin" className="btn">
             📊 Admin Dashboard
           </a>
         </div>
@@ -122,7 +122,7 @@ export default function HomePage() {
           }
         }
 
-        /* Button base */
+        /* Buttons (all same style now) */
         .btn {
           display: inline-flex;
           align-items: center;
@@ -132,31 +132,17 @@ export default function HomePage() {
           text-decoration: none;
           padding: 16px 20px;
           border-radius: 14px;
-          border: 2px solid transparent;
+          background: #ffffff;
+          border: 3px solid var(--brand);
+          color: var(--brand);
           box-shadow: var(--shadow-strong);
           transition: all 0.15s ease-in-out;
           text-align: center;
         }
 
-        /* Primary (blue) */
-        .btn--primary {
+        .btn:hover {
           background: var(--brand);
-          border-color: var(--brand-dark);
-          color: #ffffff;
-        }
-        .btn--primary:hover {
-          background: var(--brand-dark);
-          transform: translateY(-2px);
-        }
-
-        /* Secondary (white) */
-        .btn--secondary {
-          background: #ffffff;
-          color: var(--brand);
-          border-color: var(--brand);
-        }
-        .btn--secondary:hover {
-          background: #f3f8fb;
+          color: #fff;
           transform: translateY(-2px);
         }
       `}</style>
