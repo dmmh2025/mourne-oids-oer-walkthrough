@@ -445,7 +445,7 @@ export default function WalkthroughPage() {
   /* ---------- UI ---------- */
   return (
     <main className="wrap">
-      {/* Sticky score bar */}
+      {/* Sticky score bar WITH SUBMIT BUTTON */}
       <div className="sticky">
         <div className="sticky__inner">
           <div className="sticky__left">
@@ -457,7 +457,12 @@ export default function WalkthroughPage() {
               {"☆".repeat(5 - stars)}
             </span>
           </div>
-          <a href="/" className="btn btn--ghost">Home</a>
+          <div className="sticky__right">
+            <a href="/" className="btn btn--ghost">Home</a>
+            <button form="walkForm" type="submit" className="btn btn--brand">
+              Submit
+            </button>
+          </div>
         </div>
       </div>
 
@@ -685,7 +690,7 @@ export default function WalkthroughPage() {
             })}
           </div>
 
-          {/* Inline fallback submit (only visible on small screens if needed) */}
+          {/* Inline fallback submit */}
           <div className="inlineSubmit">
             <button type="submit" className="btn btn--brand btn--lg">
               Submit &amp; View Report
@@ -694,7 +699,7 @@ export default function WalkthroughPage() {
         </form>
       </section>
 
-      {/* Fixed bottom submit bar (always visible) */}
+      {/* Fixed bottom submit bar */}
       <div className="submitbar">
         <div className="submitbar__inner">
           <button form="walkForm" className="btn btn--brand btn--lg" type="submit">
@@ -723,9 +728,8 @@ export default function WalkthroughPage() {
           --shadow-strong: 0 14px 28px rgba(2,6,23,.1), 0 2px 6px rgba(2,6,23,.06);
           --shadow-card: 0 10px 18px rgba(2,6,23,.08), 0 1px 3px rgba(2,6,23,.06);
         }
-
-        /* extra bottom padding so fixed bar never covers content */
-        .wrap { background: var(--bg); min-height: 100dvh; color: var(--text); padding-bottom: 84px; }
+        /* padding-bottom so fixed bar never covers content */
+        .wrap { background: var(--bg); min-height: 100dvh; color: var(--text); padding-bottom: 96px; }
 
         .banner { display:flex; justify-content:center; align-items:center; padding:6px 0 10px; border-bottom:3px solid #006491; background:#fff; box-shadow: var(--shadow-card); }
         .banner img { max-width:92%; height:auto; display:block; }
@@ -757,6 +761,10 @@ export default function WalkthroughPage() {
         .section__title { font-weight:900; letter-spacing:.2px; }
         .section__sub { color:var(--muted); font-size:13px; }
         .section__chips { display:flex; gap:8px; align-items:center; }
+        .sticky { position:sticky; top:0; z-index:70; backdrop-filter:saturate(180%) blur(6px); background:rgba(255,255,255,.92); border-bottom:1px solid var(--line); box-shadow:0 2px 10px rgba(2,6,23,.06); }
+        .sticky__inner { max-width:980px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px; }
+        .sticky__left { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+        .sticky__right { display:flex; gap:8px; align-items:center; }
 
         .checks { display:grid; }
         .check { padding:12px; border-top:1px solid #edf0f5; background:#ffffff; }
@@ -789,17 +797,13 @@ export default function WalkthroughPage() {
         .chip--green { background:#e9f9f1; color:#15803d; border-color:#bfe9cf; }
         .chip--grey { background:#f3f4f6; }
 
-        .sticky { position:sticky; top:0; z-index:60; backdrop-filter:saturate(180%) blur(6px); background:rgba(255,255,255,.92); border-bottom:1px solid var(--line); box-shadow:0 2px 10px rgba(2,6,23,.06); }
-        .sticky__inner { max-width:980px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px; }
-        .sticky__left { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
-
-        /* Fixed bottom submit bar (reliable on mobile) */
+        /* Fixed bottom submit bar */
         .submitbar {
           position: fixed;
           left: 0;
           right: 0;
           bottom: env(safe-area-inset-bottom);
-          z-index: 100;
+          z-index: 80;
           background: rgba(255,255,255,.98);
           border-top: 1px solid var(--line);
           box-shadow: 0 -6px 16px rgba(2,6,23,.08);
@@ -813,7 +817,7 @@ export default function WalkthroughPage() {
           justify-content: center;
         }
 
-        /* Inline fallback submit inside the form (for very small screens) */
+        /* Inline fallback submit inside the form (extra safety) */
         .inlineSubmit { display: block; margin: 12px auto 0; text-align: center; }
         @media (min-width: 640px) { .inlineSubmit { display: none; } }
       `}</style>
