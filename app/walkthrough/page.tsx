@@ -64,7 +64,7 @@ function pointsForExtremes(perThousand: number) {
   return 0;
 }
 
-/* ---------- Sections + items (content & weights) ---------- */
+/* ---------- Sections + items (content & weights unchanged) ---------- */
 const SECTIONS_BASE: {
   title: string;
   points: number;
@@ -442,10 +442,16 @@ export default function WalkthroughPage() {
     );
   }
 
+  /* helper for FAB submit */
+  function clickFabSubmit() {
+    // requestSubmit avoids focusing issues on iOS Safari
+    (document.getElementById("walkForm") as HTMLFormElement | null)?.requestSubmit();
+  }
+
   /* ---------- UI ---------- */
   return (
     <main className="wrap">
-      {/* Sticky score bar WITH SUBMIT BUTTON */}
+      {/* Top sticky bar with metrics */}
       <div className="sticky">
         <div className="sticky__inner">
           <div className="sticky__left">
@@ -457,12 +463,7 @@ export default function WalkthroughPage() {
               {"☆".repeat(5 - stars)}
             </span>
           </div>
-          <div className="sticky__right">
-            <a href="/" className="btn btn--ghost">Home</a>
-            <button form="walkForm" type="submit" className="btn btn--brand">
-              Submit
-            </button>
-          </div>
+          <a href="/" className="btn btn--ghost">Home</a>
         </div>
       </div>
 
@@ -487,7 +488,15 @@ export default function WalkthroughPage() {
           </div>
         </div>
 
+        {/* THE FORM */}
         <form id="walkForm" onSubmit={onSubmit} className="stack">
+          {/* ---- TOP SUBMIT (always visible near the start) ---- */}
+          <div className="inlineSubmitTop">
+            <button type="submit" className="btn btn--brand btn--lg">
+              Submit &amp; View Report
+            </button>
+          </div>
+
           {/* Details */}
           <div className="card card--raised">
             <div className="grid">
@@ -690,8 +699,8 @@ export default function WalkthroughPage() {
             })}
           </div>
 
-          {/* Inline fallback submit */}
-          <div className="inlineSubmit">
+          {/* ---- BOTTOM SUBMIT inside the form ---- */}
+          <div className="inlineSubmitBottom">
             <button type="submit" className="btn btn--brand btn--lg">
               Submit &amp; View Report
             </button>
@@ -699,14 +708,10 @@ export default function WalkthroughPage() {
         </form>
       </section>
 
-      {/* Fixed bottom submit bar */}
-      <div className="submitbar">
-        <div className="submitbar__inner">
-          <button form="walkForm" className="btn btn--brand btn--lg" type="submit">
-            Submit &amp; View Report
-          </button>
-        </div>
-      </div>
+      {/* Floating Action Submit (bottom-right) */}
+      <button className="fab" onClick={clickFabSubmit} aria-label="Submit walkthrough">
+        ✓ Submit
+      </button>
 
       {/* Styles */}
       <style jsx>{`
@@ -728,8 +733,7 @@ export default function WalkthroughPage() {
           --shadow-strong: 0 14px 28px rgba(2,6,23,.1), 0 2px 6px rgba(2,6,23,.06);
           --shadow-card: 0 10px 18px rgba(2,6,23,.08), 0 1px 3px rgba(2,6,23,.06);
         }
-        /* padding-bottom so fixed bar never covers content */
-        .wrap { background: var(--bg); min-height: 100dvh; color: var(--text); padding-bottom: 96px; }
+        .wrap { background: var(--bg); min-height: 100dvh; color: var(--text); }
 
         .banner { display:flex; justify-content:center; align-items:center; padding:6px 0 10px; border-bottom:3px solid #006491; background:#fff; box-shadow: var(--shadow-card); }
         .banner img { max-width:92%; height:auto; display:block; }
@@ -761,10 +765,10 @@ export default function WalkthroughPage() {
         .section__title { font-weight:900; letter-spacing:.2px; }
         .section__sub { color:var(--muted); font-size:13px; }
         .section__chips { display:flex; gap:8px; align-items:center; }
+
         .sticky { position:sticky; top:0; z-index:70; backdrop-filter:saturate(180%) blur(6px); background:rgba(255,255,255,.92); border-bottom:1px solid var(--line); box-shadow:0 2px 10px rgba(2,6,23,.06); }
         .sticky__inner { max-width:980px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px; }
         .sticky__left { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
-        .sticky__right { display:flex; gap:8px; align-items:center; }
 
         .checks { display:grid; }
         .check { padding:12px; border-top:1px solid #edf0f5; background:#ffffff; }
@@ -790,6 +794,7 @@ export default function WalkthroughPage() {
         .btn--brand:hover { background:var(--brand-dk); }
         .btn--ghost { background:#fff; }
         .btn--lg { padding:14px 18px; font-size:17px; border-radius:14px; }
+
         .chip { display:inline-block; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:#fff; font-size:13px; font-weight:800; box-shadow:0 1px 0 rgba(255,255,255,.8); }
         .chip--blue { background:#e6f0fb; }
         .chip--teal { background:#e6fbf6; }
@@ -797,29 +802,26 @@ export default function WalkthroughPage() {
         .chip--green { background:#e9f9f1; color:#15803d; border-color:#bfe9cf; }
         .chip--grey { background:#f3f4f6; }
 
-        /* Fixed bottom submit bar */
-        .submitbar {
-          position: fixed;
-          left: 0;
-          right: 0;
-          bottom: env(safe-area-inset-bottom);
-          z-index: 80;
-          background: rgba(255,255,255,.98);
-          border-top: 1px solid var(--line);
-          box-shadow: 0 -6px 16px rgba(2,6,23,.08);
-          padding: 10px 0 calc(10px + env(safe-area-inset-bottom));
-        }
-        .submitbar__inner {
-          max-width: 880px;
-          margin: 0 auto;
-          padding: 0 12px;
-          display: flex;
-          justify-content: center;
-        }
+        /* Top & bottom inline submit buttons */
+        .inlineSubmitTop,
+        .inlineSubmitBottom { text-align:center; }
+        .inlineSubmitTop { margin-top: 4px; }
+        .inlineSubmitBottom { margin: 10px 0 0; }
 
-        /* Inline fallback submit inside the form (extra safety) */
-        .inlineSubmit { display: block; margin: 12px auto 0; text-align: center; }
-        @media (min-width: 640px) { .inlineSubmit { display: none; } }
+        /* Floating action submit button */
+        .fab {
+          position: fixed;
+          right: 16px;
+          bottom: 16px;
+          z-index: 90;
+          background: var(--brand);
+          color: #fff;
+          border: 2px solid var(--brand-dk);
+          border-radius: 14px;
+          padding: 14px 18px;
+          font-weight: 900;
+          box-shadow: 0 10px 18px rgba(2,6,23,.18);
+        }
       `}</style>
     </main>
   );
