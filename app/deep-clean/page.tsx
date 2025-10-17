@@ -108,6 +108,23 @@ export default function DeepCleanHome() {
           </a>
         </div>
       </section>
+      <style jsx>{`
+  .banner {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 8px 0 12px;
+    background: #ffffff;
+    border-bottom: 3px solid #006491;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+  }
+
+  .banner img {
+    max-width: 92%;
+    height: auto;
+    display: block;
+  }
+`}</style>
     </main>
   );
 }
