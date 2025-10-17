@@ -20,31 +20,34 @@ export default function HomePage() {
       </div>
 
       <section className="container">
-        <h1>Welcome</h1>
+        <h1>Welcome to the Mourne-oids Hub</h1>
+        <p className="intro">
+          Quick access to your key tools and weekly updates.
+        </p>
 
         <div className="grid">
-          {/* Daily OER Walkthrough */}
-          <a href="/walkthrough" className="btn btn--brand btn--lg">
+          {/* Walkthrough */}
+          <a href="/walkthrough" className="btn btn--primary">
             ✅ Daily OER Walkthrough
           </a>
 
-          {/* Autumn Deep Clean */}
-          <a href="/deep-clean" className="btn btn--brand btn--lg">
+          {/* Deep Clean */}
+          <a href="/deep-clean" className="btn btn--primary">
             🧽 Autumn Deep Clean Checklist
           </a>
 
-          {/* Weekly Memomailer (PDF) */}
+          {/* Weekly Memomailer */}
           <a
             href={MEMO_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="btn btn--brand btn--lg"
+            className="btn btn--primary"
           >
             📄 Weekly Memomailer
           </a>
 
           {/* Admin */}
-          <a href="/admin" className="btn btn--ghost btn--lg">
+          <a href="/admin" className="btn btn--secondary">
             📊 Admin Dashboard
           </a>
         </div>
@@ -53,14 +56,13 @@ export default function HomePage() {
       {/* Styles */}
       <style jsx>{`
         :root {
-          --bg: #f2f5f9;
-          --paper: #ffffff;
-          --line: #e5e7eb;
-          --muted: #6b7280;
-          --text: #1a1a1a;
           --brand: #006491;
-          --brand-dk: #00517a;
-          --shadow-card: 0 10px 18px rgba(2,6,23,.08), 0 1px 3px rgba(2,6,23,.06);
+          --brand-dark: #004c70;
+          --bg: #f4f7fa;
+          --text: #1b1b1b;
+          --paper: #ffffff;
+          --shadow-strong: 0 12px 25px rgba(0, 0, 0, 0.08);
+          --shadow-soft: 0 4px 10px rgba(0, 0, 0, 0.04);
         }
 
         .wrap {
@@ -74,10 +76,10 @@ export default function HomePage() {
           display: flex;
           justify-content: center;
           align-items: center;
-          padding: 6px 0 10px;
+          padding: 8px 0 10px;
           background: #fff;
-          border-bottom: 3px solid var(--brand);
-          box-shadow: var(--shadow-card);
+          border-bottom: 4px solid var(--brand);
+          box-shadow: var(--shadow-soft);
         }
         .banner img {
           max-width: 92%;
@@ -85,72 +87,77 @@ export default function HomePage() {
           display: block;
         }
 
-        /* Content */
+        /* Container */
         .container {
-          max-width: 880px;
+          max-width: 900px;
           margin: 0 auto;
-          padding: 16px;
-        }
-        h1 {
+          padding: 24px 16px;
           text-align: center;
-          font-size: 22px;
-          font-weight: 800;
-          margin: 16px 0 18px;
-          letter-spacing: 0.2px;
         }
 
-        /* Button grid */
+        h1 {
+          font-size: 24px;
+          font-weight: 900;
+          margin: 0 0 6px;
+          letter-spacing: 0.2px;
+          color: var(--text);
+        }
+
+        .intro {
+          color: #3a3a3a;
+          margin-bottom: 22px;
+          font-size: 16px;
+        }
+
+        /* Grid for buttons */
         .grid {
           display: grid;
-          gap: 12px;
+          gap: 16px;
           grid-template-columns: 1fr;
         }
+
         @media (min-width: 640px) {
           .grid {
             grid-template-columns: 1fr 1fr;
           }
         }
 
-        /* Buttons – match walkthrough look */
+        /* Button base */
         .btn {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          text-decoration: none;
+          font-size: 18px;
           font-weight: 800;
+          text-decoration: none;
+          padding: 16px 20px;
           border-radius: 14px;
-          border: 2px solid #d7dbe3;
-          background: #fff;
-          color: var(--text);
-          padding: 12px 14px;
-          box-shadow: 0 1px 0 rgba(255,255,255,0.7);
-          transition: transform 0.08s ease, background 0.2s ease, border-color 0.2s ease;
-        }
-        .btn:hover { transform: translateY(-2px); }
-
-        .btn--lg {
-          padding: 16px 18px;
-          font-size: 17px;
+          border: 2px solid transparent;
+          box-shadow: var(--shadow-strong);
+          transition: all 0.15s ease-in-out;
+          text-align: center;
         }
 
-        .btn--brand {
+        /* Primary (blue) */
+        .btn--primary {
           background: var(--brand);
-          border-color: var(--brand-dk);
-          color: #fff;
+          border-color: var(--brand-dark);
+          color: #ffffff;
         }
-        .btn--brand:hover {
-          background: var(--brand-dk);
-          border-color: var(--brand-dk);
-          color: #fff;
+        .btn--primary:hover {
+          background: var(--brand-dark);
+          transform: translateY(-2px);
         }
 
-        .btn--ghost {
-          background: #fff;
-          border-color: #d7dbe3;
-          color: var(--text);
-        }
-        .btn--ghost:hover {
+        /* Secondary (white) */
+        .btn--secondary {
+          background: #ffffff;
+          color: var(--brand);
           border-color: var(--brand);
+        }
+        .btn--secondary:hover {
+          background: #f3f8fb;
+          transform: translateY(-2px);
         }
       `}</style>
     </main>
