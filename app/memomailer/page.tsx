@@ -10,7 +10,6 @@ const supabase = createClient(
 
 type FileObj = {
   name: string;
-  id?: string;
   updated_at?: string;
   created_at?: string;
   metadata?: any;
@@ -24,42 +23,40 @@ export default function MemoMailerPage() {
   React.useEffect(() => {
     (async () => {
       try {
-        // 1) Prefer a file called latest.pdf
-        const latestPath = "latest.pdf";
-        const { data: headTry } = supabase.storage.from("memomailer").getPublicUrl(latestPath);
-        // We can’t “HEAD” the file via SDK; instead, list and confirm existence:
-        const { data: listRoot, error: listErr } = await supabase
+        // List files in the memomailer bucket (root)
+        const { data: files, error: listErr } = await supabase
           .storage
           .from("memomailer")
           .list("", { limit: 1000 });
 
         if (listErr) throw listErr;
+        const list = (files || []) as FileObj[];
 
-        const files = (listRoot || []) as FileObj[];
-
-        const hasLatest = files.some(f => f.name === "latest.pdf");
+        // Prefer latest.pdf if present
+        const hasLatest = list.some(f => f.name === "latest.pdf");
         if (hasLatest) {
-          setUrl(headTry.publicUrl);
+          const latest = supabase.storage.from("memomailer").getPublicUrl("latest.pdf");
+          setUrl(latest.data.publicUrl);
           setFileName("latest.pdf");
           setLoading(false);
           return;
         }
 
-        // 2) Fallback to most-recent file by created_at or updated_at
-        if (files.length > 0) {
-          const sorted = [...files].sort((a, b) => {
+        // Fallback to newest by updated_at/created_at
+        if (list.length > 0) {
+          const sorted = [...list].sort((a, b) => {
             const da = new Date(a.updated_at || a.created_at || 0).getTime();
             const db = new Date(b.updated_at || b.created_at || 0).getTime();
             return db - da;
           });
           const newest = sorted[0];
           const full = supabase.storage.from("memomailer").getPublicUrl(newest.name);
-          setUrl(full.publicUrl);
+          setUrl(full.data.publicUrl);
           setFileName(newest.name);
         } else {
           setUrl(null);
         }
-      } catch (e) {
+      } catch {
         setUrl(null);
       } finally {
         setLoading(false);
@@ -88,9 +85,7 @@ export default function MemoMailerPage() {
         ) : url ? (
           <div className="card">
             <div className="toolbar">
-              <div className="title">
-                📄 {fileName}
-              </div>
+              <div className="title">📄 {fileName}</div>
               <div className="actions">
                 <a href={url} target="_blank" rel="noopener noreferrer" className="btn">
                   Open in new tab
@@ -109,7 +104,7 @@ export default function MemoMailerPage() {
             <strong>No memomailer uploaded yet.</strong>
             <p>
               Upload a PDF to the public bucket <code>memomailer</code> as{" "}
-              <code>latest.pdf</code> (or any file name—this page will use the newest one).
+              <code>latest.pdf</code> (or any file name—this page uses the newest).
             </p>
           </div>
         )}
