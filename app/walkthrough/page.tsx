@@ -720,7 +720,8 @@ export default function WalkthroughPage() {
           --paper: #ffffff;
           --line: #e5e7eb;
           --muted: #6b7280;
-          --text: #0f172a;
+         --text: #1f2937;
+         --text-light: #374151;
           --brand: #006491;
           --brand-dk: #00517a;
           --accent: #0ea5e9;
@@ -734,6 +735,10 @@ export default function WalkthroughPage() {
           --shadow-card: 0 10px 18px rgba(2,6,23,.08), 0 1px 3px rgba(2,6,23,.06);
         }
         .wrap { background: var(--bg); min-height: 100dvh; color: var(--text); }
+        .wrap, .card, .check, .section__title, .lbl, h1 {
+  color: var(--text-light);
+}
+
 
         .banner { display:flex; justify-content:center; align-items:center; padding:6px 0 10px; border-bottom:3px solid #006491; background:#fff; box-shadow: var(--shadow-card); }
         .banner img { max-width:92%; height:auto; display:block; }
