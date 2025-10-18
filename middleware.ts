@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // Read list of allowed users from an environment variable.
-// Format (JSON): [{"user":"Downpatrick","pass":"dp123"},{"user":"Kilkeel","pass":"kk123"}]
+// Format: [{"user":"Damien","pass":"Pepperoni1"}, ...]
 const raw = process.env.BASIC_AUTH_JSON || "[]";
 
 type Cred = { user: string; pass: string };
@@ -14,34 +14,47 @@ try {
       .map((x) => ({ user: x.user, pass: x.pass }));
   }
 } catch {
-  // ignore; ALLOWED remains []
+  // ignore
 }
 
 function unauthorized() {
   const res = new NextResponse("Authentication required.", { status: 401 });
-  res.headers.set("WWW-Authenticate", 'Basic realm="OER", charset="UTF-8"');
+  res.headers.set("WWW-Authenticate", 'Basic realm="Mourne-oids Hub", charset="UTF-8"');
   return res;
 }
 
 export function middleware(req: NextRequest) {
-  // Skip static assets and Next internals
   const { pathname } = req.nextUrl;
+
+  // 1) Always skip API routes (this fixes your /api/submit)
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
+
+  // 2) Skip static assets / Next internals
   if (
     pathname.startsWith("/_next/") ||
-    pathname.startsWith("/api/health") ||
     pathname.startsWith("/public/") ||
     pathname.match(/\.(png|jpg|jpeg|webp|gif|svg|ico|css|js|map|woff2?|ttf|txt|pdf)$/i)
   ) {
     return NextResponse.next();
   }
 
-  // Protect selected paths:
-  // - Add or remove paths here.
-  const protectedPaths = ["/", "/walkthrough", "/admin", "/success"];
-  const isProtected = protectedPaths.some((p) => pathname === p || pathname.startsWith(p + "/"));
+  // 3) Protect pages (extend the list as needed)
+  const protectedPaths = [
+    "/",                // home
+    "/walkthrough",
+    "/admin",
+    "/success",
+    "/deep-clean",
+    "/memomailer",
+  ];
+  const isProtected = protectedPaths.some(
+    (p) => pathname === p || pathname.startsWith(p + "/")
+  );
   if (!isProtected) return NextResponse.next();
 
-  // Check Authorization header
+  // 4) Check Basic Auth
   const auth = req.headers.get("authorization");
   if (!auth || !auth.startsWith("Basic ")) return unauthorized();
 
@@ -60,7 +73,7 @@ export function middleware(req: NextRequest) {
   }
 }
 
-// Limit where the middleware runs (important for performance).
+// Run on pages only (exclude /api and _next at the matcher level too)
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!api|_next|favicon.ico).*)"],
 };
