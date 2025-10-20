@@ -76,12 +76,16 @@ export default function SubmissionDetailPage() {
       setLoading(true);
       setErr(null);
       try {
+        // If the id looks like an integer, compare as number to avoid type mismatch.
+        const idFilter: string | number = /^\d+$/.test(id) ? Number(id) : id;
+
         const { data, error } = await supabase
           .from("walkthrough_submissions")
           .select("*")
-          .eq("id", id)
+          .eq("id", idFilter)
           .limit(1)
           .maybeSingle();
+
         if (error) throw error;
         if (!data) throw new Error("Submission not found");
 
@@ -146,8 +150,24 @@ export default function SubmissionDetailPage() {
             gap: 8,
             alignItems: "center",
             marginBottom: 8,
+            flexWrap: "wrap",
           }}
         >
+          <button
+            type="button"
+            onClick={() => (window.location.href = "/")}
+            style={{
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid #e5e7eb",
+              background: "white",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+            title="Home"
+          >
+            ← Home
+          </button>
           <button
             type="button"
             onClick={() => (window.location.href = "/admin")}
@@ -159,6 +179,7 @@ export default function SubmissionDetailPage() {
               fontWeight: 700,
               cursor: "pointer",
             }}
+            title="Back to Admin"
           >
             ← Back to Admin
           </button>
@@ -194,24 +215,18 @@ export default function SubmissionDetailPage() {
                 </span>
               </div>
 
-              {/* ✅ Badge Summary */}
+              {/* Summary badges */}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <Badge
-                  label="Walkthrough"
-                  value={`${fmt(sub.section_total)}/75`}
-                />
+                <Badge label="Walkthrough" value={`${fmt(sub.section_total)}/75`} />
                 <Badge label="Service" value={`${fmt(sub.service_total)}/25`} />
                 <span style={{ fontWeight: 800 }}>
-                  <Badge
-                    label="Total"
-                    value={`${fmt(sub.predicted || 0)}/100`}
-                  />
+                  <Badge label="Total" value={`${fmt(sub.predicted || 0)}/100`} />
                 </span>
                 <Badge
                   label="Stars"
-                  value={`${"★".repeat(
-                    starsForPercent(sub.predicted || 0)
-                  )}${"☆".repeat(5 - starsForPercent(sub.predicted || 0))}`}
+                  value={`${"★".repeat(starsForPercent(sub.predicted || 0))}${"☆".repeat(
+                    5 - starsForPercent(sub.predicted || 0)
+                  )}`}
                 />
                 <Badge label="ADT" value={fmt(sub.adt)} />
                 <Badge label="SBR%" value={fmt(sub.sbr)} />
@@ -222,13 +237,9 @@ export default function SubmissionDetailPage() {
             {/* Sections */}
             <div style={{ display: "grid", gap: 10 }}>
               {toArray<SectionPayload>(sub.sections).map((sec, sidx) => {
-                const title =
-                  sec.title || sec.key || `Section ${sidx + 1}`.toString();
+                const title = sec.title || sec.key || `Section ${sidx + 1}`.toString();
                 const max = Number(sec.max) || 0;
-                const mode =
-                  (sec.mode as any) === "all_or_nothing"
-                    ? "All-or-nothing"
-                    : "Weighted";
+                const mode = (sec.mode as any) === "all_or_nothing" ? "All-or-nothing" : "Weighted";
 
                 return (
                   <section
@@ -257,12 +268,8 @@ export default function SubmissionDetailPage() {
 
                     <div style={{ padding: 10, display: "grid", gap: 8 }}>
                       {toArray<Item>(sec.items).map((it, iidx) => {
-                        const label =
-                          it?.label || it?.key || `Item ${iidx + 1}`.toString();
-                        const ptsText =
-                          it && typeof it.pts === "number"
-                            ? ` (${it.pts} pts)`
-                            : "";
+                        const label = it?.label || it?.key || `Item ${iidx + 1}`.toString();
+                        const ptsText = it && typeof it.pts === "number" ? ` (${it.pts} pts)` : "";
                         const photos = toArray<string>(it?.photos);
 
                         return (
@@ -283,9 +290,7 @@ export default function SubmissionDetailPage() {
                                 flexWrap: "wrap",
                               }}
                             >
-                              <span
-                                title={it.checked ? "Checked" : "Not checked"}
-                              >
+                              <span title={it.checked ? "Checked" : "Not checked"}>
                                 {it.checked ? "✅" : "⬜️"}
                               </span>
                               <div style={{ fontWeight: 600 }}>
@@ -404,7 +409,7 @@ export default function SubmissionDetailPage() {
   );
 }
 
-/* ✅ Simplified Badge Component */
+/* Badge */
 function Badge(props: { label: string; value: string }) {
   return (
     <span
