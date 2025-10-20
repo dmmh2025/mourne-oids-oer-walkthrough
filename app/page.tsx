@@ -27,15 +27,18 @@ export default function HomePage() {
           <a href="/walkthrough" className="btn btn--brand">
             🧾 Daily OER Walkthrough
           </a>
+
           <a href="/deep-clean" className="btn btn--brand">
             🧽 Autumn Deep Clean Checklist
           </a>
+
           <a href="/memomailer" className="btn btn--brand">
             📬 Weekly MemoMailer
           </a>
-          <a href="/pizza-of-the-week" className="hubbtn">
-  🍕 Pizza of the Week
-</a>
+
+          <a href="/pizza-of-the-week" className="btn btn--brand">
+            🍕 Pizza of the Week
+          </a>
 
           <a href="/admin" className="btn btn--brand">
             ⚙️ Admin Panel
