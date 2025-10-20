@@ -33,6 +33,11 @@ type Submission = {
   sections: SectionPayload[] | string | Record<string, unknown>;
 };
 
+// ---------- STORES (now includes Ballynahinch) ----------
+const STORES = ["Downpatrick", "Kilkeel", "Newcastle", "Ballynahinch"] as const;
+type Store = (typeof STORES)[number];
+const STORE_OPTIONS: Array<"All" | Store> = ["All", ...STORES];
+
 // ---------- Supabase ----------
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -160,7 +165,7 @@ export default function AdminPage() {
   const thirtyAgoISO = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
   const [fromDate, setFromDate] = React.useState(thirtyAgoISO);
   const [toDate, setToDate] = React.useState(todayISO);
-  const [storeFilter, setStoreFilter] = React.useState<string>("All");
+  const [storeFilter, setStoreFilter] = React.useState<"All" | Store>("All");
 
   // Sorting
   const [sortKey, setSortKey] = React.useState<
@@ -226,11 +231,8 @@ export default function AdminPage() {
     return { total, avgTotal, avgStars };
   }, [rows]);
 
-  const allStores = React.useMemo(() => {
-    const set = new Set<string>();
-    rows.forEach((r) => set.add((r.store || "Unknown").trim()));
-    return ["All", ...Array.from(set).sort()];
-  }, [rows]);
+  // Fixed store options (always includes Ballynahinch)
+  const allStores = STORE_OPTIONS;
 
   // ---- Per-store analytics
   type StoreStats = {
@@ -397,7 +399,7 @@ export default function AdminPage() {
                 Store
                 <select
                   value={storeFilter}
-                  onChange={(e) => setStoreFilter(e.target.value)}
+                  onChange={(e) => setStoreFilter(e.target.value as "All" | Store)}
                   style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
                 >
                   {allStores.map((s) => (
