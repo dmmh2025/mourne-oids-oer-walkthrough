@@ -33,6 +33,10 @@ export default function HomePage() {
           <a href="/memomailer" className="btn btn--brand">
             📬 Weekly MemoMailer
           </a>
+          <a href="/pizza-of-the-week" className="hubbtn">
+  🍕 Pizza of the Week
+</a>
+
           <a href="/admin" className="btn btn--brand">
             ⚙️ Admin Panel
           </a>
