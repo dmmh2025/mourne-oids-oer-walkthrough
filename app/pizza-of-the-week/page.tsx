@@ -16,24 +16,16 @@ export default function PizzaOfTheWeekPage() {
   const [pics, setPics] = React.useState<Pic[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState<string | null>(null);
+  const [active, setActive] = React.useState<Pic | null>(null);
 
   React.useEffect(() => {
     (async () => {
-      setLoading(true);
-      setErr(null);
-
-      // List files at the root of the bucket
       const { data, error } = await supabase.storage
         .from(BUCKET)
-        .list("", {
-          limit: 50,
-          offset: 0,
-          sortBy: { column: "name", order: "asc" },
-        });
+        .list("", { limit: 50, sortBy: { column: "name", order: "asc" } });
 
       if (error) {
         setErr(error.message);
-        setPics([]);
         setLoading(false);
         return;
       }
@@ -42,8 +34,7 @@ export default function PizzaOfTheWeekPage() {
         /\.(png|jpg|jpeg|webp)$/i.test(f.name)
       );
 
-      // Build public URLs
-      const urls: Pic[] = files.map((f) => {
+      const urls = files.map((f) => {
         const {
           data: { publicUrl },
         } = supabase.storage.from(BUCKET).getPublicUrl(f.name);
@@ -53,6 +44,15 @@ export default function PizzaOfTheWeekPage() {
       setPics(urls);
       setLoading(false);
     })();
+  }, []);
+
+  // close overlay on Esc
+  React.useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setActive(null);
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
   }, []);
 
   return (
@@ -67,7 +67,9 @@ export default function PizzaOfTheWeekPage() {
 
       <section className="container">
         <div className="topbar">
-          <a href="/" className="btn btn--ghost">Home</a>
+          <a href="/" className="btn btn--ghost">
+            Home
+          </a>
         </div>
 
         <h1>Pizza of the Week</h1>
@@ -77,18 +79,20 @@ export default function PizzaOfTheWeekPage() {
             <div className="empty">Loading…</div>
           ) : err ? (
             <div className="empty">
-              Couldn’t read bucket: <strong>{BUCKET}</strong>
-              <br />
-              <small className="muted">{err}</small>
+              Error reading bucket: {err}
             </div>
           ) : pics.length === 0 ? (
             <div className="empty">
-              Nothing uploaded yet. Add PNG/JPG files to the “{BUCKET}” bucket.
+              Nothing uploaded yet. Add PNG/JPG files to “{BUCKET}”.
             </div>
           ) : (
             <div className="gallery">
               {pics.map((p) => (
-                <figure key={p.name} className="shot">
+                <figure
+                  key={p.name}
+                  className="shot"
+                  onClick={() => setActive(p)}
+                >
                   <img src={p.url} alt={p.name} />
                   <figcaption>{p.name}</figcaption>
                 </figure>
@@ -98,7 +102,16 @@ export default function PizzaOfTheWeekPage() {
         </div>
       </section>
 
-      {/* Styles (reuse Hub look) */}
+      {/* Overlay for enlarged view */}
+      {active && (
+        <div className="overlay" onClick={() => setActive(null)}>
+          <div className="overlay-content" onClick={(e) => e.stopPropagation()}>
+            <img src={active.url} alt={active.name} />
+            <p>{active.name}</p>
+          </div>
+        </div>
+      )}
+
       <style jsx>{`
         :root {
           --bg: #f2f5f9;
@@ -111,6 +124,7 @@ export default function PizzaOfTheWeekPage() {
           --shadow-card: 0 10px 18px rgba(2, 6, 23, 0.08),
             0 1px 3px rgba(2, 6, 23, 0.06);
         }
+
         .wrap {
           background: var(--bg);
           min-height: 100dvh;
@@ -125,12 +139,22 @@ export default function PizzaOfTheWeekPage() {
           box-shadow: var(--shadow-card);
           width: 100%;
         }
-        .banner img { max-width: 92%; height: auto; display: block; }
+        .banner img {
+          max-width: 92%;
+          height: auto;
+          display: block;
+        }
 
-        .container { max-width: 880px; margin: 0 auto; padding: 16px; }
-
-        .topbar { display:flex; justify-content:flex-end; margin: 8px 0 10px; }
-
+        .container {
+          max-width: 880px;
+          margin: 0 auto;
+          padding: 16px;
+        }
+        .topbar {
+          display: flex;
+          justify-content: flex-end;
+          margin: 8px 0 10px;
+        }
         h1 {
           text-align: center;
           font-size: 24px;
@@ -145,14 +169,12 @@ export default function PizzaOfTheWeekPage() {
           padding: 16px;
           box-shadow: var(--shadow-card);
         }
-
         .empty {
           text-align: center;
           color: var(--muted);
           padding: 40px 16px;
           font-size: 16px;
         }
-        .muted { color: var(--muted); }
 
         .gallery {
           display: grid;
@@ -165,6 +187,11 @@ export default function PizzaOfTheWeekPage() {
           overflow: hidden;
           background: #fff;
           box-shadow: var(--shadow-card);
+          cursor: pointer;
+          transition: transform 0.15s ease;
+        }
+        .shot:hover {
+          transform: scale(1.02);
         }
         .shot img {
           width: 100%;
@@ -177,9 +204,9 @@ export default function PizzaOfTheWeekPage() {
           font-size: 13px;
           color: var(--muted);
           border-top: 1px solid var(--line);
+          text-align: center;
         }
 
-        /* Buttons to match Hub/Walkthrough */
         .btn {
           display: inline-block;
           text-align: center;
@@ -190,13 +217,58 @@ export default function PizzaOfTheWeekPage() {
           text-decoration: none;
           border: 2px solid var(--brand-dark);
           box-shadow: var(--shadow-card);
-          transition: background 0.2s, transform 0.1s;
         }
         .btn--ghost {
           background: #fff;
           color: var(--text);
         }
-        .btn--ghost:hover { transform: translateY(-1px); }
+
+        /* Overlay (lightbox) */
+        .overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.8);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 100;
+          animation: fadeIn 0.2s ease;
+        }
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+        .overlay-content {
+          max-width: 90%;
+          max-height: 90%;
+          text-align: center;
+          color: #fff;
+          animation: scaleIn 0.2s ease;
+        }
+        @keyframes scaleIn {
+          from {
+            transform: scale(0.95);
+          }
+          to {
+            transform: scale(1);
+          }
+        }
+        .overlay-content img {
+          width: auto;
+          max-width: 100%;
+          max-height: 80vh;
+          border-radius: 12px;
+          box-shadow: 0 0 25px rgba(0, 0, 0, 0.5);
+        }
+        .overlay-content p {
+          margin-top: 10px;
+          font-size: 14px;
+          opacity: 0.8;
+        }
       `}</style>
     </main>
   );
