@@ -3,58 +3,77 @@
 import * as React from "react";
 import { createClient } from "@supabase/supabase-js";
 
-/** Browser Supabase client */
+/** Supabase browser client */
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-type Obj = { name: string; created_at?: string | null };
+// Change this only if your bucket name is different
+const BUCKET = "pizza-of-the-week";
+// Optional: if you place files in a subfolder, e.g. "current/", set PREFIX = "current"
+const PREFIX = ""; // keep "" when files are in root of the bucket
+
+type FileObj = {
+  name: string;
+  updated_at?: string;
+};
 
 export default function PizzaOfTheWeekPage() {
-  const [urls, setUrls] = React.useState<string[] | null>(null);
+  const [imgs, setImgs] = React.useState<{ url: string; name: string }[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [err, setErr] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     (async () => {
       setLoading(true);
-      const { data, error } = await supabase.storage
-        .from("pizza-of-the-week")
-        .list("", { limit: 100 });
+      setErr(null);
+
+      // List the bucket contents at the given prefix ("" for root)
+      const { data, error } = await supabase.storage.from(BUCKET).list(PREFIX, {
+        limit: 100, // up to 100 files
+      });
 
       if (error) {
-        console.error(error);
-        setUrls([]);
+        setErr(error.message);
         setLoading(false);
         return;
       }
 
-      const sorted = (data as Obj[]).slice().sort((a, b) => {
-        // Newest first – prefer created_at, fall back to name
-        const ad = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const bd = b.created_at ? new Date(b.created_at).getTime() : 0;
-        if (ad !== bd) return bd - ad;
-        return (b.name || "").localeCompare(a.name || "");
+      const files = (data || []) as FileObj[];
+
+      // Accept png/jpg/jpeg in any case
+      const imageFiles = files.filter((f) => {
+        const n = f.name.toLowerCase();
+        return n.endsWith(".png") || n.endsWith(".jpg") || n.endsWith(".jpeg");
       });
 
-      const top2 = sorted.slice(0, 2);
-      const urls2 = top2
-        .map((o) => supabase.storage.from("pizza-of-the-week").getPublicUrl(o.name).data?.publicUrl)
-        .filter(Boolean) as string[];
+      // sort by updated_at desc if present, otherwise by name desc
+      imageFiles.sort((a, b) => {
+        const au = a.updated_at ? Date.parse(a.updated_at) : 0;
+        const bu = b.updated_at ? Date.parse(b.updated_at) : 0;
+        if (au !== bu) return bu - au;
+        return b.name.localeCompare(a.name);
+      });
 
-      setUrls(urls2);
+      // Build public URLs
+      const items = imageFiles.map((f) => {
+        const path = PREFIX ? `${PREFIX}/${f.name}` : f.name;
+        const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
+        return { name: f.name, url: pub?.publicUrl || "" };
+      });
+
+      setImgs(items);
       setLoading(false);
     })();
   }, []);
 
   return (
     <main className="wrap">
-      {/* Sticky header with Home button */}
+      {/* Sticky top bar with Home btn for consistency */}
       <div className="sticky">
         <div className="sticky__inner">
-          <div className="sticky__left">
-            <span className="chip chip--blue">Pizza of the Week</span>
-          </div>
+          <div />
           <a href="/" className="btn btn--ghost">Home</a>
         </div>
       </div>
@@ -70,50 +89,110 @@ export default function PizzaOfTheWeekPage() {
       <section className="container">
         <h1>Pizza of the Week</h1>
 
-        <div className="card card--raised">
-          {loading && <div className="muted">Loading…</div>}
+        {loading && (
+          <div className="card" style={{ textAlign: "center" }}>Loading…</div>
+        )}
 
-          {!loading && (!urls || urls.length === 0) && (
-            <div className="muted">No pizza uploaded yet. (Upload images to the “pizza-of-the-week” bucket.)</div>
-          )}
+        {!loading && err && (
+          <div className="card" style={{ color: "#b91c1c" }}>
+            Error: {err}
+          </div>
+        )}
 
-          {!loading && urls && urls.length > 0 && (
-            <div className="gridImgs">
-              {urls.map((u, i) => (
-                <div key={i} className="shot">
-                  <img src={u} alt={`Pizza of the Week ${i + 1}`} />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {!loading && !err && imgs.length === 0 && (
+          <div className="card" style={{ textAlign: "center" }}>
+            Nothing uploaded yet. Add PNG/JPG files to the “{BUCKET}” bucket{PREFIX ? ` under “${PREFIX}”` : ""}.
+          </div>
+        )}
+
+        {!loading && !err && imgs.length > 0 && (
+          <div className="grid">
+            {imgs.map((img) => (
+              <figure key={img.name} className="card thumb">
+                <img src={img.url} alt={img.name} />
+                <figcaption className="cap">{img.name}</figcaption>
+              </figure>
+            ))}
+          </div>
+        )}
       </section>
 
       <style jsx>{`
         :root {
-          --bg:#f2f5f9; --paper:#fff; --line:#e5e7eb; --muted:#6b7280; --text:#0f172a;
-          --brand:#006491; --brand-dk:#00517a; --blue:#e6f0fb;
-          --shadow-strong:0 14px 28px rgba(2,6,23,.1),0 2px 6px rgba(2,6,23,.06);
-          --shadow-card:0 10px 18px rgba(2,6,23,.08),0 1px 3px rgba(2,6,23,.06);
+          --bg: #f2f5f9;
+          --paper: #ffffff;
+          --line: #e5e7eb;
+          --muted: #6b7280;
+          --text: #0f172a;
+          --brand: #006491;
+          --brand-dk: #00517a;
+          --shadow-card: 0 10px 18px rgba(2,6,23,.08), 0 1px 3px rgba(2,6,23,.06);
         }
-        .wrap{background:var(--bg);min-height:100dvh;color:var(--text);}
-        .banner{display:flex;justify-content:center;align-items:center;padding:6px 0 10px;border-bottom:3px solid var(--brand);background:#fff;box-shadow:var(--shadow-card);}
-        .banner img{max-width:92%;height:auto;display:block;}
-        .container{max-width:880px;margin:0 auto;padding:16px;}
-        h1{font-size:22px;margin:14px 0 12px;text-align:center;font-weight:800;letter-spacing:.2px;}
-        .card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:var(--shadow-card);}
-        .card--raised{box-shadow:var(--shadow-strong);}
-        .muted{color:var(--muted);}
-        .gridImgs{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));}
-        .shot{border:2px solid #d7dbe3;border-radius:14px;overflow:hidden;background:#f8fafc;}
-        .shot img{display:block;width:100%;height:auto;object-fit:cover;}
-        .chip{display:inline-block;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:800;}
-        .chip--blue{background:var(--blue);}
-        .btn{background:#fff;border:2px solid #d7dbe3;padding:10px 14px;border-radius:12px;font-weight:800;}
-        .btn--ghost{background:#fff;}
-        .sticky{position:sticky;top:0;z-index:60;backdrop-filter:saturate(180%) blur(6px);background:rgba(255,255,255,.92);border-bottom:1px solid var(--line);box-shadow:0 2px 10px rgba(2,6,23,.06);}
-        .sticky__inner{max-width:980px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;}
-        .sticky__left{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+
+        .wrap { background: var(--bg); min-height: 100dvh; color: var(--text); }
+        .sticky {
+          position: sticky; top: 0; z-index: 60;
+          backdrop-filter: saturate(180%) blur(6px);
+          background: rgba(255,255,255,.92);
+          border-bottom: 1px solid var(--line);
+          box-shadow: 0 2px 10px rgba(2,6,23,.06);
+        }
+        .sticky__inner {
+          max-width: 980px; margin: 0 auto;
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 10px; padding: 8px 12px;
+        }
+        .btn {
+          display: inline-block;
+          text-align: center;
+          padding: 10px 14px;
+          border-radius: 12px;
+          font-weight: 800;
+          font-size: 16px;
+          text-decoration: none;
+          color: #fff;
+          background: var(--brand);
+          border: 2px solid var(--brand-dk);
+          box-shadow: var(--shadow-card);
+        }
+        .btn--ghost { background:#fff; color: var(--text); }
+
+        .banner {
+          display:flex; justify-content:center; align-items:center;
+          padding:6px 0 10px; border-bottom:3px solid var(--brand);
+          background:#fff; box-shadow: var(--shadow-card);
+        }
+        .banner img { max-width:92%; height:auto; display:block; }
+
+        .container { max-width:880px; margin:0 auto; padding:16px; }
+        h1 { font-size:22px; margin:14px 0 16px; text-align:center; font-weight:800; }
+
+        .card {
+          background: var(--paper);
+          border: 1px solid var(--line);
+          border-radius: 14px;
+          padding: 14px;
+          box-shadow: var(--shadow-card);
+        }
+
+        .grid {
+          display: grid;
+          gap: 14px;
+          grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        }
+        .thumb {
+          padding: 10px;
+          display: grid;
+          gap: 8px;
+        }
+        .thumb img {
+          width: 100%; height: 200px; object-fit: cover;
+          border-radius: 12px; border: 1px solid var(--line);
+        }
+        .cap {
+          font-size: 12px; color: var(--muted); text-align: center;
+          word-break: break-word;
+        }
       `}</style>
     </main>
   );
