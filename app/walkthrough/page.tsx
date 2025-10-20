@@ -310,8 +310,10 @@ const SECTIONS_BASE: {
 export default function WalkthroughPage() {
   const router = useRouter();
 
-  // Details
-  const [store, setStore] = React.useState<"" | "Downpatrick" | "Kilkeel" | "Newcastle">("");
+  // Details  ⟵ Added "Ballynahinch" here
+  const [store, setStore] = React.useState<
+    "" | "Downpatrick" | "Kilkeel" | "Newcastle" | "Ballynahinch"
+  >("");
   const [name, setName] = React.useState("");
 
   // Service
@@ -519,6 +521,8 @@ export default function WalkthroughPage() {
                   <option value="Downpatrick">Downpatrick</option>
                   <option value="Kilkeel">Kilkeel</option>
                   <option value="Newcastle">Newcastle</option>
+                  {/* NEW store option */}
+                  <option value="Ballynahinch">Ballynahinch</option>
                 </select>
               </label>
 
@@ -754,28 +758,15 @@ export default function WalkthroughPage() {
           --shadow-card: 0 10px 18px rgba(2,6,23,.08), 0 1px 3px rgba(2,6,23,.06);
         }
 
-        /* Global text & contrast fixes */
-        .wrap {
-          background: var(--bg);
-          min-height: 100dvh;
-          color: var(--text);
-        }
+        .wrap { background: var(--bg); min-height: 100dvh; color: var(--text); }
         .wrap * { color: var(--text); }
-        h1, h2, h3, .section__title, .lbl, .check__text, .bar__title {
-          color: #0e1116 !important;
-        }
-        .muted, small, .section__sub {
-          color: #4b5563 !important;
-        }
+        h1, h2, h3, .section__title, .lbl, .check__text, .bar__title { color: #0e1116 !important; }
+        .muted, small, .section__sub { color: #4b5563 !important; }
 
         .banner {
-          display:flex;
-          justify-content:center;
-          align-items:center;
-          padding:6px 0 10px;
-          border-bottom:3px solid #006491;
-          background:#fff;
-          box-shadow: var(--shadow-card);
+          display:flex; justify-content:center; align-items:center;
+          padding:6px 0 10px; border-bottom:3px solid #006491;
+          background:#fff; box-shadow: var(--shadow-card);
         }
         .banner img { max-width:92%; height:auto; display:block; }
 
@@ -784,28 +775,11 @@ export default function WalkthroughPage() {
 
         .stack { display:grid; gap:16px; }
 
-        .card {
-          background:var(--paper);
-          border:1px solid var(--line);
-          border-radius:14px;
-          padding:14px;
-          box-shadow:var(--shadow-card);
-        }
+        .card { background:var(--paper); border:1px solid var(--line); border-radius:14px; padding:14px; box-shadow:var(--shadow-card); }
         .card--raised { box-shadow:var(--shadow-strong); }
-        .card--section {
-          padding:0;
-          overflow:hidden;
-          border:1px solid #d8dee7;
-          box-shadow:var(--shadow-strong);
-        }
+        .card--section { padding:0; overflow:hidden; border:1px solid #d8dee7; box-shadow:var(--shadow-strong); }
 
-        .card__bar {
-          background:linear-gradient(90deg,#eef7ff,#ffffff);
-          border-radius:10px;
-          padding:10px 12px;
-          margin-bottom:10px;
-          border:1px solid var(--line);
-        }
+        .card__bar { background:linear-gradient(90deg,#eef7ff,#ffffff); border-radius:10px; padding:10px 12px; margin-bottom:10px; border:1px solid var(--line); }
         .bar__title { font-weight:800; }
 
         .legend { font-size:14px; }
@@ -839,15 +813,11 @@ export default function WalkthroughPage() {
 
         .sticky {
           position:sticky; top:0; z-index:70;
-          backdrop-filter:saturate(180%) blur(6px);
-          background:rgba(255,255,255,.92);
-          border-bottom:1px solid var(--line);
-          box-shadow:0 2px 10px rgba(2,6,23,.06);
+          backdrop-filter:saturate(180%) blur(6px); background:rgba(255,255,255,.92);
+          border-bottom:1px solid var(--line); box-shadow:0 2px 10px rgba(2,6,23,.06);
           pointer-events:auto;
         }
-        .sticky__inner {
-          max-width:980px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px;
-        }
+        .sticky__inner { max-width:980px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px; }
         .sticky__left { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
 
         .checks { display:grid; }
