@@ -48,6 +48,7 @@ export function middleware(req: NextRequest) {
     "/success",
     "/deep-clean",
     "/memomailer",
+    "/pizza-of-the-week",
   ];
   const isProtected = protectedPaths.some(
     (p) => pathname === p || pathname.startsWith(p + "/")
