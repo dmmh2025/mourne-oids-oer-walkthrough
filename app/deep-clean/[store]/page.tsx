@@ -25,12 +25,6 @@ function timeSince(d: Date) {
   const days = Math.floor(hrs / 24);
   return `${days}d`;
 }
-function isTinyFallback(struct: Section[]): boolean {
-  // Your bad fallback was 5 sections, each with 2 items.
-  if (!Array.isArray(struct)) return true;
-  if (struct.length !== 5) return false;
-  return struct.every(sec => Array.isArray(sec.items) && sec.items.length === 2);
-}
 
 function calcPct(sections: Section[] | null | undefined) {
   if (!sections?.length) return 0;
@@ -40,97 +34,194 @@ function calcPct(sections: Section[] | null | undefined) {
   return total ? Math.round((done / total) * 100) : 0;
 }
 
-/** CURRENT canonical template for ALL stores */
-const DEFAULT_TEMPLATE: Section[] = [
+/* ================= FULL AUTUMN DEEP CLEAN CHECKLIST =================
+   Content taken from your “Mourne-oids autumn deep clean checklist”
+   document. (Blank lines removed.)  :contentReference[oaicite:1]{index=1}
+==================================================================== */
+const DEFAULT_CHECKLIST: Section[] = [
   {
-    title: "Front of House",
+    title: "Front of House & CSR",
     items: [
-      { label: "Customer area deep-cleaned", done: false, by: "", photos: [] },
-      { label: "Menu boards & signage spotless", done: false, by: "", photos: [] },
+      { label: "Deep scrub entrance matting (inside/outside)", done: false, by: "", photos: [] },
+      { label: "Deck scrub & mop all customer area tiles", done: false, by: "", photos: [] },
+      { label: "Clean window ledges (inside/outside) and frames", done: false, by: "", photos: [] },
+      { label: "Wipe walls, skirting boards, doors, ledges", done: false, by: "", photos: [] },
+      { label: "Clean ceiling vents & lights", done: false, by: "", photos: [] },
+      { label: "Deep clean seating & tables", done: false, by: "", photos: [] },
+      { label: "Clear out and wipe down CSR cupboards & drawers", done: false, by: "", photos: [] },
+      { label: "Empty, clean and refil napkin dispenser", done: false, by: "", photos: [] },
+      { label: "Clean down all CSR surfaces", done: false, by: "", photos: [] },
+      { label: "Remove boxes, clean and sanitise boxes table", done: false, by: "", photos: [] },
+      {
+        label:
+          "Clean & sanitise computer screens, keyboards, phones, printers and Just Eat & Uber Eats terminals",
+        done: false,
+        by: "",
+        photos: [],
+      },
+      { label: "Clean down walls around CSR", done: false, by: "", photos: [] },
     ],
   },
   {
-    title: "Makeline & Prep",
+    title: "Kitchen",
     items: [
-      { label: "Makeline lids/seals cleaned", done: false, by: "", photos: [] },
-      { label: "Prep surfaces sanitised", done: false, by: "", photos: [] },
+      {
+        label:
+          "Deck scrub floors, pulling out the makeline and pushing back the cut table (scrub under oven too)",
+        done: false,
+        by: "",
+        photos: [],
+      },
+      {
+        label:
+          "Clean down & sanitise all shelves (including under shelves) and tables/benches (including underneath)",
+        done: false,
+        by: "",
+        photos: [],
+      },
+      { label: "Empty makeline, remove all parts, hoover out, wash down & sanitise", done: false, by: "", photos: [] },
+      { label: "Remove makeline seals & wash; wash down makeline doors and sanitise", done: false, by: "", photos: [] },
+      {
+        label:
+          "Replace all tubs (GF container, wrap tubs, TC tubs, tubs at end of makeline etc.) with new ones",
+        done: false,
+        by: "",
+        photos: [],
+      },
+      { label: "Clean table legs and feet", done: false, by: "", photos: [] },
+      { label: "Wash down & sanitise hand-washing sink and Saniflow", done: false, by: "", photos: [] },
+      { label: "Scrub and clean oven windows", done: false, by: "", photos: [] },
+      { label: "Scrub and clean chamber entrance and exits", done: false, by: "", photos: [] },
+      {
+        label: "Scrub and clean down all outer surfaces of the oven including legs and wheels",
+        done: false,
+        by: "",
+        photos: [],
+      },
+      { label: "Wash down and sanitise all walls", done: false, by: "", photos: [] },
+      {
+        label: "Wash down and sanitise all wall fittings (brush/mop hooks, towel dispensers, etc.)",
+        done: false,
+        by: "",
+        photos: [],
+      },
+      {
+        label: "Empty, wash and sanitise the cut table, including where the boxes are stored",
+        done: false,
+        by: "",
+        photos: [],
+      },
+      { label: "Wash out and sanitise all bins", done: false, by: "", photos: [] },
     ],
   },
   {
-    title: "Oven & Baking",
+    title: "Routing & Hot Rack",
     items: [
-      { label: "Oven hood/filters cleaned", done: false, by: "", photos: [] },
-      { label: "Screens/pans free of carbon", done: false, by: "", photos: [] },
+      { label: "Clean and wash dip containers", done: false, by: "", photos: [] },
+      { label: "Clean and wash any storage containers", done: false, by: "", photos: [] },
+      { label: "Wash & sanitise all parts of hot rack (top and under each shelf)", done: false, by: "", photos: [] },
+      { label: "Clean computer screens and keyboards", done: false, by: "", photos: [] },
+      { label: "Wash down and sanitise all shelves", done: false, by: "", photos: [] },
     ],
   },
   {
-    title: "Walk-in / Storage",
+    title: "Drinks Fridge",
     items: [
-      { label: "Walk-in walls/floor/shelves cleaned", done: false, by: "", photos: [] },
-      { label: "Door seals/handles cleaned", done: false, by: "", photos: [] },
+      { label: "Empty out and wash down", done: false, by: "", photos: [] },
+      { label: "Clean in and around fan", done: false, by: "", photos: [] },
+      { label: "Clean down door and seals", done: false, by: "", photos: [] },
     ],
   },
   {
-    title: "Back of House",
+    title: "Walk-in",
     items: [
-      { label: "Sinks/mop area cleaned", done: false, by: "", photos: [] },
-      { label: "Bins sanitised and clean", done: false, by: "", photos: [] },
+      { label: "Remove all shelving, wash down and dry", done: false, by: "", photos: [] },
+      { label: "Wash, sanitise and dry shelving legs", done: false, by: "", photos: [] },
+      { label: "Remove door flaps, wash and dry", done: false, by: "", photos: [] },
+      { label: "Clean around fan and remove any dust in fans", done: false, by: "", photos: [] },
+      { label: "Wash down and dry all walls and ceiling", done: false, by: "", photos: [] },
+      { label: "Wash down and dry door (inside/outside)", done: false, by: "", photos: [] },
+      { label: "Brush, deck scrub and mop floors", done: false, by: "", photos: [] },
+    ],
+  },
+  {
+    title: "Back Areas",
+    items: [
+      { label: "Wash and clean all shelving and dunnage racks", done: false, by: "", photos: [] },
+      { label: "Wash and sanitise all tables/surfaces including underneath", done: false, by: "", photos: [] },
+      { label: "Wash down all walls", done: false, by: "", photos: [] },
+      { label: "Wash all doors/handles/skirting boards", done: false, by: "", photos: [] },
+    ],
+  },
+  {
+    title: "Wash-Up Room",
+    items: [
+      { label: "Scrub sink drains & traps", done: false, by: "", photos: [] },
+      { label: "Clean under sinks & shelving", done: false, by: "", photos: [] },
+      { label: "Clean inside and outside washing machine", done: false, by: "", photos: [] },
+      {
+        label: "Take everything off shelves & storage areas and wash & sanitise",
+        done: false,
+        by: "",
+        photos: [],
+      },
+      { label: "Wash out all bins", done: false, by: "", photos: [] },
+      { label: "Clean under shelving", done: false, by: "", photos: [] },
+      { label: "Wash down all dunnage racks", done: false, by: "", photos: [] },
+      { label: "Clean down all walls", done: false, by: "", photos: [] },
+      { label: "Wash and sanitise mop sink", done: false, by: "", photos: [] },
+      { label: "Brush, deck scrub and mop floors", done: false, by: "", photos: [] },
+    ],
+  },
+  {
+    title: "Toilet",
+    items: [
+      { label: "Bleach and scrub toilet bowl", done: false, by: "", photos: [] },
+      {
+        label: "Clean and sanitise around the toilet including pipes and cistern",
+        done: false,
+        by: "",
+        photos: [],
+      },
+      { label: "Clean and sanitise all pipes and wall fittings", done: false, by: "", photos: [] },
+      { label: "Use glass/steel cleaner to clean the mirrors", done: false, by: "", photos: [] },
+      { label: "Wipe down all walls", done: false, by: "", photos: [] },
+      { label: "Brush, deck scrub and mop the floor", done: false, by: "", photos: [] },
+    ],
+  },
+  {
+    title: "External Areas",
+    items: [
+      { label: "Sweep car park & delivery area", done: false, by: "", photos: [] },
+      { label: "Remove all branded rubbish", done: false, by: "", photos: [] },
+      {
+        label:
+          "Remove all weeds, cobwebs and dirt around bottom of building (incl. shutter area)",
+        done: false,
+        by: "",
+        photos: [],
+      },
+      { label: "Clean all signage", done: false, by: "", photos: [] },
+      { label: "Remove any decals with dog ears and order new ones", done: false, by: "", photos: [] },
+      { label: "Clean entrance around shop", done: false, by: "", photos: [] },
     ],
   },
 ];
-
-/** Reconcile DB data to match the latest template while preserving progress */
-function reconcileWithTemplate(existing: any, template: Section[]): Section[] {
-  // Build lookup maps from existing data: section title -> (item label -> item state)
-  const secMap = new Map<string, Map<string, Item>>();
-  const safeArr = Array.isArray(existing) ? existing : [];
-  for (const sec of safeArr) {
-    const title = String(sec?.title ?? "");
-    if (!title) continue;
-    const itemMap = new Map<string, Item>();
-    const items = Array.isArray(sec?.items) ? sec.items : [];
-    for (const it of items) {
-      const label = String(it?.label ?? "");
-      if (!label) continue;
-      itemMap.set(label, {
-        label,
-        done: Boolean(it?.done),
-        by: typeof it?.by === "string" ? it.by : "",
-        photos: Array.isArray(it?.photos) ? it.photos : [],
-      });
-    }
-    secMap.set(title, itemMap);
-  }
-
-  // Create reconciled sections from the template shape
-  const reconciled: Section[] = template.map((tSec) => {
-    const fromSec = secMap.get(tSec.title);
-    const items = tSec.items.map((tItem) => {
-      const found = fromSec?.get(tItem.label);
-      return {
-        label: tItem.label,
-        done: found?.done ?? false,
-        by: found?.by ?? "",
-        photos: Array.isArray(found?.photos) ? found!.photos : [],
-      };
-    });
-    return { title: tSec.title, items };
-  });
-
-  return reconciled;
-}
 
 export default function DeepCleanStorePage({
   params,
 }: {
   params: { store: string };
 }) {
-  const storeParam = params.store?.toLowerCase?.() || "";
+  const storeParam = params.store || "";
+  const storeLower = storeParam.toLowerCase();
   const storeName =
-    storeParam === "kilkeel"
+    storeLower === "kilkeel"
       ? "Kilkeel"
-      : storeParam === "newcastle"
+      : storeLower === "newcastle"
       ? "Newcastle"
+      : storeLower === "ballynahinch"
+      ? "Ballynahinch"
       : "Downpatrick";
 
   const [row, setRow] = React.useState<Row | null>(null);
@@ -149,17 +240,25 @@ export default function DeepCleanStorePage({
         .maybeSingle();
 
       if (error || !data) {
-        // No row yet → start with canonical template
-        const fresh: Row = { store: storeName, items: DEFAULT_TEMPLATE };
+        // Seed with the full checklist when nothing exists yet
+        const fresh: Row = { store: storeName, items: DEFAULT_CHECKLIST };
         setRow(fresh);
         setSections(fresh.items);
         setOpen(fresh.items.map(() => true));
       } else {
-        // Row exists → merge onto current template so all stores match
-        const reconciled = reconcileWithTemplate(data.items, DEFAULT_TEMPLATE);
-        setRow({ ...data, items: reconciled });
-        setSections(reconciled);
-        setOpen(reconciled.map(() => true));
+        // Load existing and coerce types
+        const fixed: Section[] = (data.items || []).map((sec: any) => ({
+          ...sec,
+          items: (sec.items || []).map((it: any) => ({
+            label: String(it.label ?? ""),
+            done: Boolean(it.done),
+            by: typeof it.by === "string" ? it.by : "",
+            photos: Array.isArray(it.photos) ? it.photos : [],
+          })),
+        }));
+        setRow({ ...data, items: fixed });
+        setSections(fixed);
+        setOpen(fixed.map(() => true));
       }
       setLoading(false);
     })();
@@ -230,8 +329,6 @@ export default function DeepCleanStorePage({
       updated_at: new Date().toISOString(),
     };
 
-    // NOTE: Ensure the DB has a UNIQUE constraint on "store" for this table
-    // so onConflict: 'store' works as intended.
     const { error } = await supabase
       .from("deep_clean_submissions")
       .upsert(payload, { onConflict: "store" });
@@ -482,38 +579,34 @@ export default function DeepCleanStorePage({
         .thumb img { width:100%; height:90px; object-fit:cover; }
         .thumb__remove { position:absolute; top:6px; right:6px; background:#111827dd; color:#fff; border:none; border-radius:8px; width:26px; height:26px; font-size:16px; }
 
-        /* Buttons (match Walkthrough style) */
+        /* Buttons to match Walkthrough */
         .btn {
           background:#fff;
           border:3px solid var(--brand);
           padding:10px 14px;
           border-radius:12px;
           font-weight:800;
-          color:var(--brand);
+          color:#000;
           box-shadow:var(--shadow-card);
           transition:all .15s ease-in-out;
           text-decoration:none;
           display:inline-flex;
           align-items:center;
           justify-content:center;
+          cursor:pointer;
         }
         .btn:hover { background:var(--brand); color:#fff; transform:translateY(-1px); }
-        .btn--brand {
-          background:#fff;
-          color:#000; /* black text per your request */
-          border-color:var(--brand);
-        }
+        .btn--brand { background:#fff; color:#000; border-color:var(--brand); }
         .btn--brand:hover { background:var(--brand); color:#fff; }
-        .btn--ghost { background:#fff; color:var(--brand); }
+        .btn--ghost { background:#fff; color:var(--brand); border-color:#d7dbe3; }
         .btn--lg { padding:14px 18px; font-size:17px; border-radius:14px; }
 
-        /* Chips */
+        /* Chips + stickies */
         .chip { display:inline-block; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:#fff; font-size:13px; font-weight:800; box-shadow:0 1px 0 rgba(255,255,255,.8); }
         .chip--blue { background:#e6f0fb; }
         .chip--teal { background:#e6fbf6; }
         .chip--gold { background:#fff6e0; }
 
-        /* Sticky top */
         .sticky { position:sticky; top:0; z-index:60; background:rgba(255,255,255,.95); border-bottom:1px solid var(--line); box-shadow:0 2px 10px rgba(2,6,23,.06); }
         .sticky__inner { max-width:980px; margin:0 auto; display:flex; justify-content:space-between; align-items:center; padding:8px 12px; }
         .sticky__left { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
