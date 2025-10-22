@@ -25,6 +25,12 @@ function timeSince(d: Date) {
   const days = Math.floor(hrs / 24);
   return `${days}d`;
 }
+function isTinyFallback(struct: Section[]): boolean {
+  // Your bad fallback was 5 sections, each with 2 items.
+  if (!Array.isArray(struct)) return true;
+  if (struct.length !== 5) return false;
+  return struct.every(sec => Array.isArray(sec.items) && sec.items.length === 2);
+}
 
 function calcPct(sections: Section[] | null | undefined) {
   if (!sections?.length) return 0;
