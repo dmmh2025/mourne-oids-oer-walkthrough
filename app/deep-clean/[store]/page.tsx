@@ -34,7 +34,7 @@ function calcPct(sections: Section[] | null | undefined) {
   return total ? Math.round((done / total) * 100) : 0;
 }
 
-/** Starter template – you can replace with your real sections/items */
+/** CURRENT canonical template for ALL stores */
 const DEFAULT_TEMPLATE: Section[] = [
   {
     title: "Front of House",
@@ -73,16 +73,57 @@ const DEFAULT_TEMPLATE: Section[] = [
   },
 ];
 
+/** Reconcile DB data to match the latest template while preserving progress */
+function reconcileWithTemplate(existing: any, template: Section[]): Section[] {
+  // Build lookup maps from existing data: section title -> (item label -> item state)
+  const secMap = new Map<string, Map<string, Item>>();
+  const safeArr = Array.isArray(existing) ? existing : [];
+  for (const sec of safeArr) {
+    const title = String(sec?.title ?? "");
+    if (!title) continue;
+    const itemMap = new Map<string, Item>();
+    const items = Array.isArray(sec?.items) ? sec.items : [];
+    for (const it of items) {
+      const label = String(it?.label ?? "");
+      if (!label) continue;
+      itemMap.set(label, {
+        label,
+        done: Boolean(it?.done),
+        by: typeof it?.by === "string" ? it.by : "",
+        photos: Array.isArray(it?.photos) ? it.photos : [],
+      });
+    }
+    secMap.set(title, itemMap);
+  }
+
+  // Create reconciled sections from the template shape
+  const reconciled: Section[] = template.map((tSec) => {
+    const fromSec = secMap.get(tSec.title);
+    const items = tSec.items.map((tItem) => {
+      const found = fromSec?.get(tItem.label);
+      return {
+        label: tItem.label,
+        done: found?.done ?? false,
+        by: found?.by ?? "",
+        photos: Array.isArray(found?.photos) ? found!.photos : [],
+      };
+    });
+    return { title: tSec.title, items };
+  });
+
+  return reconciled;
+}
+
 export default function DeepCleanStorePage({
   params,
 }: {
   params: { store: string };
 }) {
-  const storeParam = params.store;
+  const storeParam = params.store?.toLowerCase?.() || "";
   const storeName =
-    storeParam.toLowerCase() === "kilkeel"
+    storeParam === "kilkeel"
       ? "Kilkeel"
-      : storeParam.toLowerCase() === "newcastle"
+      : storeParam === "newcastle"
       ? "Newcastle"
       : "Downpatrick";
 
@@ -102,23 +143,17 @@ export default function DeepCleanStorePage({
         .maybeSingle();
 
       if (error || !data) {
+        // No row yet → start with canonical template
         const fresh: Row = { store: storeName, items: DEFAULT_TEMPLATE };
         setRow(fresh);
         setSections(fresh.items);
         setOpen(fresh.items.map(() => true));
       } else {
-        const fixed: Section[] = (data.items || []).map((sec: any) => ({
-          ...sec,
-          items: (sec.items || []).map((it: any) => ({
-            label: String(it.label ?? ""),
-            done: Boolean(it.done),
-            by: typeof it.by === "string" ? it.by : "",
-            photos: Array.isArray(it.photos) ? it.photos : [],
-          })),
-        }));
-        setRow({ ...data, items: fixed });
-        setSections(fixed);
-        setOpen(fixed.map(() => true));
+        // Row exists → merge onto current template so all stores match
+        const reconciled = reconcileWithTemplate(data.items, DEFAULT_TEMPLATE);
+        setRow({ ...data, items: reconciled });
+        setSections(reconciled);
+        setOpen(reconciled.map(() => true));
       }
       setLoading(false);
     })();
@@ -189,6 +224,8 @@ export default function DeepCleanStorePage({
       updated_at: new Date().toISOString(),
     };
 
+    // NOTE: Ensure the DB has a UNIQUE constraint on "store" for this table
+    // so onConflict: 'store' works as intended.
     const { error } = await supabase
       .from("deep_clean_submissions")
       .upsert(payload, { onConflict: "store" });
@@ -456,8 +493,8 @@ export default function DeepCleanStorePage({
         }
         .btn:hover { background:var(--brand); color:#fff; transform:translateY(-1px); }
         .btn--brand {
-          background:#fff;       /* white background */
-          color:#000;            /* black text as requested */
+          background:#fff;
+          color:#000; /* black text per your request */
           border-color:var(--brand);
         }
         .btn--brand:hover { background:var(--brand); color:#fff; }
