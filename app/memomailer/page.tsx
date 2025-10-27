@@ -16,8 +16,22 @@ type FileObj = {
   metadata?: any;
 };
 
+type PickedFile = {
+  path: string;
+  file: FileObj | null; // may be null if we didn't look up metadata (e.g., root/latest.pdf early path)
+  publicUrl: string;
+  cacheKey: string; // used to bust caches and re-render iframe
+  fileName: string;
+};
+
+/** Add a cache-busting query param using an ISO timestamp (updated_at preferred). */
+function withCacheBuster(url: string, ver: string) {
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}v=${encodeURIComponent(ver)}`;
+}
+
+/** List all files (breadth-first) in memomailer bucket. */
 async function listAll(prefix = ""): Promise<{ path: string; file: FileObj }[]> {
-  // Breadth-first traversal of folders in the bucket
   const queue: string[] = [prefix];
   const out: { path: string; file: FileObj }[] = [];
 
@@ -30,8 +44,8 @@ async function listAll(prefix = ""): Promise<{ path: string; file: FileObj }[]> 
     if (error || !data) continue;
 
     for (const entry of data) {
-      // Folders have no '.' and are marked as type 'folder' internally
-      const isFolder = !entry.name.includes(".") && (entry as any).id === undefined;
+      // Supabase returns folders without an id; files have an id.
+      const isFolder = !("id" in entry) || !entry.id;
       if (isFolder) {
         queue.push(p ? `${p}/${entry.name}` : entry.name);
       } else {
@@ -43,56 +57,115 @@ async function listAll(prefix = ""): Promise<{ path: string; file: FileObj }[]> 
   return out;
 }
 
+/** Given a path like "foo/bar.pdf", fetch that folder listing and return the file metadata if present. */
+async function getFileMeta(path: string): Promise<FileObj | null> {
+  const lastSlash = path.lastIndexOf("/");
+  const folder = lastSlash === -1 ? "" : path.slice(0, lastSlash);
+  const name = lastSlash === -1 ? path : path.slice(lastSlash + 1);
+
+  const { data, error } = await supabase.storage.from("memomailer").list(folder, {
+    limit: 1000,
+  });
+  if (error || !data) return null;
+
+  const match = data.find((e: any) => e?.name === name && e?.id);
+  return (match as FileObj) || null;
+}
+
+/** Build a PickedFile with cache-busted URL and stable cacheKey for React re-render. */
+function buildPickedFile(path: string, meta: FileObj | null): PickedFile {
+  const base = supabase.storage.from("memomailer").getPublicUrl(path).data.publicUrl;
+  const ver =
+    meta?.updated_at ||
+    meta?.created_at ||
+    // fallback to now to ensure a fresh view if no metadata
+    new Date().toISOString();
+
+  const busted = withCacheBuster(base, ver);
+  return {
+    path,
+    file: meta,
+    publicUrl: busted,
+    cacheKey: `${path}::${ver}`, // if ver changes, iframe key changes => re-render
+    fileName: path,
+  };
+}
+
 export default function MemoMailerPage() {
-  const [url, setUrl] = React.useState<string | null>(null);
-  const [fileName, setFileName] = React.useState<string>("");
+  const [picked, setPicked] = React.useState<PickedFile | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [note, setNote] = React.useState<string>("");
 
-  React.useEffect(() => {
-    (async () => {
-      try {
-        // 1) Try root/latest.pdf for the simple workflow
-        const latest = supabase.storage.from("memomailer").getPublicUrl("latest.pdf");
-        if (latest?.data?.publicUrl) {
-          // We can’t HEAD the file here easily; just try to use it first.
-          setUrl(latest.data.publicUrl);
-          setFileName("latest.pdf");
+  const resolveLatest = React.useCallback(async () => {
+    setLoading(true);
+    setNote("");
+
+    try {
+      // Try the simple convention first: root/latest.pdf
+      const conventionalPath = "latest.pdf";
+      const latestBase = supabase.storage.from("memomailer").getPublicUrl(conventionalPath);
+
+      if (latestBase?.data?.publicUrl) {
+        // Look up metadata for updated_at so we can cache-bust properly
+        const meta = await getFileMeta(conventionalPath);
+
+        if (meta) {
+          setPicked(buildPickedFile(conventionalPath, meta));
           setLoading(false);
           return;
         }
-
-        // 2) Otherwise, recursively list everything and pick newest PDF
-        const all = await listAll("");
-        // Filter PDFs only (optional—remove this if you want any newest file)
-        const pdfs = all.filter((f) => f.path.toLowerCase().endsWith(".pdf"));
-
-        if (pdfs.length) {
-          const newest = [...pdfs].sort((a, b) => {
-            const da =
-              new Date(a.file.updated_at || a.file.created_at || 0).getTime() || 0;
-            const db =
-              new Date(b.file.updated_at || b.file.created_at || 0).getTime() || 0;
-            return db - da;
-          })[0];
-
-          const full = supabase.storage.from("memomailer").getPublicUrl(newest.path);
-          setUrl(full.data.publicUrl);
-          setFileName(newest.path);
-        } else {
-          setUrl(null);
-          setNote(
-            "No PDF found. Upload a file to the 'memomailer' bucket (root or any folder)."
-          );
-        }
-      } catch (e) {
-        setUrl(null);
-        setNote("Could not list the bucket. Check bucket name and public access.");
-      } finally {
+        // If for some reason we couldn't read metadata, still show it with a "now" cache-bust.
+        setPicked(buildPickedFile(conventionalPath, null));
         setLoading(false);
+        return;
       }
-    })();
+
+      // Fallback: recursively find the newest PDF anywhere in the bucket
+      const all = await listAll("");
+      const pdfs = all.filter((f) => f.path.toLowerCase().endsWith(".pdf"));
+
+      if (pdfs.length) {
+        const newest = [...pdfs].sort((a, b) => {
+          const da =
+            new Date(a.file.updated_at || a.file.created_at || 0).getTime() || 0;
+          const db =
+            new Date(b.file.updated_at || b.file.created_at || 0).getTime() || 0;
+          return db - da;
+        })[0];
+
+        setPicked(buildPickedFile(newest.path, newest.file));
+      } else {
+        setPicked(null);
+        setNote(
+          "No PDF found. Upload a file to the 'memomailer' bucket (root or any folder)."
+        );
+      }
+    } catch {
+      setPicked(null);
+      setNote("Could not list the bucket. Check bucket name and public access.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  React.useEffect(() => {
+    resolveLatest();
+  }, [resolveLatest]);
+
+  const handleRefresh = async () => {
+    // Re-fetch metadata for the currently selected path to pick up a fresh updated_at
+    if (!picked) {
+      await resolveLatest();
+      return;
+    }
+    setLoading(true);
+    try {
+      const meta = await getFileMeta(picked.path);
+      setPicked(buildPickedFile(picked.path, meta));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <main className="wrap">
@@ -112,25 +185,35 @@ export default function MemoMailerPage() {
 
         {loading ? (
           <div className="card">Loading…</div>
-        ) : url ? (
+        ) : picked ? (
           <div className="card">
             <div className="toolbar">
-              <div className="title">📄 {fileName}</div>
+              <div className="title">📄 {picked.fileName}</div>
               <div className="actions">
-                <a href={url} target="_blank" rel="noopener noreferrer" className="btn">
+                <button onClick={handleRefresh} className="btn" title="Recheck in Supabase">
+                  Refresh
+                </button>
+                <a
+                  href={picked.publicUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn"
+                >
                   Open in new tab
                 </a>
-                <a href={url} download className="btn btn--brand">
+                <a href={picked.publicUrl} download className="btn btn--brand">
                   Download PDF
                 </a>
               </div>
             </div>
             <div className="viewer">
-              <iframe title="Memomailer" src={url} />
+              {/* key ensures React fully remounts iframe when updated_at changes */}
+              <iframe key={picked.cacheKey} title="Memomailer" src={picked.publicUrl} />
             </div>
             <p className="hint">
               Tip: upload a file named <code>latest.pdf</code> to update this page
-              without changing links.
+              without changing links. The viewer auto cache-busts using the file’s{" "}
+              <code>updated_at</code>.
             </p>
           </div>
         ) : (
