@@ -13,20 +13,38 @@ const supabase =
 
 export default function HomePage() {
   const [tickerMessages, setTickerMessages] = useState<string[]>([]);
+  const [tickerError, setTickerError] = useState<string | null>(null);
 
   // load ticker messages from Supabase
   useEffect(() => {
     const load = async () => {
-      if (!supabase) return;
+      if (!supabase) {
+        setTickerError("Supabase client not available");
+        return;
+      }
       const { data, error } = await supabase
         .from("news_ticker")
-        .select("message")
-        .eq("active", true)
+        .select("message, active")
         .order("created_at", { ascending: false });
 
-      if (!error && data) {
-        setTickerMessages(data.map((d) => d.message));
+      if (error) {
+        setTickerError(error.message);
+        return;
       }
+
+      if (!data || data.length === 0) {
+        setTickerMessages([]);
+        return;
+      }
+
+      // prefer active messages, fall back to all
+      const activeMsgs = data
+        .filter((d: any) => d.active === true)
+        .map((d: any) => d.message);
+
+      setTickerMessages(
+        activeMsgs.length > 0 ? activeMsgs : data.map((d: any) => d.message)
+      );
     };
     load();
   }, []);
@@ -41,21 +59,29 @@ export default function HomePage() {
         />
       </div>
 
-      {/* News Ticker (red) */}
-      {tickerMessages.length > 0 && (
-        <div className="ticker-wrap" aria-label="Mourne-oids latest updates">
-          <div className="ticker">
-            {tickerMessages.map((m, i) => (
+      {/* News Ticker (always rendered so we can debug) */}
+      <div className="ticker-wrap" aria-label="Mourne-oids latest updates">
+        <div className="ticker">
+          {tickerError ? (
+            <span className="ticker-item error">
+              ⚠️ Ticker error: {tickerError}
+            </span>
+          ) : tickerMessages.length === 0 ? (
+            <span className="ticker-item muted">
+              📰 No news items found in Supabase (table: <code>news_ticker</code>)
+            </span>
+          ) : (
+            tickerMessages.map((m, i) => (
               <span key={i} className="ticker-item">
                 {m}
                 {i < tickerMessages.length - 1 && (
                   <span className="separator"> • </span>
                 )}
               </span>
-            ))}
-          </div>
+            ))
+          )}
         </div>
-      )}
+      </div>
 
       {/* Title */}
       <header className="header">
@@ -160,6 +186,14 @@ export default function HomePage() {
           padding: 0 2.2rem;
           font-weight: 700;
           font-size: 0.9rem;
+        }
+        .ticker-item.muted {
+          opacity: 0.7;
+        }
+        .ticker-item.error {
+          background: rgba(0, 0, 0, 0.25);
+          border-radius: 999px;
+          padding: 4px 1.5rem;
         }
         .separator {
           opacity: 0.7;
