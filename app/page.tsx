@@ -24,6 +24,11 @@ export default function HomePage() {
       {/* Buttons */}
       <section className="container">
         <div className="buttons">
+          {/* NEW: Service Dashboard */}
+          <a href="/dashboard/service" className="btn btn--brand">
+            📊 Service Dashboard
+          </a>
+
           <a href="/walkthrough" className="btn btn--brand">
             🧾 Daily OER Walkthrough
           </a>
