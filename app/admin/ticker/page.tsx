@@ -28,7 +28,6 @@ const ADMIN_PASSWORD =
 function timeTextToMinutes(val: string): number | null {
   if (!val) return null;
   if (!val.includes(":")) {
-    // maybe they typed just 8 or 9.5
     const num = Number(val);
     return isNaN(num) ? null : num;
   }
@@ -36,7 +35,7 @@ function timeTextToMinutes(val: string): number | null {
   const m = Number(mm);
   const s = Number(ss);
   if (isNaN(m)) return null;
-  if (isNaN(s)) return m; // at least minutes
+  if (isNaN(s)) return m;
   return m * 60 + s;
 }
 
@@ -182,53 +181,8 @@ export default function AdminPage() {
     }
   };
 
-  // SERVICE: submit
-  const handleServiceSubmit = async () => {
-    if (!supabase) return;
-    setServiceMsg(null);
-
-    if (!svcDate || !svcStore) {
-      setServiceMsg("Please pick a date and store.");
-      return;
-    }
-
-    setServiceSaving(true);
-
-    // convert R&L text to minutes
-    const rnlMinutes = timeTextToMinutes(rnlText);
-
-    const payload = {
-      shift_date: svcDate, // this is the name in your screenshot
-      day_name: svcDayName || null,
-      store: svcStore,
-      forecast_sales: forecastSales ? Number(forecastSales) : null,
-      actual_sales: actualSales ? Number(actualSales) : null,
-      labour_pct: labourPct ? Number(labourPct) : null,
-      additional_hours: additionalHours ? Number(additionalHours) : null,
-      opening_manager: openingManager || null,
-      closing_manager: closingManager || null,
-      instores_sched: instoresSched ? Number(instoresSched) : null,
-      actual_instore: actualInstore ? Number(actualInstore) : null,
-      drivers_sched: driversSched ? Number(driversSched) : null,
-      actual_drivers: actualDrivers ? Number(actualDrivers) : null,
-      dot_pct: dotPct ? Number(dotPct) : null,
-      extremes_pct: extremesPct ? Number(extremesPct) : null,
-      sbr_pct: sbrPct ? Number(sbrPct) : null,
-      rnl_minutes: rnlMinutes,
-      food_variance: foodVariance ? Number(foodVariance) : null,
-      // you also have source_file and created_at but they have defaults / can be null
-    };
-
-    const { error } = await supabase.from("service_shifts").insert([payload]);
-
-    if (error) {
-      setServiceMsg(`Upload failed: ${error.message}`);
-      setServiceSaving(false);
-      return;
-    }
-
-    setServiceMsg("✅ Shift saved to service_shifts.");
-    // clear metric fields but keep date + store
+  // helper to clear only metric fields
+  const resetServiceFields = () => {
     setForecastSales("");
     setActualSales("");
     setLabourPct("");
@@ -244,6 +198,88 @@ export default function AdminPage() {
     setSbrPct("");
     setRnlText("");
     setFoodVariance("");
+  };
+
+  // SERVICE: submit (with fallback column name)
+  const handleServiceSubmit = async () => {
+    if (!supabase) return;
+    setServiceMsg(null);
+
+    if (!svcDate || !svcStore) {
+      setServiceMsg("Please pick a date and store.");
+      return;
+    }
+
+    setServiceSaving(true);
+
+    // convert R&L text to minutes
+    const rnlMinutes = timeTextToMinutes(rnlText);
+
+    // payload with the names from your screenshot
+    const basePayload: any = {
+      shift_date: svcDate,
+      day_name: svcDayName || null,
+      store: svcStore,
+      forecast_sales: forecastSales ? Number(forecastSales) : null,
+      actual_sales: actualSales ? Number(actualSales) : null,
+      labour_pct: labourPct ? Number(labourPct) : null,
+      additional_hours: additionalHours ? Number(additionalHours) : null,
+      opening_manager: openingManager || null,
+      closing_manager: closingManager || null,
+      instores_sched: instoresSched ? Number(instoresSched) : null,
+      actual_instore: actualInstore ? Number(actualInstore) : null, // first attempt
+      drivers_sched: driversSched ? Number(driversSched) : null,
+      actual_drivers: actualDrivers ? Number(actualDrivers) : null,
+      dot_pct: dotPct ? Number(dotPct) : null,
+      extremes_pct: extremesPct ? Number(extremesPct) : null,
+      sbr_pct: sbrPct ? Number(sbrPct) : null,
+      rnl_minutes: rnlMinutes,
+      food_variance: foodVariance ? Number(foodVariance) : null,
+    };
+
+    // 1) try with actual_instore
+    const { error: err1 } = await supabase
+      .from("service_shifts")
+      .insert([basePayload]);
+
+    if (!err1) {
+      setServiceMsg("✅ Shift saved to service_shifts.");
+      resetServiceFields();
+      setServiceSaving(false);
+      return;
+    }
+
+    // if Supabase says the column doesn't exist, try the plural form
+    const e1 = err1.message?.toLowerCase() || "";
+    if (e1.includes("actual_instore") && e1.includes("could not find")) {
+      const altPayload: any = {
+        ...basePayload,
+        actual_instores: basePayload.actual_instore,
+      };
+      delete altPayload.actual_instore;
+
+      const { error: err2 } = await supabase
+        .from("service_shifts")
+        .insert([altPayload]);
+
+      if (!err2) {
+        setServiceMsg(
+          "✅ Shift saved to service_shifts (used column 'actual_instores')."
+        );
+        resetServiceFields();
+        setServiceSaving(false);
+        return;
+      }
+
+      setServiceMsg(
+        `Upload failed: ${err2.message} (tried 'actual_instore' and 'actual_instores')`
+      );
+      setServiceSaving(false);
+      return;
+    }
+
+    // some other error
+    setServiceMsg(`Upload failed: ${err1.message}`);
     setServiceSaving(false);
   };
 
@@ -261,7 +297,9 @@ export default function AdminPage() {
         <>
           <header className="header">
             <h1>Mourne-oids Admin</h1>
-            <p className="subtitle">This page is restricted to Mourne-oids management.</p>
+            <p className="subtitle">
+              This page is restricted to Mourne-oids management.
+            </p>
           </header>
           <section className="card">
             <h2>Enter admin password</h2>
@@ -277,8 +315,8 @@ export default function AdminPage() {
             {authError && <p className="error">⚠️ {authError}</p>}
             {!ADMIN_PASSWORD && (
               <p className="muted">
-                No password set in Vercel env <code>NEXT_PUBLIC_TICKER_PASSWORD</code> — allowing
-                access.
+                No password set in Vercel env{" "}
+                <code>NEXT_PUBLIC_TICKER_PASSWORD</code> — allowing access.
               </p>
             )}
             <a href="/" className="btn btn--ghost">
@@ -291,7 +329,9 @@ export default function AdminPage() {
           {/* Header */}
           <header className="header">
             <h1>Mourne-oids Admin</h1>
-            <p className="subtitle">Ticker · Service dashboard uploads · future admin</p>
+            <p className="subtitle">
+              Ticker · Service dashboard uploads · future admin
+            </p>
             <div className="actions">
               <a href="/" className="btn btn--ghost">
                 ← Back to Hub
@@ -403,8 +443,8 @@ export default function AdminPage() {
               <section className="card">
                 <h2>Upload service shift</h2>
                 <p className="muted">
-                  This form writes **directly** into <code>service_shifts</code> using the column
-                  names in your screenshot (shift_date, day_name, ...).
+                  This form writes directly into{" "}
+                  <code>service_shifts</code> using your real column names.
                 </p>
 
                 <div className="form-2col">
