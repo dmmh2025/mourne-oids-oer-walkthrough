@@ -893,8 +893,7 @@ export default function AdminPage() {
           }
         }
       `}</style>
-    </main>
-        </main>
+       </main>
 
     <style jsx>{`
       .wrap {
@@ -950,6 +949,3 @@ export default function AdminPage() {
     `}</style>
   );
 }
-
-  );
-} 
