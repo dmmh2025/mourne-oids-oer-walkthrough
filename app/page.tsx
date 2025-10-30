@@ -59,7 +59,7 @@ export default function HomePage() {
         />
       </div>
 
-      {/* News Ticker (always rendered so we can debug) */}
+      {/* News Ticker */}
       <div className="ticker-wrap" aria-label="Mourne-oids latest updates">
         <div className="ticker">
           {tickerError ? (
@@ -94,7 +94,6 @@ export default function HomePage() {
       {/* Buttons */}
       <section className="container">
         <div className="buttons">
-          {/* NEW: Service Dashboard */}
           <a href="/dashboard/service" className="btn btn--brand">
             📊 Service Dashboard
           </a>
@@ -135,7 +134,7 @@ export default function HomePage() {
           --muted: #475569;
           --brand: #006491;
           --brand-dark: #004b75;
-          --ticker-bg: #e31837; /* Domino's red for ticker */
+          --ticker-bg: #006491; /* Domino's blue for ticker */
           --shadow-card: 0 10px 18px rgba(2, 6, 23, 0.08),
             0 1px 3px rgba(2, 6, 23, 0.06);
         }
@@ -186,9 +185,11 @@ export default function HomePage() {
           padding: 0 2.2rem;
           font-weight: 700;
           font-size: 0.9rem;
+          color: #fff;
         }
         .ticker-item.muted {
-          opacity: 0.7;
+          opacity: 0.9;
+          color: #fff;
         }
         .ticker-item.error {
           background: rgba(0, 0, 0, 0.25);
