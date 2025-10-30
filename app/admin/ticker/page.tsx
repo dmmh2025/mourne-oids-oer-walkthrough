@@ -30,7 +30,10 @@ export default function TickerAdminPage() {
   const [isAuthed, setIsAuthed] = useState(false);
   const [authError, setAuthError] = useState("");
 
-  // data
+  // tabs
+  const [activeTab, setActiveTab] = useState<"ticker" | "service">("ticker");
+
+  // ticker data
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<TickerRow[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -39,7 +42,12 @@ export default function TickerAdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // when authed, load data
+  // service upload data
+  const [serviceText, setServiceText] = useState("");
+  const [serviceUploading, setServiceUploading] = useState(false);
+  const [serviceMsg, setServiceMsg] = useState<string | null>(null);
+
+  // when authed, load ticker
   useEffect(() => {
     const load = async () => {
       if (!isAuthed) return;
@@ -88,38 +96,140 @@ export default function TickerAdminPage() {
           active: newActive,
         },
       ])
-      .select()
-      .single();
+      .select(); // return array
 
     if (error) {
       setError(error.message);
-    } else if (data) {
-      setRows((prev) => [data as TickerRow, ...prev]);
+    } else if (data && data.length > 0) {
+      setRows((prev) => [data[0] as TickerRow, ...prev]);
       setNewMessage("");
       setNewActive(true);
     }
     setSaving(false);
   };
 
+  // FIXED: don't use .single()
   const toggleActive = async (row: TickerRow) => {
     if (!supabase) return;
     const { data, error } = await supabase
       .from("news_ticker")
       .update({ active: !row.active })
       .eq("id", row.id)
-      .select()
-      .single();
+      .select(); // returns array
 
     if (error) {
       setError(error.message);
       return;
     }
 
-    if (data) {
-      setRows((prev) =>
-        prev.map((r) => (r.id === row.id ? (data as TickerRow) : r))
-      );
+    if (data && data.length > 0) {
+      const updated = data[0] as TickerRow;
+      setRows((prev) => prev.map((r) => (r.id === row.id ? updated : r)));
     }
+  };
+
+  // -------------- SERVICE UPLOAD --------------
+  const handleServiceUpload = async () => {
+    if (!supabase) return;
+    if (!serviceText.trim()) {
+      setServiceMsg("Nothing to upload.");
+      return;
+    }
+
+    setServiceUploading(true);
+    setServiceMsg(null);
+
+    // each line = 1 row
+    const lines = serviceText
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    // expected CSV order:
+    // date,day,store,forecast_sales,actual_sales,labour_pct,additional_hours,opening_manager,closing_manager,instores_scheduled,instores_actual,drivers_scheduled,drivers_actual,dot,extremes,sbr,r_and_l,food_variance
+    const toInsert: any[] = [];
+    const skipped: string[] = [];
+
+    for (const line of lines) {
+      const parts = line.split(",").map((p) => p.trim());
+      if (parts.length < 3) {
+        skipped.push(line);
+        continue;
+      }
+
+      const [
+        date,
+        day,
+        store,
+        forecast_sales,
+        actual_sales,
+        labour_pct,
+        additional_hours,
+        opening_manager,
+        closing_manager,
+        instores_scheduled,
+        instores_actual,
+        drivers_scheduled,
+        drivers_actual,
+        dot,
+        extremes,
+        sbr,
+        r_and_l,
+        food_variance,
+      ] = parts;
+
+      if (!date || !store) {
+        skipped.push(line);
+        continue;
+      }
+
+      toInsert.push({
+        date: date,
+        day: day || null,
+        store: store || null,
+        forecast_sales: forecast_sales ? Number(forecast_sales) : null,
+        actual_sales: actual_sales ? Number(actual_sales) : null,
+        labour_pct: labour_pct ? Number(labour_pct) : null,
+        additional_hours: additional_hours ? Number(additional_hours) : null,
+        opening_manager: opening_manager || null,
+        closing_manager: closing_manager || null,
+        instores_scheduled: instores_scheduled
+          ? Number(instores_scheduled)
+          : null,
+        instores_actual: instores_actual ? Number(instores_actual) : null,
+        drivers_scheduled: drivers_scheduled
+          ? Number(drivers_scheduled)
+          : null,
+        drivers_actual: drivers_actual ? Number(drivers_actual) : null,
+        dot: dot ? Number(dot) : null,
+        extremes: extremes ? Number(extremes) : null,
+        sbr: sbr ? Number(sbr) : null,
+        r_and_l: r_and_l || null,
+        food_variance: food_variance ? Number(food_variance) : null,
+      });
+    }
+
+    if (toInsert.length === 0) {
+      setServiceMsg(
+        `No valid rows found. Check your column order. Skipped ${skipped.length} lines.`
+      );
+      setServiceUploading(false);
+      return;
+    }
+
+    // ✅ your actual table name
+    const { error } = await supabase.from("service_shifts").insert(toInsert);
+
+    if (error) {
+      setServiceMsg(`Upload failed: ${error.message}`);
+    } else {
+      setServiceMsg(
+        `Uploaded ${toInsert.length} rows. Skipped ${skipped.length}.`
+      );
+      setServiceText("");
+    }
+
+    setServiceUploading(false);
   };
 
   return (
@@ -135,7 +245,7 @@ export default function TickerAdminPage() {
       {!isAuthed ? (
         <>
           <header className="header">
-            <h1>Mourne-oids Ticker Admin</h1>
+            <h1>Mourne-oids Admin</h1>
             <p className="subtitle">
               This page is restricted to Mourne-oids management.
             </p>
@@ -154,18 +264,10 @@ export default function TickerAdminPage() {
             {authError && <p className="error">⚠️ {authError}</p>}
             {!ADMIN_PASSWORD && (
               <p className="muted">
-                No password set in Vercel env
+                No password set in Vercel env{" "}
                 <code>NEXT_PUBLIC_TICKER_PASSWORD</code> — allowing access.
               </p>
             )}
-            <p className="muted">
-              Tip: set <code>NEXT_PUBLIC_TICKER_PASSWORD</code> in Vercel →
-              Project → Settings → Environment Variables → Redeploy.
-            </p>
-            <p className="muted">
-              Or lock this route behind your basic auth (like the rest of the
-              Hub).
-            </p>
             <a href="/" className="btn btn--ghost">
               ← Back to Hub
             </a>
@@ -175,9 +277,9 @@ export default function TickerAdminPage() {
         <>
           {/* Header */}
           <header className="header">
-            <h1>Mourne-oids News Ticker</h1>
+            <h1>Mourne-oids Admin</h1>
             <p className="subtitle">
-              Post area updates, service pushes, celebrations and urgent notes.
+              Ticker · Service dashboard uploads · future admin
             </p>
             <div className="actions">
               <a href="/" className="btn btn--ghost">
@@ -186,82 +288,143 @@ export default function TickerAdminPage() {
             </div>
           </header>
 
-          {/* Add form */}
-          <section className="card">
-            <h2>Add ticker message</h2>
-            <div className="form-row">
-              <label>Message</label>
-              <textarea
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                rows={2}
-                placeholder="e.g. Congratulations Kilkeel on your 4⭐ OER!"
-              />
-            </div>
+          {/* Tabs */}
+          <div className="tabs">
+            <button
+              className={activeTab === "ticker" ? "tab active" : "tab"}
+              onClick={() => setActiveTab("ticker")}
+            >
+              📰 Ticker
+            </button>
+            <button
+              className={activeTab === "service" ? "tab active" : "tab"}
+              onClick={() => setActiveTab("service")}
+            >
+              📊 Service Data Upload
+            </button>
+          </div>
 
-            <div className="form-grid">
-              <div>
-                <label>Category</label>
-                <select
-                  value={newCategory}
-                  onChange={(e) => setNewCategory(e.target.value)}
-                >
-                  <option value="Announcement">Announcement</option>
-                  <option value="Service Push">Service Push</option>
-                  <option value="Ops">Ops</option>
-                  <option value="Celebration">Celebration</option>
-                  <option value="Warning">Warning</option>
-                </select>
-              </div>
-              <div className="toggle-row">
-                <label>Active</label>
-                <input
-                  type="checkbox"
-                  checked={newActive}
-                  onChange={(e) => setNewActive(e.target.checked)}
+          {activeTab === "ticker" ? (
+            <>
+              {/* Add form */}
+              <section className="card">
+                <h2>Add ticker message</h2>
+                <div className="form-row">
+                  <label>Message</label>
+                  <textarea
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    rows={2}
+                    placeholder="e.g. All stores staffed for 4pm 💪"
+                  />
+                </div>
+
+                <div className="form-grid">
+                  <div>
+                    <label>Category</label>
+                    <select
+                      value={newCategory}
+                      onChange={(e) => setNewCategory(e.target.value)}
+                    >
+                      <option value="Announcement">Announcement</option>
+                      <option value="Service Push">Service Push</option>
+                      <option value="Ops">Ops</option>
+                      <option value="Celebration">Celebration</option>
+                      <option value="Warning">Warning</option>
+                    </select>
+                  </div>
+                  <div className="toggle-row">
+                    <label>Active</label>
+                    <input
+                      type="checkbox"
+                      checked={newActive}
+                      onChange={(e) => setNewActive(e.target.checked)}
+                    />
+                  </div>
+                  <div className="btn-cell">
+                    <button
+                      onClick={handleAdd}
+                      disabled={saving || !newMessage.trim()}
+                    >
+                      {saving ? "Saving…" : "Add message"}
+                    </button>
+                  </div>
+                </div>
+
+                {error && <p className="error">⚠️ {error}</p>}
+              </section>
+
+              {/* List */}
+              <section className="card">
+                <h2>Current messages</h2>
+                {loading ? (
+                  <p>Loading…</p>
+                ) : rows.length === 0 ? (
+                  <p className="muted">No messages yet.</p>
+                ) : (
+                  <ul className="ticker-list">
+                    {rows.map((row) => (
+                      <li
+                        key={row.id}
+                        className={row.active ? "active" : "inactive"}
+                      >
+                        <div className="row-top">
+                          <span className="category">
+                            {row.category || "General"}
+                          </span>
+                          <button onClick={() => toggleActive(row)}>
+                            {row.active ? "Deactivate" : "Activate"}
+                          </button>
+                        </div>
+                        <p className="msg">{row.message}</p>
+                        <p className="ts">
+                          {new Date(row.created_at).toLocaleString("en-GB")}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </>
+          ) : (
+            <>
+              {/* SERVICE UPLOAD */}
+              <section className="card">
+                <h2>Upload service dashboard data</h2>
+                <p className="muted">
+                  Paste CSV-style lines below. One line = one store/day. Expected
+                  order:
+                </p>
+                <pre className="example">
+{`date,day,store,forecast_sales,actual_sales,labour_pct,additional_hours,opening_manager,closing_manager,instores_scheduled,instores_actual,drivers_scheduled,drivers_actual,dot,extremes,sbr,r_and_l,food_variance
+
+2025-10-30,Thu,Downpatrick,2200,2315,24.5,0,Stuart,Hannah,5,5,4,4,78,0,76,8:30,0.12
+2025-10-30,Thu,Kilkeel,2400,2388,26.1,1,Harshil,,4,4,4,4,82,0,75,7:45,0.05
+`}
+                </pre>
+
+                <textarea
+                  value={serviceText}
+                  onChange={(e) => setServiceText(e.target.value)}
+                  rows={10}
+                  placeholder="Paste your rows here..."
                 />
-              </div>
-              <div className="btn-cell">
+
                 <button
-                  onClick={handleAdd}
-                  disabled={saving || !newMessage.trim()}
+                  onClick={handleServiceUpload}
+                  disabled={serviceUploading}
+                  className="upload-btn"
                 >
-                  {saving ? "Saving…" : "Add message"}
+                  {serviceUploading ? "Uploading…" : "Upload rows"}
                 </button>
-              </div>
-            </div>
 
-            {error && <p className="error">⚠️ {error}</p>}
-          </section>
-
-          {/* List */}
-          <section className="card">
-            <h2>Current messages</h2>
-            {loading ? (
-              <p>Loading…</p>
-            ) : rows.length === 0 ? (
-              <p className="muted">No messages yet.</p>
-            ) : (
-              <ul className="ticker-list">
-                {rows.map((row) => (
-                  <li key={row.id} className={row.active ? "active" : "inactive"}>
-                    <div className="row-top">
-                      <span className="category">
-                        {row.category || "General"}
-                      </span>
-                      <button onClick={() => toggleActive(row)}>
-                        {row.active ? "Deactivate" : "Activate"}
-                      </button>
-                    </div>
-                    <p className="msg">{row.message}</p>
-                    <p className="ts">
-                      {new Date(row.created_at).toLocaleString("en-GB")}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+                {serviceMsg && <p className="muted">{serviceMsg}</p>}
+                <p className="muted">
+                  Inserting into <code>service_shifts</code>.
+                </p>
+              </section>
+            </>
+          )}
         </>
       )}
 
@@ -312,6 +475,24 @@ export default function TickerAdminPage() {
           border-radius: 12px;
           font-weight: 600;
           text-decoration: none;
+        }
+        .tabs {
+          display: flex;
+          gap: 8px;
+          margin-top: 10px;
+        }
+        .tab {
+          background: #e2e8f0;
+          border: none;
+          border-radius: 999px;
+          padding: 6px 16px;
+          font-weight: 600;
+          color: #0f172a;
+          cursor: pointer;
+        }
+        .tab.active {
+          background: #006491;
+          color: #fff;
         }
         .card {
           background: #fff;
@@ -377,7 +558,8 @@ export default function TickerAdminPage() {
           gap: 8px;
           align-items: center;
         }
-        .btn-cell button {
+        .btn-cell button,
+        .upload-btn {
           width: 100%;
           background: #006491;
           color: #fff;
@@ -387,9 +569,8 @@ export default function TickerAdminPage() {
           font-weight: 700;
           cursor: pointer;
         }
-        .btn-cell button:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
+        .upload-btn {
+          margin-top: 12px;
         }
         .error {
           color: #b91c1c;
@@ -398,6 +579,7 @@ export default function TickerAdminPage() {
         .muted {
           color: #94a3b8;
           font-size: 0.8rem;
+          margin-top: 6px;
         }
         .ticker-list {
           list-style: none;
@@ -443,6 +625,15 @@ export default function TickerAdminPage() {
           font-size: 0.65rem;
           color: #94a3b8;
         }
+        .example {
+          background: #0f172a;
+          color: #e2e8f0;
+          padding: 10px 12px;
+          border-radius: 10px;
+          font-size: 0.7rem;
+          overflow-x: auto;
+          margin-bottom: 10px;
+        }
         .footer {
           margin-top: 24px;
           color: #94a3b8;
@@ -458,6 +649,9 @@ export default function TickerAdminPage() {
           }
           .pw-form button {
             width: 100%;
+          }
+          .tabs {
+            flex-wrap: wrap;
           }
         }
       `}</style>
