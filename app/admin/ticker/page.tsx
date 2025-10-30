@@ -19,7 +19,18 @@ type TickerRow = {
   created_at: string;
 };
 
+const ADMIN_PASSWORD =
+  typeof window !== "undefined"
+    ? process.env.NEXT_PUBLIC_TICKER_PASSWORD || ""
+    : "";
+
 export default function TickerAdminPage() {
+  // gate
+  const [enteredPassword, setEnteredPassword] = useState("");
+  const [isAuthed, setIsAuthed] = useState(false);
+  const [authError, setAuthError] = useState("");
+
+  // data
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<TickerRow[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -28,9 +39,10 @@ export default function TickerAdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // load existing ticker rows
+  // when authed, load data
   useEffect(() => {
     const load = async () => {
+      if (!isAuthed) return;
       if (!supabase) return;
       const { data, error } = await supabase
         .from("news_ticker")
@@ -45,7 +57,22 @@ export default function TickerAdminPage() {
       setLoading(false);
     };
     load();
-  }, []);
+  }, [isAuthed]);
+
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    // if no password set in env, allow
+    if (!ADMIN_PASSWORD) {
+      setIsAuthed(true);
+      return;
+    }
+    if (enteredPassword === ADMIN_PASSWORD) {
+      setIsAuthed(true);
+      setAuthError("");
+    } else {
+      setAuthError("Incorrect password");
+    }
+  };
 
   const handleAdd = async () => {
     if (!supabase) return;
@@ -53,21 +80,20 @@ export default function TickerAdminPage() {
 
     setSaving(true);
     const { data, error } = await supabase
-    .from("news_ticker")
-    .insert([
-      {
-        message: newMessage.trim(),
-        category: newCategory,
-        active: newActive,
-      },
-    ])
-    .select()
-    .single();
+      .from("news_ticker")
+      .insert([
+        {
+          message: newMessage.trim(),
+          category: newCategory,
+          active: newActive,
+        },
+      ])
+      .select()
+      .single();
 
     if (error) {
       setError(error.message);
     } else if (data) {
-      // put new row at top
       setRows((prev) => [data as TickerRow, ...prev]);
       setNewMessage("");
       setNewActive(true);
@@ -106,93 +132,138 @@ export default function TickerAdminPage() {
         />
       </div>
 
-      {/* Header */}
-      <header className="header">
-        <h1>Mourne-oids News Ticker</h1>
-        <p className="subtitle">
-          Post area updates, service pushes, celebrations and urgent notes.
-        </p>
-        <div className="actions">
-          <a href="/" className="btn btn--ghost">
-            ← Back to Hub
-          </a>
-        </div>
-      </header>
+      {!isAuthed ? (
+        <>
+          <header className="header">
+            <h1>Mourne-oids Ticker Admin</h1>
+            <p className="subtitle">
+              This page is restricted to Mourne-oids management.
+            </p>
+          </header>
+          <section className="card">
+            <h2>Enter admin password</h2>
+            <form onSubmit={handlePasswordSubmit} className="pw-form">
+              <input
+                type="password"
+                value={enteredPassword}
+                onChange={(e) => setEnteredPassword(e.target.value)}
+                placeholder="Enter password"
+              />
+              <button type="submit">Unlock</button>
+            </form>
+            {authError && <p className="error">⚠️ {authError}</p>}
+            {!ADMIN_PASSWORD && (
+              <p className="muted">
+                No password set in Vercel env
+                <code>NEXT_PUBLIC_TICKER_PASSWORD</code> — allowing access.
+              </p>
+            )}
+            <p className="muted">
+              Tip: set <code>NEXT_PUBLIC_TICKER_PASSWORD</code> in Vercel →
+              Project → Settings → Environment Variables → Redeploy.
+            </p>
+            <p className="muted">
+              Or lock this route behind your basic auth (like the rest of the
+              Hub).
+            </p>
+            <a href="/" className="btn btn--ghost">
+              ← Back to Hub
+            </a>
+          </section>
+        </>
+      ) : (
+        <>
+          {/* Header */}
+          <header className="header">
+            <h1>Mourne-oids News Ticker</h1>
+            <p className="subtitle">
+              Post area updates, service pushes, celebrations and urgent notes.
+            </p>
+            <div className="actions">
+              <a href="/" className="btn btn--ghost">
+                ← Back to Hub
+              </a>
+            </div>
+          </header>
 
-      {/* Add form */}
-      <section className="card">
-        <h2>Add ticker message</h2>
-        <div className="form-row">
-          <label>Message</label>
-          <textarea
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            rows={2}
-            placeholder="e.g. Congratulations Kilkeel on your 4⭐ OER!"
-          />
-        </div>
+          {/* Add form */}
+          <section className="card">
+            <h2>Add ticker message</h2>
+            <div className="form-row">
+              <label>Message</label>
+              <textarea
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                rows={2}
+                placeholder="e.g. Congratulations Kilkeel on your 4⭐ OER!"
+              />
+            </div>
 
-        <div className="form-grid">
-          <div>
-            <label>Category</label>
-            <select
-              value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value)}
-            >
-              <option value="Announcement">Announcement</option>
-              <option value="Service Push">Service Push</option>
-              <option value="Ops">Ops</option>
-              <option value="Celebration">Celebration</option>
-              <option value="Warning">Warning</option>
-            </select>
-          </div>
-          <div className="toggle-row">
-            <label>Active</label>
-            <input
-              type="checkbox"
-              checked={newActive}
-              onChange={(e) => setNewActive(e.target.checked)}
-            />
-          </div>
-          <div className="btn-cell">
-            <button
-              onClick={handleAdd}
-              disabled={saving || !newMessage.trim()}
-            >
-              {saving ? "Saving…" : "Add message"}
-            </button>
-          </div>
-        </div>
+            <div className="form-grid">
+              <div>
+                <label>Category</label>
+                <select
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value)}
+                >
+                  <option value="Announcement">Announcement</option>
+                  <option value="Service Push">Service Push</option>
+                  <option value="Ops">Ops</option>
+                  <option value="Celebration">Celebration</option>
+                  <option value="Warning">Warning</option>
+                </select>
+              </div>
+              <div className="toggle-row">
+                <label>Active</label>
+                <input
+                  type="checkbox"
+                  checked={newActive}
+                  onChange={(e) => setNewActive(e.target.checked)}
+                />
+              </div>
+              <div className="btn-cell">
+                <button
+                  onClick={handleAdd}
+                  disabled={saving || !newMessage.trim()}
+                >
+                  {saving ? "Saving…" : "Add message"}
+                </button>
+              </div>
+            </div>
 
-        {error && <p className="error">⚠️ {error}</p>}
-      </section>
+            {error && <p className="error">⚠️ {error}</p>}
+          </section>
 
-      {/* List */}
-      <section className="card">
-        <h2>Current messages</h2>
-        {loading ? (
-          <p>Loading…</p>
-        ) : rows.length === 0 ? (
-          <p className="muted">No messages yet.</p>
-        ) : (
-          <ul className="ticker-list">
-            {rows.map((row) => (
-              <li key={row.id} className={row.active ? "active" : "inactive"}>
-                <div className="row-top">
-                  <span className="category">{row.category || "General"}</span>
-                  <button onClick={() => toggleActive(row)}>
-                    {row.active ? "Deactivate" : "Activate"}
-                  </button>
-                </div>
-                <p className="msg">{row.message}</p>
-                <p className="ts">
-                  {new Date(row.created_at).toLocaleString("en-GB")}
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+          {/* List */}
+          <section className="card">
+            <h2>Current messages</h2>
+            {loading ? (
+              <p>Loading…</p>
+            ) : rows.length === 0 ? (
+              <p className="muted">No messages yet.</p>
+            ) : (
+              <ul className="ticker-list">
+                {rows.map((row) => (
+                  <li key={row.id} className={row.active ? "active" : "inactive"}>
+                    <div className="row-top">
+                      <span className="category">
+                        {row.category || "General"}
+                      </span>
+                      <button onClick={() => toggleActive(row)}>
+                        {row.active ? "Deactivate" : "Activate"}
+                      </button>
+                    </div>
+                    <p className="msg">{row.message}</p>
+                    <p className="ts">
+                      {new Date(row.created_at).toLocaleString("en-GB")}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </>
+      )}
 
       <footer className="footer">
         <p>© 2025 Mourne-oids | Domino’s Pizza | Racz Group</p>
@@ -254,6 +325,26 @@ export default function TickerAdminPage() {
           font-size: 18px;
           margin-bottom: 12px;
         }
+        .pw-form {
+          display: flex;
+          gap: 10px;
+          margin-bottom: 14px;
+        }
+        .pw-form input {
+          flex: 1;
+          border: 1px solid #d4dbe3;
+          border-radius: 10px;
+          padding: 7px 10px;
+        }
+        .pw-form button {
+          background: #006491;
+          color: #fff;
+          border: none;
+          border-radius: 10px;
+          padding: 7px 14px;
+          font-weight: 600;
+          cursor: pointer;
+        }
         .form-row {
           margin-bottom: 14px;
         }
@@ -303,6 +394,10 @@ export default function TickerAdminPage() {
         .error {
           color: #b91c1c;
           margin-top: 12px;
+        }
+        .muted {
+          color: #94a3b8;
+          font-size: 0.8rem;
         }
         .ticker-list {
           list-style: none;
@@ -356,6 +451,13 @@ export default function TickerAdminPage() {
         @media (max-width: 720px) {
           .form-grid {
             grid-template-columns: 1fr;
+          }
+          .pw-form {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .pw-form button {
+            width: 100%;
           }
         }
       `}</style>
