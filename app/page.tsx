@@ -11,8 +11,14 @@ const supabase =
       )
     : null;
 
+type TickerItem = {
+  message: string;
+  active: boolean;
+  category?: string | null;
+};
+
 export default function HomePage() {
-  const [tickerMessages, setTickerMessages] = useState<string[]>([]);
+  const [tickerMessages, setTickerMessages] = useState<TickerItem[]>([]);
   const [tickerError, setTickerError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -23,7 +29,7 @@ export default function HomePage() {
       }
       const { data, error } = await supabase
         .from("news_ticker")
-        .select("message, active")
+        .select("message, active, category")
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -36,16 +42,23 @@ export default function HomePage() {
         return;
       }
 
-      const activeMsgs = data
-        .filter((d: any) => d.active === true)
-        .map((d: any) => d.message);
-
-      setTickerMessages(
-        activeMsgs.length > 0 ? activeMsgs : data.map((d: any) => d.message)
-      );
+      // prefer active messages, fallback to all
+      const active = data.filter((d: any) => d.active === true);
+      setTickerMessages((active.length > 0 ? active : data) as TickerItem[]);
     };
     load();
   }, []);
+
+  // category → colour bar
+  const getCategoryColor = (cat?: string | null) => {
+    const c = (cat || "").toLowerCase();
+    if (c === "service push") return "#E31837"; // red
+    if (c === "celebration") return "#16A34A"; // green
+    if (c === "ops") return "#F59E0B"; // amber
+    if (c === "warning") return "#7C3AED"; // purple
+    // default / announcement
+    return "#ffffff";
+  };
 
   return (
     <main className="wrap">
@@ -69,16 +82,29 @@ export default function HomePage() {
         <div className="ticker">
           {tickerError ? (
             <span className="ticker-item error">
+              <span
+                className="cat-pill"
+                style={{ background: "#ffffff" }}
+              />
               ⚠️ Ticker error: {tickerError}
             </span>
           ) : tickerMessages.length === 0 ? (
             <span className="ticker-item muted">
+              <span
+                className="cat-pill"
+                style={{ background: "#ffffff" }}
+              />
               📰 No news items found in Supabase (table: <code>news_ticker</code>)
             </span>
           ) : (
-            tickerMessages.map((m, i) => (
+            tickerMessages.map((item, i) => (
               <span key={i} className="ticker-item">
-                {m}
+                <span
+                  className="cat-pill"
+                  style={{ background: getCategoryColor(item.category) }}
+                  title={item.category || "Announcement"}
+                />
+                {item.message}
                 {i < tickerMessages.length - 1 && (
                   <span className="separator"> • </span>
                 )}
@@ -129,7 +155,7 @@ export default function HomePage() {
             🍕 Pizza of the Week
           </a>
 
-          {/* Admin (was Ticker Admin) */}
+          {/* Admin */}
           <a href="/admin/ticker" className="btn btn--brand">
             ⚙️ Admin
           </a>
@@ -196,11 +222,21 @@ export default function HomePage() {
         }
 
         .ticker-item {
-          display: inline-block;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.6rem;
           padding: 0 2.2rem;
           font-weight: 700;
           font-size: 0.9rem;
           color: #fff;
+        }
+
+        .cat-pill {
+          width: 10px;
+          height: 20px;
+          border-radius: 6px;
+          flex: 0 0 10px;
+          box-shadow: 0 0 6px rgba(0, 0, 0, 0.2);
         }
 
         .ticker-item.muted {
