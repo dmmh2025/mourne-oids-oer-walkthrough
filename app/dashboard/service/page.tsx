@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-// same public client as the test page
+// Supabase client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -38,6 +38,22 @@ export default function ServiceDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedStore, setSelectedStore] = useState<"all" | string>("all");
+
+  // helper: fix %-that-were-entered-as-whole-numbers
+  const normalisePct = (v: number | null) => {
+    if (v == null) return null;
+    // if user typed 58 instead of 0.58
+    if (v > 1) return v / 100;
+    return v;
+  };
+
+  // food variance is usually small (like 0.3%), so if someone typed 30, make it 0.3
+  const normaliseFoodVar = (v: number | null) => {
+    if (v == null) return null;
+    // if someone typed 30 or 12, they probably meant %
+    if (v > 5) return v / 100;
+    return v;
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -83,16 +99,25 @@ export default function ServiceDashboardPage() {
 
     let totalActual = 0;
     let totalForecast = 0;
-    const lab: number[] = [];
-    const dot: number[] = [];
-    const rnl: number[] = [];
+    const labourVals: number[] = [];
+    const dotVals: number[] = [];
+    const rnlVals: number[] = [];
 
     for (const r of filteredRows) {
       if (r.actual_sales != null) totalActual += r.actual_sales;
       if (r.forecast_sales != null) totalForecast += r.forecast_sales;
-      if (r.labour_pct != null) lab.push(r.labour_pct);
-      if (r.dot_pct != null) dot.push(r.dot_pct);
-      if (r.rnl_mins != null) rnl.push(r.rnl_mins);
+
+      if (r.labour_pct != null) {
+        const val = normalisePct(r.labour_pct);
+        if (val != null) labourVals.push(val);
+      }
+
+      if (r.dot_pct != null) {
+        const val = normalisePct(r.dot_pct);
+        if (val != null) dotVals.push(val);
+      }
+
+      if (r.rnl_mins != null) rnlVals.push(r.rnl_mins);
     }
 
     const variancePct =
@@ -105,13 +130,13 @@ export default function ServiceDashboardPage() {
       totalActual,
       totalForecast,
       variancePct,
-      avgLabour: avg(lab),
-      avgDOT: avg(dot),
-      avgRnL: avg(rnl),
+      avgLabour: avg(labourVals),
+      avgDOT: avg(dotVals),
+      avgRnL: avg(rnlVals),
     };
   }, [filteredRows]);
 
-  // stores
+  // per store
   const storeData = useMemo(() => {
     const out = STORES.map((storeName) => {
       const sr = filteredRows.filter((r) => r.store === storeName);
@@ -125,6 +150,7 @@ export default function ServiceDashboardPage() {
           avgDOT: 0,
           avgSBR: 0,
           avgRnL: 0,
+          avgFoodVar: 0,
         };
       }
 
@@ -134,14 +160,29 @@ export default function ServiceDashboardPage() {
       const dot: number[] = [];
       const sbr: number[] = [];
       const rnl: number[] = [];
+      const food: number[] = [];
 
       for (const r of sr) {
         if (r.actual_sales != null) totalActual += r.actual_sales;
         if (r.forecast_sales != null) totalForecast += r.forecast_sales;
-        if (r.labour_pct != null) lab.push(r.labour_pct);
-        if (r.dot_pct != null) dot.push(r.dot_pct);
-        if (r.sbr_pct != null) sbr.push(r.sbr_pct);
+
+        if (r.labour_pct != null) {
+          const v = normalisePct(r.labour_pct);
+          if (v != null) lab.push(v);
+        }
+        if (r.dot_pct != null) {
+          const v = normalisePct(r.dot_pct);
+          if (v != null) dot.push(v);
+        }
+        if (r.sbr_pct != null) {
+          const v = normalisePct(r.sbr_pct);
+          if (v != null) sbr.push(v);
+        }
         if (r.rnl_mins != null) rnl.push(r.rnl_mins);
+        if (r.food_var_pct != null) {
+          const v = normaliseFoodVar(r.food_var_pct);
+          if (v != null) food.push(v);
+        }
       }
 
       const variancePct =
@@ -159,10 +200,11 @@ export default function ServiceDashboardPage() {
         avgDOT: avg(dot),
         avgSBR: avg(sbr),
         avgRnL: avg(rnl),
+        avgFoodVar: avg(food),
       };
     });
 
-    // sort: your rule
+    // rank by DOT, then labour
     out.sort((a, b) => {
       if (b.avgDOT !== a.avgDOT) return b.avgDOT - a.avgDOT;
       return a.avgLabour - b.avgLabour;
@@ -182,6 +224,7 @@ export default function ServiceDashboardPage() {
         dot: number[];
         sbr: number[];
         rnl: number[];
+        food: number[];
       }
     > = {};
 
@@ -195,14 +238,29 @@ export default function ServiceDashboardPage() {
           dot: [],
           sbr: [],
           rnl: [],
+          food: [],
         };
       }
       bucket[name].shifts += 1;
       if (r.actual_sales != null) bucket[name].sales += r.actual_sales;
-      if (r.labour_pct != null) bucket[name].labour.push(r.labour_pct);
-      if (r.dot_pct != null) bucket[name].dot.push(r.dot_pct);
-      if (r.sbr_pct != null) bucket[name].sbr.push(r.sbr_pct);
+
+      if (r.labour_pct != null) {
+        const v = normalisePct(r.labour_pct);
+        if (v != null) bucket[name].labour.push(v);
+      }
+      if (r.dot_pct != null) {
+        const v = normalisePct(r.dot_pct);
+        if (v != null) bucket[name].dot.push(v);
+      }
+      if (r.sbr_pct != null) {
+        const v = normalisePct(r.sbr_pct);
+        if (v != null) bucket[name].sbr.push(v);
+      }
       if (r.rnl_mins != null) bucket[name].rnl.push(r.rnl_mins);
+      if (r.food_var_pct != null) {
+        const v = normaliseFoodVar(r.food_var_pct);
+        if (v != null) bucket[name].food.push(v);
+      }
     }
 
     const avg = (arr: number[]) =>
@@ -216,14 +274,15 @@ export default function ServiceDashboardPage() {
       avgDOT: avg(v.dot),
       avgSBR: avg(v.sbr),
       avgRnL: avg(v.rnl),
+      avgFoodVar: avg(v.food),
     }));
 
+    // best DOT first
     arr.sort((a, b) => b.avgDOT - a.avgDOT);
 
     return arr;
   }, [filteredRows]);
 
-  // handlers
   const handleBack = () => {
     if (typeof window !== "undefined") {
       window.history.back();
@@ -232,7 +291,7 @@ export default function ServiceDashboardPage() {
 
   return (
     <main className="wrap">
-      {/* Shared banner (same as other pages) */}
+      {/* shared banner */}
       <div className="banner">
         <img
           src="/mourneoids_forms_header_1600x400.png"
@@ -240,7 +299,7 @@ export default function ServiceDashboardPage() {
         />
       </div>
 
-      {/* Nav (Back + Home) */}
+      {/* nav row */}
       <div className="nav-row">
         <button onClick={handleBack} className="btn btn--ghost">
           ← Back
@@ -250,15 +309,15 @@ export default function ServiceDashboardPage() {
         </a>
       </div>
 
-      {/* Page title */}
+      {/* heading */}
       <header className="header">
         <h1>Mourne-oids Service Dashboard</h1>
         <p className="subtitle">
-          Daily service + labour data · pulled from Supabase
+          Daily service, labour, DOT, SBR and R&amp;L · live from Supabase
         </p>
       </header>
 
-      {/* Filters */}
+      {/* filters */}
       <section className="container wide">
         <div className="filters">
           <button
@@ -279,7 +338,7 @@ export default function ServiceDashboardPage() {
         </div>
       </section>
 
-      {/* Content */}
+      {/* content */}
       <section className="container wide">
         {loading && <div className="card">Loading Mourne-oids data…</div>}
         {errorMsg && <div className="card error">Error: {errorMsg}</div>}
@@ -399,6 +458,10 @@ export default function ServiceDashboardPage() {
                   <p className="metric">
                     R&amp;L: {st.avgRnL.toFixed(1)}m
                   </p>
+                  <p className="metric">
+                    Food var:{" "}
+                    {st.avgFoodVar ? (st.avgFoodVar * 100).toFixed(2) + "%" : "—"}
+                  </p>
                 </div>
               ))}
             </div>
@@ -417,12 +480,13 @@ export default function ServiceDashboardPage() {
                       <th>Avg DOT</th>
                       <th>Avg SBR</th>
                       <th>Avg R&amp;L</th>
+                      <th>Food var</th>
                     </tr>
                   </thead>
                   <tbody>
                     {managerData.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="empty">
+                        <td colSpan={8} className="empty">
                           No manager data yet.
                         </td>
                       </tr>
@@ -456,6 +520,11 @@ export default function ServiceDashboardPage() {
                         </td>
                         <td>{(mgr.avgSBR * 100).toFixed(0)}%</td>
                         <td>{mgr.avgRnL.toFixed(1)}m</td>
+                        <td>
+                          {mgr.avgFoodVar
+                            ? (mgr.avgFoodVar * 100).toFixed(2) + "%"
+                            : "—"}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
