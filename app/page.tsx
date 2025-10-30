@@ -37,7 +37,6 @@ export default function HomePage() {
         return;
       }
 
-      // prefer active messages, fall back to all
       const activeMsgs = data
         .filter((d: any) => d.active === true)
         .map((d: any) => d.message);
@@ -59,8 +58,15 @@ export default function HomePage() {
         />
       </div>
 
-      {/* News Ticker */}
-      <div className="ticker-wrap" aria-label="Mourne-oids latest updates">
+      {/* News Ticker – force blue */}
+      <div
+        className="ticker-wrap"
+        aria-label="Mourne-oids latest updates"
+        style={{
+          background: "#006491",
+          color: "#fff",
+        }}
+      >
         <div className="ticker">
           {tickerError ? (
             <span className="ticker-item error">
@@ -134,7 +140,7 @@ export default function HomePage() {
           --muted: #475569;
           --brand: #006491;
           --brand-dark: #004b75;
-          --ticker-bg: #006491; /* Domino's blue for ticker */
+          --ticker-bg: #006491;
           --shadow-card: 0 10px 18px rgba(2, 6, 23, 0.08),
             0 1px 3px rgba(2, 6, 23, 0.06);
         }
@@ -169,8 +175,7 @@ export default function HomePage() {
         .ticker-wrap {
           width: 100%;
           overflow: hidden;
-          background: var(--ticker-bg);
-          color: #fff;
+          /* background set inline to force blue */
           border-bottom: 2px solid rgba(0, 0, 0, 0.12);
           white-space: nowrap;
           box-shadow: inset 0 -1px 2px rgba(0, 0, 0, 0.15);
@@ -178,7 +183,7 @@ export default function HomePage() {
         .ticker {
           display: inline-block;
           animation: scroll 30s linear infinite;
-          padding: 8px 0;
+          padding: 10px 0; /* a little taller */
         }
         .ticker-item {
           display: inline-block;
@@ -201,7 +206,7 @@ export default function HomePage() {
           padding-left: 0.75rem;
         }
         .ticker-wrap:hover .ticker {
-          animation-play-state: paused; /* nice UX: pause on hover */
+          animation-play-state: paused;
         }
         @keyframes scroll {
           0% {
