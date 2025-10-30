@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-// create client from public envs
+// Supabase client from env
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -62,7 +62,7 @@ export default function ServiceDashboardPage() {
     load();
   }, []);
 
-  // filter
+  // filter by store
   const filteredRows = useMemo(() => {
     if (selectedStore === "all") return rows;
     return rows.filter((r) => r.store === selectedStore);
@@ -80,18 +80,19 @@ export default function ServiceDashboardPage() {
         avgRnL: 0,
       };
     }
+
     let totalActual = 0;
     let totalForecast = 0;
-    const lab: number[] = [];
-    const dot: number[] = [];
-    const rnl: number[] = [];
+    const labourVals: number[] = [];
+    const dotVals: number[] = [];
+    const rnlVals: number[] = [];
 
     for (const r of filteredRows) {
       if (r.actual_sales != null) totalActual += r.actual_sales;
       if (r.forecast_sales != null) totalForecast += r.forecast_sales;
-      if (r.labour_pct != null) lab.push(r.labour_pct);
-      if (r.dot_pct != null) dot.push(r.dot_pct);
-      if (r.rnl_mins != null) rnl.push(r.rnl_mins);
+      if (r.labour_pct != null) labourVals.push(r.labour_pct);
+      if (r.dot_pct != null) dotVals.push(r.dot_pct);
+      if (r.rnl_mins != null) rnlVals.push(r.rnl_mins);
     }
 
     const variancePct =
@@ -104,13 +105,13 @@ export default function ServiceDashboardPage() {
       totalActual,
       totalForecast,
       variancePct,
-      avgLabour: avg(lab),
-      avgDOT: avg(dot),
-      avgRnL: avg(rnl),
+      avgLabour: avg(labourVals),
+      avgDOT: avg(dotVals),
+      avgRnL: avg(rnlVals),
     };
   }, [filteredRows]);
 
-  // stores
+  // per store
   const storeData = useMemo(() => {
     const out = STORES.map((storeName) => {
       const sr = filteredRows.filter((r) => r.store === storeName);
@@ -161,7 +162,7 @@ export default function ServiceDashboardPage() {
       };
     });
 
-    // your rule: rank by DOT, then labour
+    // order by DOT desc, then labour asc
     out.sort((a, b) => {
       if (b.avgDOT !== a.avgDOT) return b.avgDOT - a.avgDOT;
       return a.avgLabour - b.avgLabour;
@@ -217,312 +218,542 @@ export default function ServiceDashboardPage() {
       avgRnL: avg(v.rnl),
     }));
 
-    // best DOT first
     arr.sort((a, b) => b.avgDOT - a.avgDOT);
 
     return arr;
   }, [filteredRows]);
 
-  // ----- RENDER -----
-
   return (
-    <div className="min-h-screen bg-slate-100">
-      {/* Top bar with logos */}
-      <header className="bg-white border-b">
-        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            {/* placeholders - replace src with your actual logo paths */}
-            <div className="h-10 w-10 bg-[#E31837] rounded-sm flex items-center justify-center text-white font-bold text-xs">
-              D
-            </div>
-            <div className="text-center">
-              <h1 className="text-lg font-bold leading-tight">
-                Mourne-oids Hub
-              </h1>
-              <p className="text-xs text-slate-500">
-                Live Service & Staffing Dashboard
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-20 bg-slate-200 rounded" />
-            <div className="h-8 w-20 bg-slate-200 rounded" />
-          </div>
-        </div>
+    <main className="wrap">
+      {/* Banner */}
+      <div className="banner">
+        <img
+          src="/mourneoids_forms_header_1600x400.png"
+          alt="Mourne-oids Header Banner"
+        />
+      </div>
+
+      {/* Title */}
+      <header className="header">
+        <h1>Service & Staffing Dashboard</h1>
+        <p className="subtitle">
+          Area overview · Store performance · Manager leaderboard
+        </p>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-6 space-y-6">
-        {/* Filters */}
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="text-xl font-semibold">Service Dashboard</h2>
-          <div className="flex gap-2">
-            <FilterButton
-              label="All stores"
-              active={selectedStore === "all"}
-              onClick={() => setSelectedStore("all")}
-            />
-            {STORES.map((s) => (
-              <FilterButton
-                key={s}
-                label={s}
-                active={selectedStore === s}
-                onClick={() => setSelectedStore(s)}
-              />
-            ))}
-          </div>
+      {/* Filters */}
+      <section className="container wide">
+        <div className="filters">
+          <button
+            onClick={() => setSelectedStore("all")}
+            className={`btn ${selectedStore === "all" ? "btn--brand" : "btn--ghost"}`}
+          >
+            All stores
+          </button>
+          {STORES.map((s) => (
+            <button
+              key={s}
+              onClick={() => setSelectedStore(s)}
+              className={`btn ${selectedStore === s ? "btn--brand" : "btn--ghost"}`}
+            >
+              {s}
+            </button>
+          ))}
         </div>
+      </section>
 
-        {/* Loading / error */}
+      {/* Content */}
+      <section className="container wide">
         {loading && (
-          <div className="bg-white border rounded-lg p-6 text-slate-500">
-            Loading Mourne-oids data…
-          </div>
+          <div className="card">Loading Mourne-oids data…</div>
         )}
+
         {errorMsg && (
-          <div className="bg-red-100 border border-red-200 rounded-lg p-4 text-red-700">
-            Error: {errorMsg}
-          </div>
+          <div className="card error">Error: {errorMsg}</div>
         )}
 
         {!loading && !errorMsg && (
           <>
-            {/* KPI Row */}
-            <section className="grid gap-4 md:grid-cols-4">
-              <KpiCard
-                title="Area Sales (£)"
-                value={
-                  "£" +
-                  kpis.totalActual.toLocaleString(undefined, {
+            {/* KPI row */}
+            <div className="kpi-grid">
+              <div className="card kpi">
+                <p className="kpi-title">Area Sales (£)</p>
+                <p className="kpi-value">
+                  £
+                  {kpis.totalActual.toLocaleString(undefined, {
                     maximumFractionDigits: 0,
-                  })
-                }
-                subtitle={
-                  kpis.totalForecast
+                  })}
+                </p>
+                <p className="kpi-sub">
+                  {kpis.totalForecast
                     ? `vs £${kpis.totalForecast.toLocaleString(undefined, {
                         maximumFractionDigits: 0,
                       })} forecast`
-                    : "No forecast"
-                }
-              />
-              <KpiCard
-                title="Variance %"
-                value={(kpis.variancePct * 100).toFixed(1) + "%"}
-                tone={
-                  kpis.variancePct >= 0
-                    ? "green"
-                    : kpis.variancePct >= -0.05
-                    ? "amber"
-                    : "red"
-                }
-              />
-              <KpiCard
-                title="Avg Labour %"
-                value={(kpis.avgLabour * 100).toFixed(1) + "%"}
-                tone={
-                  kpis.avgLabour <= 0.25
-                    ? "green"
-                    : kpis.avgLabour <= 0.28
-                    ? "amber"
-                    : "red"
-                }
-              />
-              <KpiCard
-                title="Avg DOT %"
-                value={(kpis.avgDOT * 100).toFixed(0) + "%"}
-                tone={
-                  kpis.avgDOT >= 0.8
-                    ? "green"
-                    : kpis.avgDOT >= 0.75
-                    ? "amber"
-                    : "red"
-                }
-              />
-            </section>
-
-            {/* Store Overview */}
-            <section>
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-lg font-semibold">Store performance</h3>
-                <p className="text-xs text-slate-500">
-                  Ranked by DOT, then by Labour
+                    : "No forecast recorded"}
                 </p>
               </div>
-              <div className="grid gap-4 md:grid-cols-4">
-                {storeData.map((st) => (
-                  <div
-                    key={st.store}
-                    className="bg-white border rounded-lg p-4 shadow-sm"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-semibold">{st.store}</h4>
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full ${
-                          st.avgDOT >= 0.8
-                            ? "bg-green-100 text-green-700"
-                            : st.avgDOT >= 0.75
-                            ? "bg-amber-100 text-amber-700"
-                            : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {Math.round(st.avgDOT * 100)}% DOT
-                      </span>
-                    </div>
-                    <p className="text-sm">
-                      Sales: £{st.totalActual.toLocaleString()}
-                    </p>
-                    <p className="text-sm text-slate-500 mb-2">
-                      Forecast:{" "}
-                      {st.totalForecast
-                        ? "£" + st.totalForecast.toLocaleString()
-                        : "—"}
-                    </p>
-                    <p
-                      className={`text-sm ${
-                        st.variancePct >= 0
-                          ? "text-green-600"
-                          : st.variancePct >= -0.05
-                          ? "text-amber-600"
-                          : "text-red-600"
+              <div
+                className={`card kpi ${
+                  kpis.variancePct >= 0
+                    ? "kpi--green"
+                    : kpis.variancePct >= -0.05
+                    ? "kpi--amber"
+                    : "kpi--red"
+                }`}
+              >
+                <p className="kpi-title">Variance %</p>
+                <p className="kpi-value">
+                  {(kpis.variancePct * 100).toFixed(1)}%
+                </p>
+                <p className="kpi-sub">Target: 0% or above</p>
+              </div>
+              <div
+                className={`card kpi ${
+                  kpis.avgLabour <= 0.25
+                    ? "kpi--green"
+                    : kpis.avgLabour <= 0.28
+                    ? "kpi--amber"
+                    : "kpi--red"
+                }`}
+              >
+                <p className="kpi-title">Avg Labour %</p>
+                <p className="kpi-value">
+                  {(kpis.avgLabour * 100).toFixed(1)}%
+                </p>
+                <p className="kpi-sub">Target: 25% (area)</p>
+              </div>
+              <div
+                className={`card kpi ${
+                  kpis.avgDOT >= 0.8
+                    ? "kpi--green"
+                    : kpis.avgDOT >= 0.75
+                    ? "kpi--amber"
+                    : "kpi--red"
+                }`}
+              >
+                <p className="kpi-title">Avg DOT %</p>
+                <p className="kpi-value">
+                  {(kpis.avgDOT * 100).toFixed(0)}%
+                </p>
+                <p className="kpi-sub">Target: 80%+</p>
+              </div>
+            </div>
+
+            {/* Store performance */}
+            <h2 className="section-title">Store performance</h2>
+            <div className="store-grid">
+              {storeData.map((st) => (
+                <div key={st.store} className="card store-card">
+                  <div className="store-card__header">
+                    <h3>{st.store}</h3>
+                    <span
+                      className={`pill ${
+                        st.avgDOT >= 0.8
+                          ? "pill--green"
+                          : st.avgDOT >= 0.75
+                          ? "pill--amber"
+                          : "pill--red"
                       }`}
                     >
-                      Var: {(st.variancePct * 100).toFixed(1)}%
-                    </p>
-                    <p className="text-sm">
-                      Labour: {(st.avgLabour * 100).toFixed(1)}%
-                    </p>
-                    <p className="text-sm">SBR: {(st.avgSBR * 100).toFixed(0)}%</p>
-                    <p className="text-sm">
-                      R&amp;L: {st.avgRnL.toFixed(1)}
-                      m
-                    </p>
+                      {Math.round(st.avgDOT * 100)}% DOT
+                    </span>
                   </div>
-                ))}
-              </div>
-            </section>
+                  <p className="metric">
+                    Sales: £{st.totalActual.toLocaleString()}
+                  </p>
+                  <p className="metric muted">
+                    Forecast:{" "}
+                    {st.totalForecast
+                      ? "£" + st.totalForecast.toLocaleString()
+                      : "—"}
+                  </p>
+                  <p
+                    className={`metric ${
+                      st.variancePct >= 0
+                        ? "pos"
+                        : st.variancePct >= -0.05
+                        ? "warn"
+                        : "neg"
+                    }`}
+                  >
+                    Var: {(st.variancePct * 100).toFixed(1)}%
+                  </p>
+                  <p className="metric">
+                    Labour: {(st.avgLabour * 100).toFixed(1)}%
+                  </p>
+                  <p className="metric">
+                    SBR: {(st.avgSBR * 100).toFixed(0)}%
+                  </p>
+                  <p className="metric">
+                    R&amp;L: {st.avgRnL.toFixed(1)}m
+                  </p>
+                </div>
+              ))}
+            </div>
 
             {/* Manager leaderboard */}
-            <section>
-              <h3 className="text-lg font-semibold mb-2">
-                Manager / closing leaderboard
-              </h3>
-              <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-slate-50 border-b">
+            <h2 className="section-title">Manager / closing leaderboard</h2>
+            <div className="card">
+              <div className="table-wrap">
+                <table>
+                  <thead>
                     <tr>
-                      <th className="px-3 py-2 text-left">Manager</th>
-                      <th className="px-3 py-2 text-left">Shifts</th>
-                      <th className="px-3 py-2 text-left">Total Sales</th>
-                      <th className="px-3 py-2 text-left">Avg Labour</th>
-                      <th className="px-3 py-2 text-left">Avg DOT</th>
-                      <th className="px-3 py-2 text-left">Avg SBR</th>
-                      <th className="px-3 py-2 text-left">Avg R&amp;L</th>
+                      <th>Manager</th>
+                      <th>Shifts</th>
+                      <th>Total Sales</th>
+                      <th>Avg Labour</th>
+                      <th>Avg DOT</th>
+                      <th>Avg SBR</th>
+                      <th>Avg R&amp;L</th>
                     </tr>
                   </thead>
                   <tbody>
                     {managerData.length === 0 && (
                       <tr>
-                        <td className="px-3 py-4 text-slate-500" colSpan={7}>
+                        <td colSpan={7} className="empty">
                           No manager data yet.
                         </td>
                       </tr>
                     )}
                     {managerData.map((mgr) => (
-                      <tr key={mgr.name} className="border-b last:border-0">
-                        <td className="px-3 py-2">{mgr.name}</td>
-                        <td className="px-3 py-2">{mgr.shifts}</td>
-                        <td className="px-3 py-2">
-                          £{mgr.totalSales.toLocaleString()}
-                        </td>
+                      <tr key={mgr.name}>
+                        <td>{mgr.name}</td>
+                        <td>{mgr.shifts}</td>
+                        <td>£{mgr.totalSales.toLocaleString()}</td>
                         <td
-                          className={`px-3 py-2 ${
+                          className={
                             mgr.avgLabour <= 0.25
-                              ? "text-green-600"
+                              ? "pos"
                               : mgr.avgLabour <= 0.28
-                              ? "text-amber-600"
-                              : "text-red-600"
-                          }`}
+                              ? "warn"
+                              : "neg"
+                          }
                         >
                           {(mgr.avgLabour * 100).toFixed(1)}%
                         </td>
                         <td
-                          className={`px-3 py-2 ${
+                          className={
                             mgr.avgDOT >= 0.8
-                              ? "text-green-600"
+                              ? "pos"
                               : mgr.avgDOT >= 0.75
-                              ? "text-amber-600"
-                              : "text-red-600"
-                          }`}
+                              ? "warn"
+                              : "neg"
+                          }
                         >
                           {(mgr.avgDOT * 100).toFixed(0)}%
                         </td>
-                        <td className="px-3 py-2">
-                          {(mgr.avgSBR * 100).toFixed(0)}%
-                        </td>
-                        <td className="px-3 py-2">
-                          {mgr.avgRnL.toFixed(1)}m
-                        </td>
+                        <td>{(mgr.avgSBR * 100).toFixed(0)}%</td>
+                        <td>{mgr.avgRnL.toFixed(1)}m</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </section>
+            </div>
           </>
         )}
-      </main>
-    </div>
-  );
-}
+      </section>
 
-function KpiCard({
-  title,
-  value,
-  subtitle,
-  tone,
-}: {
-  title: string;
-  value: string;
-  subtitle?: string;
-  tone?: "green" | "amber" | "red";
-}) {
-  const toneClasses =
-    tone === "green"
-      ? "border-green-200 bg-green-50"
-      : tone === "amber"
-      ? "border-amber-200 bg-amber-50"
-      : tone === "red"
-      ? "border-red-200 bg-red-50"
-      : "border-slate-200 bg-white";
-  return (
-    <div className={`rounded-lg border p-4 shadow-sm ${toneClasses}`}>
-      <p className="text-xs font-medium uppercase text-slate-500 mb-1">
-        {title}
-      </p>
-      <p className="text-2xl font-bold mb-1">{value}</p>
-      {subtitle ? <p className="text-xs text-slate-500">{subtitle}</p> : null}
-    </div>
-  );
-}
+      {/* Footer */}
+      <footer className="footer">
+        <p>© 2025 Mourne-oids | Domino’s Pizza | Racz Group</p>
+      </footer>
 
-function FilterButton({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-3 py-1 text-sm rounded-md border transition ${
-        active
-          ? "bg-[#006491] text-white border-[#006491]"
-          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-      }`}
-    >
-      {label}
-    </button>
+      {/* Styles */}
+      <style jsx>{`
+        :root {
+          --bg: #f2f5f9;
+          --paper: #ffffff;
+          --text: #0f172a;
+          --muted: #475569;
+          --brand: #006491;
+          --brand-dark: #004b75;
+          --shadow-card: 0 10px 18px rgba(2, 6, 23, 0.08),
+            0 1px 3px rgba(2, 6, 23, 0.06);
+          --green: #15803d;
+          --amber: #d97706;
+          --red: #b91c1c;
+        }
+
+        .wrap {
+          background: var(--bg);
+          min-height: 100dvh;
+          color: var(--text);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding-bottom: 40px;
+        }
+
+        .banner {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          background: #fff;
+          border-bottom: 3px solid var(--brand);
+          box-shadow: var(--shadow-card);
+          width: 100%;
+        }
+
+        .banner img {
+          max-width: 92%;
+          height: auto;
+          display: block;
+        }
+
+        .header {
+          text-align: center;
+          margin: 24px 16px 16px;
+        }
+
+        .header h1 {
+          font-size: 26px;
+          font-weight: 900;
+          margin-bottom: 6px;
+        }
+
+        .subtitle {
+          color: var(--muted);
+          font-size: 14px;
+          font-weight: 500;
+        }
+
+        .container {
+          width: 100%;
+          max-width: 420px;
+          margin-top: 18px;
+          display: flex;
+          justify-content: center;
+        }
+
+        .container.wide {
+          max-width: 1100px;
+          flex-direction: column;
+          gap: 18px;
+        }
+
+        .filters {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          justify-content: center;
+        }
+
+        .btn {
+          display: inline-block;
+          text-align: center;
+          padding: 10px 14px;
+          border-radius: 14px;
+          font-weight: 700;
+          font-size: 14px;
+          text-decoration: none;
+          border: 2px solid transparent;
+          transition: background 0.2s, transform 0.1s;
+        }
+
+        .btn--brand {
+          background: var(--brand);
+          border-color: var(--brand-dark);
+          color: #fff;
+          box-shadow: var(--shadow-card);
+        }
+
+        .btn--ghost {
+          background: #fff;
+          border-color: rgba(0, 0, 0, 0.04);
+          color: var(--text);
+        }
+
+        .btn--brand:hover,
+        .btn--ghost:hover {
+          transform: translateY(-1px);
+        }
+
+        .card {
+          background: var(--paper);
+          border-radius: 18px;
+          box-shadow: var(--shadow-card);
+          padding: 16px 18px;
+          border: 1px solid rgba(0, 0, 0, 0.03);
+        }
+
+        .card.error {
+          background: #fee2e2;
+          border: 1px solid #fca5a5;
+          color: #991b1b;
+        }
+
+        .kpi-grid {
+          display: grid;
+          gap: 14px;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          margin-bottom: 14px;
+        }
+
+        .kpi {
+          min-height: 112px;
+        }
+
+        .kpi-title {
+          font-size: 12px;
+          text-transform: uppercase;
+          letter-spacing: 0.03em;
+          color: var(--muted);
+          margin-bottom: 6px;
+        }
+
+        .kpi-value {
+          font-size: 24px;
+          font-weight: 800;
+        }
+
+        .kpi-sub {
+          font-size: 12px;
+          color: var(--muted);
+          margin-top: 6px;
+        }
+
+        .kpi--green {
+          border-left: 5px solid #22c55e;
+        }
+        .kpi--amber {
+          border-left: 5px solid #f97316;
+        }
+        .kpi--red {
+          border-left: 5px solid #ef4444;
+        }
+
+        .section-title {
+          font-size: 16px;
+          font-weight: 700;
+          margin: 10px 0 8px;
+        }
+
+        .store-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 14px;
+        }
+
+        .store-card__header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 4px;
+        }
+
+        .store-card h3 {
+          font-size: 15px;
+          font-weight: 700;
+        }
+
+        .pill {
+          font-size: 11px;
+          font-weight: 600;
+          padding: 3px 10px;
+          border-radius: 999px;
+        }
+        .pill--green {
+          background: rgba(34, 197, 94, 0.12);
+          color: #166534;
+        }
+        .pill--amber {
+          background: rgba(249, 115, 22, 0.12);
+          color: #9a3412;
+        }
+        .pill--red {
+          background: rgba(239, 68, 68, 0.12);
+          color: #991b1b;
+        }
+
+        .metric {
+          font-size: 13px;
+          margin-bottom: 2px;
+        }
+        .metric.muted {
+          color: var(--muted);
+        }
+        .metric.pos {
+          color: #166534;
+        }
+        .metric.warn {
+          color: #b45309;
+        }
+        .metric.neg {
+          color: #b91c1c;
+        }
+
+        .table-wrap {
+          overflow-x: auto;
+        }
+
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 13px;
+        }
+
+        thead {
+          background: #eff3f6;
+        }
+
+        th,
+        td {
+          text-align: left;
+          padding: 8px 6px;
+        }
+
+        tbody tr:nth-child(even) {
+          background: #f8fafc;
+        }
+
+        td.pos {
+          color: #166534;
+          font-weight: 600;
+        }
+        td.warn {
+          color: #b45309;
+          font-weight: 600;
+        }
+        td.neg {
+          color: #b91c1c;
+          font-weight: 600;
+        }
+
+        .empty {
+          text-align: center;
+          padding: 16px 6px;
+          color: var(--muted);
+        }
+
+        .footer {
+          text-align: center;
+          margin-top: 36px;
+          color: var(--muted);
+          font-size: 13px;
+        }
+
+        /* responsive */
+        @media (max-width: 1100px) {
+          .kpi-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .store-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+        @media (max-width: 700px) {
+          .store-grid {
+            grid-template-columns: 1fr;
+          }
+          .container.wide {
+            max-width: 94%;
+          }
+          .filters {
+            justify-content: flex-start;
+          }
+        }
+      `}</style>
+    </main>
   );
 }
