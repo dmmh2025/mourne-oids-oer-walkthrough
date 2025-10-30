@@ -47,9 +47,9 @@ export default function AdminPage() {
   const [authError, setAuthError] = useState("");
 
   // 🚨 original had only "ticker" | "service"
-  // we add "memomailer" but keep the default as "ticker"
+  // you added memomailer — now we add pizza too
   const [activeTab, setActiveTab] = useState<
-    "ticker" | "service" | "memomailer"
+    "ticker" | "service" | "memomailer" | "pizza"
   >("ticker");
 
   // ticker state
@@ -84,10 +84,19 @@ export default function AdminPage() {
   const [serviceMsg, setServiceMsg] = useState<string | null>(null);
   const [serviceSaving, setServiceSaving] = useState(false);
 
-  // ✅ NEW: memomailer state (only this)
+  // ✅ MEMOMAILER: state
   const [memoFile, setMemoFile] = useState<File | null>(null);
   const [memoMsg, setMemoMsg] = useState<string | null>(null);
   const [memoSaving, setMemoSaving] = useState(false);
+
+  // ✅ PIZZA OF THE WEEK: state
+  const [potwFiles, setPotwFiles] = useState<FileList | null>(null);
+  const [potwMsg, setPotwMsg] = useState<string | null>(null);
+  const [potwSaving, setPotwSaving] = useState(false);
+  const [potwLoading, setPotwLoading] = useState(false);
+  const [potwImages, setPotwImages] = useState<
+    { name: string; id?: string }[]
+  >([]);
 
   // load ticker rows when authed
   useEffect(() => {
@@ -108,6 +117,30 @@ export default function AdminPage() {
     };
     load();
   }, [isAuthed]);
+
+  // load pizza-of-the-week images WHEN that tab is opened
+  useEffect(() => {
+    const loadPizza = async () => {
+      if (!isAuthed) return;
+      if (activeTab !== "pizza") return;
+      if (!supabase) return;
+      setPotwLoading(true);
+      const { data, error } = await supabase.storage
+        .from("pizza-of-the-week")
+        .list("", {
+          limit: 50,
+        });
+      if (error) {
+        setPotwMsg("❌ Could not load images: " + error.message);
+        setPotwImages([]);
+      } else {
+        setPotwImages((data || []).map((d) => ({ name: d.name })));
+        setPotwMsg(null);
+      }
+      setPotwLoading(false);
+    };
+    loadPizza();
+  }, [activeTab, isAuthed]);
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -282,6 +315,58 @@ export default function AdminPage() {
     setMemoSaving(false);
   };
 
+  // ✅ PIZZA OF THE WEEK: upload images
+  const handlePotwUpload = async () => {
+    if (!supabase) return;
+    if (!potwFiles || potwFiles.length === 0) {
+      setPotwMsg("Please choose at least one image.");
+      return;
+    }
+    setPotwSaving(true);
+    let hadError = false;
+
+    for (const file of Array.from(potwFiles)) {
+      const fileName = `${Date.now()}-${file.name}`;
+      const { error } = await supabase.storage
+        .from("pizza-of-the-week")
+        .upload(fileName, file, {
+          cacheControl: "0",
+          upsert: false,
+        });
+      if (error) {
+        hadError = true;
+        setPotwMsg("❌ Upload failed: " + error.message);
+        break;
+      }
+    }
+
+    if (!hadError) {
+      setPotwMsg("✅ Pizza of the Week images updated.");
+      // refresh list
+      const { data } = await supabase.storage
+        .from("pizza-of-the-week")
+        .list("", { limit: 50 });
+      setPotwImages((data || []).map((d) => ({ name: d.name })));
+      setPotwFiles(null);
+    }
+
+    setPotwSaving(false);
+  };
+
+  // ✅ PIZZA OF THE WEEK: delete image
+  const handlePotwDelete = async (name: string) => {
+    if (!supabase) return;
+    const { error } = await supabase.storage
+      .from("pizza-of-the-week")
+      .remove([name]);
+    if (error) {
+      setPotwMsg("❌ Delete failed: " + error.message);
+    } else {
+      setPotwMsg("✅ Image deleted.");
+      setPotwImages((prev) => prev.filter((img) => img.name !== name));
+    }
+  };
+
   return (
     <main className="wrap">
       {/* Banner */}
@@ -352,12 +437,18 @@ export default function AdminPage() {
             >
               📊 Service Data Upload
             </button>
-            {/* ✅ NEW TAB */}
             <button
               className={activeTab === "memomailer" ? "tab active" : "tab"}
               onClick={() => setActiveTab("memomailer")}
             >
               📬 MemoMailer Upload
+            </button>
+            {/* ✅ NEW PIZZA TAB */}
+            <button
+              className={activeTab === "pizza" ? "tab active" : "tab"}
+              onClick={() => setActiveTab("pizza")}
+            >
+              🍕 Pizza of the Week
             </button>
           </div>
 
@@ -641,8 +732,8 @@ export default function AdminPage() {
                 )}
               </section>
             </>
-          ) : (
-            // ✅ NEW MEMOMAILER SECTION
+          ) : activeTab === "memomailer" ? (
+            // ✅ MEMOMAILER SECTION (unchanged)
             <section className="card">
               <h2>Upload MemoMailer PDF</h2>
               <p className="muted">
@@ -666,6 +757,57 @@ export default function AdminPage() {
                 <p className="muted" style={{ marginTop: 8 }}>
                   {memoMsg}
                 </p>
+              )}
+            </section>
+          ) : (
+            // 🍕 PIZZA OF THE WEEK SECTION
+            <section className="card">
+              <h2>Pizza of the Week images</h2>
+              <p className="muted">
+                Upload 1–2 images to the <code>pizza-of-the-week</code> storage
+                bucket. These will be shown on the public PotW page.
+              </p>
+
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => setPotwFiles(e.target.files)}
+                style={{ marginTop: 12 }}
+              />
+              <button
+                onClick={handlePotwUpload}
+                disabled={potwSaving}
+                className="upload-btn"
+              >
+                {potwSaving ? "Uploading…" : "Upload image(s)"}
+              </button>
+              {potwMsg && (
+                <p className="muted" style={{ marginTop: 8 }}>
+                  {potwMsg}
+                </p>
+              )}
+
+              <h3 style={{ marginTop: 18, marginBottom: 8 }}>
+                Current images
+              </h3>
+              {potwLoading ? (
+                <p className="muted">Loading images…</p>
+              ) : potwImages.length === 0 ? (
+                <p className="muted">No images in bucket.</p>
+              ) : (
+                <ul className="ticker-list">
+                  {potwImages.map((img) => (
+                    <li key={img.name}>
+                      <div className="row-top">
+                        <span className="category">{img.name}</span>
+                        <button onClick={() => handlePotwDelete(img.name)}>
+                          Delete
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               )}
             </section>
           )}
