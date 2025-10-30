@@ -24,8 +24,24 @@ const ADMIN_PASSWORD =
     ? process.env.NEXT_PUBLIC_TICKER_PASSWORD || ""
     : "";
 
-export default function TickerAdminPage() {
-  // gate
+// turn "8:30" or "05:19" into minutes
+function timeTextToMinutes(val: string): number | null {
+  if (!val) return null;
+  if (!val.includes(":")) {
+    // maybe they typed just 8 or 9.5
+    const num = Number(val);
+    return isNaN(num) ? null : num;
+  }
+  const [mm, ss] = val.split(":");
+  const m = Number(mm);
+  const s = Number(ss);
+  if (isNaN(m)) return null;
+  if (isNaN(s)) return m; // at least minutes
+  return m * 60 + s;
+}
+
+export default function AdminPage() {
+  // password gate
   const [enteredPassword, setEnteredPassword] = useState("");
   const [isAuthed, setIsAuthed] = useState(false);
   const [authError, setAuthError] = useState("");
@@ -33,7 +49,7 @@ export default function TickerAdminPage() {
   // tabs
   const [activeTab, setActiveTab] = useState<"ticker" | "service">("ticker");
 
-  // ticker data
+  // ticker state
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<TickerRow[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -42,9 +58,9 @@ export default function TickerAdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // service form data
+  // service form state — matched to your columns
   const [svcDate, setSvcDate] = useState<string>("");
-  const [svcDay, setSvcDay] = useState<string>("");
+  const [svcDayName, setSvcDayName] = useState<string>("");
   const [svcStore, setSvcStore] = useState<string>("Downpatrick");
   const [forecastSales, setForecastSales] = useState<string>("");
   const [actualSales, setActualSales] = useState<string>("");
@@ -52,20 +68,20 @@ export default function TickerAdminPage() {
   const [additionalHours, setAdditionalHours] = useState<string>("");
   const [openingManager, setOpeningManager] = useState<string>("");
   const [closingManager, setClosingManager] = useState<string>("");
-  const [instoresScheduled, setInstoresScheduled] = useState<string>("");
-  const [instoresActual, setInstoresActual] = useState<string>("");
-  const [driversScheduled, setDriversScheduled] = useState<string>("");
-  const [driversActual, setDriversActual] = useState<string>("");
-  const [dot, setDot] = useState<string>("");
-  const [extremes, setExtremes] = useState<string>("");
-  const [sbr, setSbr] = useState<string>("");
-  const [rAndL, setRAndL] = useState<string>("");
+  const [instoresSched, setInstoresSched] = useState<string>("");
+  const [actualInstore, setActualInstore] = useState<string>("");
+  const [driversSched, setDriversSched] = useState<string>("");
+  const [actualDrivers, setActualDrivers] = useState<string>("");
+  const [dotPct, setDotPct] = useState<string>("");
+  const [extremesPct, setExtremesPct] = useState<string>("");
+  const [sbrPct, setSbrPct] = useState<string>("");
+  const [rnlText, setRnlText] = useState<string>("");
   const [foodVariance, setFoodVariance] = useState<string>("");
 
   const [serviceMsg, setServiceMsg] = useState<string | null>(null);
   const [serviceSaving, setServiceSaving] = useState(false);
 
-  // load ticker
+  // load ticker rows when authed
   useEffect(() => {
     const load = async () => {
       if (!isAuthed) return;
@@ -99,6 +115,7 @@ export default function TickerAdminPage() {
     }
   };
 
+  // TICKER: add
   const handleAdd = async () => {
     if (!supabase) return;
     if (!newMessage.trim()) return;
@@ -125,7 +142,7 @@ export default function TickerAdminPage() {
     setSaving(false);
   };
 
-  // fixed toggle
+  // TICKER: toggle
   const toggleActive = async (row: TickerRow) => {
     if (!supabase) return;
     const { data, error } = await supabase
@@ -145,18 +162,27 @@ export default function TickerAdminPage() {
     }
   };
 
-  // detect day from date
+  // SERVICE: when date changes, fill day_name
   const handleDateChange = (val: string) => {
     setSvcDate(val);
     if (val) {
       const d = new Date(val);
       if (!isNaN(d.getTime())) {
-        const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-        setSvcDay(days[d.getDay()]);
+        const longNames = [
+          "Sunday",
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday",
+          "Saturday",
+        ];
+        setSvcDayName(longNames[d.getDay()]);
       }
     }
   };
 
+  // SERVICE: submit
   const handleServiceSubmit = async () => {
     if (!supabase) return;
     setServiceMsg(null);
@@ -168,9 +194,12 @@ export default function TickerAdminPage() {
 
     setServiceSaving(true);
 
-    // build common fields
-    const commonFields = {
-      day: svcDay || null,
+    // convert R&L text to minutes
+    const rnlMinutes = timeTextToMinutes(rnlText);
+
+    const payload = {
+      shift_date: svcDate, // this is the name in your screenshot
+      day_name: svcDayName || null,
       store: svcStore,
       forecast_sales: forecastSales ? Number(forecastSales) : null,
       actual_sales: actualSales ? Number(actualSales) : null,
@@ -178,80 +207,44 @@ export default function TickerAdminPage() {
       additional_hours: additionalHours ? Number(additionalHours) : null,
       opening_manager: openingManager || null,
       closing_manager: closingManager || null,
-      instores_scheduled: instoresScheduled
-        ? Number(instoresScheduled)
-        : null,
-      instores_actual: instoresActual ? Number(instoresActual) : null,
-      drivers_scheduled: driversScheduled ? Number(driversScheduled) : null,
-      drivers_actual: driversActual ? Number(driversActual) : null,
-      dot: dot ? Number(dot) : null,
-      extremes: extremes ? Number(extremes) : null,
-      sbr: sbr ? Number(sbr) : null,
-      r_and_l: rAndL || null,
+      instores_sched: instoresSched ? Number(instoresSched) : null,
+      actual_instore: actualInstore ? Number(actualInstore) : null,
+      drivers_sched: driversSched ? Number(driversSched) : null,
+      actual_drivers: actualDrivers ? Number(actualDrivers) : null,
+      dot_pct: dotPct ? Number(dotPct) : null,
+      extremes_pct: extremesPct ? Number(extremesPct) : null,
+      sbr_pct: sbrPct ? Number(sbrPct) : null,
+      rnl_minutes: rnlMinutes,
       food_variance: foodVariance ? Number(foodVariance) : null,
+      // you also have source_file and created_at but they have defaults / can be null
     };
 
-    // 1) try with 'date'
-    const { error: err1 } = await supabase.from("service_shifts").insert([
-      {
-        date: svcDate,
-        ...commonFields,
-      },
-    ]);
+    const { error } = await supabase.from("service_shifts").insert([payload]);
 
-    // if success
-    if (!err1) {
-      setServiceMsg("✅ Shift saved (using column 'date').");
-      resetServiceFields();
+    if (error) {
+      setServiceMsg(`Upload failed: ${error.message}`);
       setServiceSaving(false);
       return;
     }
 
-    // 2) if it failed because 'date' doesn't exist, try 'shift_date'
-    if (
-      err1.message &&
-      err1.message.toLowerCase().includes("'date' column")
-    ) {
-      const { error: err2 } = await supabase.from("service_shifts").insert([
-        {
-          shift_date: svcDate,
-          ...commonFields,
-        },
-      ]);
-      if (!err2) {
-        setServiceMsg("✅ Shift saved (using column 'shift_date').");
-        resetServiceFields();
-        setServiceSaving(false);
-        return;
-      }
-      // still failed
-      setServiceMsg(
-        `Upload failed: ${err2.message} (tried 'date' and 'shift_date')`
-      );
-      setServiceSaving(false);
-      return;
-    }
-
-    // other error
-    setServiceMsg(`Upload failed: ${err1.message}`);
-    setServiceSaving(false);
-  };
-
-  const resetServiceFields = () => {
+    setServiceMsg("✅ Shift saved to service_shifts.");
+    // clear metric fields but keep date + store
     setForecastSales("");
     setActualSales("");
     setLabourPct("");
     setAdditionalHours("");
-    setInstoresScheduled("");
-    setInstoresActual("");
-    setDriversScheduled("");
-    setDriversActual("");
-    setDot("");
-    setExtremes("");
-    setSbr("");
-    setRAndL("");
+    setOpeningManager("");
+    setClosingManager("");
+    setInstoresSched("");
+    setActualInstore("");
+    setDriversSched("");
+    setActualDrivers("");
+    setDotPct("");
+    setExtremesPct("");
+    setSbrPct("");
+    setRnlText("");
     setFoodVariance("");
-    // leave date + store so you can enter the next one quickly
+    setServiceSaving(false);
   };
 
   return (
@@ -268,9 +261,7 @@ export default function TickerAdminPage() {
         <>
           <header className="header">
             <h1>Mourne-oids Admin</h1>
-            <p className="subtitle">
-              This page is restricted to Mourne-oids management.
-            </p>
+            <p className="subtitle">This page is restricted to Mourne-oids management.</p>
           </header>
           <section className="card">
             <h2>Enter admin password</h2>
@@ -286,8 +277,8 @@ export default function TickerAdminPage() {
             {authError && <p className="error">⚠️ {authError}</p>}
             {!ADMIN_PASSWORD && (
               <p className="muted">
-                No password set in Vercel env{" "}
-                <code>NEXT_PUBLIC_TICKER_PASSWORD</code> — allowing access.
+                No password set in Vercel env <code>NEXT_PUBLIC_TICKER_PASSWORD</code> — allowing
+                access.
               </p>
             )}
             <a href="/" className="btn btn--ghost">
@@ -300,9 +291,7 @@ export default function TickerAdminPage() {
           {/* Header */}
           <header className="header">
             <h1>Mourne-oids Admin</h1>
-            <p className="subtitle">
-              Ticker · Service dashboard uploads · future admin
-            </p>
+            <p className="subtitle">Ticker · Service dashboard uploads · future admin</p>
             <div className="actions">
               <a href="/" className="btn btn--ghost">
                 ← Back to Hub
@@ -328,7 +317,7 @@ export default function TickerAdminPage() {
 
           {activeTab === "ticker" ? (
             <>
-              {/* Add form */}
+              {/* Add ticker */}
               <section className="card">
                 <h2>Add ticker message</h2>
                 <div className="form-row">
@@ -337,7 +326,7 @@ export default function TickerAdminPage() {
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
                     rows={2}
-                    placeholder="e.g. All stores staffed for 4pm 💪"
+                    placeholder="e.g. Congratulations Kilkeel on 4⭐ OER!"
                   />
                 </div>
 
@@ -410,14 +399,12 @@ export default function TickerAdminPage() {
             </>
           ) : (
             <>
-              {/* SERVICE UPLOAD FORM */}
+              {/* SERVICE FORM */}
               <section className="card">
                 <h2>Upload service shift</h2>
                 <p className="muted">
-                  Pick the store and date, then fill in the metrics for that shift.
-                  This writes straight to <code>service_shifts</code>. If your date
-                  column is called <code>shift_date</code> instead of <code>date</code> it
-                  will try that automatically.
+                  This form writes **directly** into <code>service_shifts</code> using the column
+                  names in your screenshot (shift_date, day_name, ...).
                 </p>
 
                 <div className="form-2col">
@@ -430,12 +417,12 @@ export default function TickerAdminPage() {
                     />
                   </div>
                   <div>
-                    <label>Day</label>
+                    <label>Day name</label>
                     <input
                       type="text"
-                      value={svcDay}
-                      onChange={(e) => setSvcDay(e.target.value)}
-                      placeholder="Mon / Tue / Wed..."
+                      value={svcDayName}
+                      onChange={(e) => setSvcDayName(e.target.value)}
+                      placeholder="Wednesday"
                     />
                   </div>
                   <div>
@@ -510,8 +497,8 @@ export default function TickerAdminPage() {
                     <label>Instores – scheduled</label>
                     <input
                       type="number"
-                      value={instoresScheduled}
-                      onChange={(e) => setInstoresScheduled(e.target.value)}
+                      value={instoresSched}
+                      onChange={(e) => setInstoresSched(e.target.value)}
                       placeholder="5"
                     />
                   </div>
@@ -519,8 +506,8 @@ export default function TickerAdminPage() {
                     <label>Instores – actual</label>
                     <input
                       type="number"
-                      value={instoresActual}
-                      onChange={(e) => setInstoresActual(e.target.value)}
+                      value={actualInstore}
+                      onChange={(e) => setActualInstore(e.target.value)}
                       placeholder="5"
                     />
                   </div>
@@ -528,8 +515,8 @@ export default function TickerAdminPage() {
                     <label>Drivers – scheduled</label>
                     <input
                       type="number"
-                      value={driversScheduled}
-                      onChange={(e) => setDriversScheduled(e.target.value)}
+                      value={driversSched}
+                      onChange={(e) => setDriversSched(e.target.value)}
                       placeholder="4"
                     />
                   </div>
@@ -537,8 +524,8 @@ export default function TickerAdminPage() {
                     <label>Drivers – actual</label>
                     <input
                       type="number"
-                      value={driversActual}
-                      onChange={(e) => setDriversActual(e.target.value)}
+                      value={actualDrivers}
+                      onChange={(e) => setActualDrivers(e.target.value)}
                       placeholder="4"
                     />
                   </div>
@@ -547,17 +534,18 @@ export default function TickerAdminPage() {
                     <input
                       type="number"
                       step="0.1"
-                      value={dot}
-                      onChange={(e) => setDot(e.target.value)}
+                      value={dotPct}
+                      onChange={(e) => setDotPct(e.target.value)}
                       placeholder="78"
                     />
                   </div>
                   <div>
-                    <label>Extremes</label>
+                    <label>Extremes %</label>
                     <input
                       type="number"
-                      value={extremes}
-                      onChange={(e) => setExtremes(e.target.value)}
+                      step="0.1"
+                      value={extremesPct}
+                      onChange={(e) => setExtremesPct(e.target.value)}
                       placeholder="0"
                     />
                   </div>
@@ -566,18 +554,18 @@ export default function TickerAdminPage() {
                     <input
                       type="number"
                       step="0.1"
-                      value={sbr}
-                      onChange={(e) => setSbr(e.target.value)}
+                      value={sbrPct}
+                      onChange={(e) => setSbrPct(e.target.value)}
                       placeholder="76"
                     />
                   </div>
                   <div>
-                    <label>R & L</label>
+                    <label>R & L (mm:ss)</label>
                     <input
                       type="text"
-                      value={rAndL}
-                      onChange={(e) => setRAndL(e.target.value)}
-                      placeholder="8:30"
+                      value={rnlText}
+                      onChange={(e) => setRnlText(e.target.value)}
+                      placeholder="05:19"
                     />
                   </div>
                   <div>
@@ -709,9 +697,6 @@ export default function TickerAdminPage() {
           font-weight: 600;
           cursor: pointer;
         }
-        .form-row {
-          margin-bottom: 14px;
-        }
         label {
           display: block;
           font-weight: 600;
@@ -734,6 +719,12 @@ export default function TickerAdminPage() {
           padding: 6px 8px;
           font-size: 0.85rem;
         }
+        .form-grid {
+          display: grid;
+          grid-template-columns: 1.1fr 0.6fr 0.5fr;
+          gap: 12px;
+          align-items: end;
+        }
         .toggle-row {
           display: flex;
           gap: 8px;
@@ -753,13 +744,13 @@ export default function TickerAdminPage() {
         .upload-btn {
           margin-top: 14px;
         }
-        .error {
-          color: #b91c1c;
-          margin-top: 12px;
-        }
         .muted {
           color: #94a3b8;
           font-size: 0.8rem;
+        }
+        .error {
+          color: #b91c1c;
+          margin-top: 12px;
         }
         .ticker-list {
           list-style: none;
