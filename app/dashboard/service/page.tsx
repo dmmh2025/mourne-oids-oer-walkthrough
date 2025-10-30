@@ -33,28 +33,33 @@ type ShiftRow = {
   food_var_pct: number | null;
 };
 
+type DateRange = "day" | "wtd" | "mtd" | "ytd" | "custom";
+
 export default function ServiceDashboardPage() {
   const [rows, setRows] = useState<ShiftRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedStore, setSelectedStore] = useState<"all" | string>("all");
+  const [dateRange, setDateRange] = useState<DateRange>("wtd"); // default WTD
+  const [customFrom, setCustomFrom] = useState<string>("");
+  const [customTo, setCustomTo] = useState<string>("");
 
-  // % helpers
+  // helpers
   const normalisePct = (v: number | null) => {
     if (v == null) return null;
-    return v > 1 ? v / 100 : v; // 58 -> 0.58, 0.82 -> 0.82
+    return v > 1 ? v / 100 : v;
   };
 
-  // food variance helper
-  // Damien's style: 0.6 -> 0.6%, not 60%
+  // Damien is entering 0.6 to mean 0.6%
   const normaliseFoodVar = (v: number | null) => {
     if (v == null) return null;
-    if (v <= 1) return v; // already tiny, treat as 0.6%
-    return v / 100; // 30 -> 0.3, 6 -> 0.06
+    if (v <= 1) return v;
+    return v / 100;
   };
 
   useEffect(() => {
     const load = async () => {
+      // pull last 60 days
       const sixtyDaysAgo = new Date();
       sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
       const dateStr = sixtyDaysAgo.toISOString().slice(0, 10);
@@ -76,11 +81,70 @@ export default function ServiceDashboardPage() {
     load();
   }, []);
 
-  // filter
+  // date-range filtering
+  const dateFilteredRows = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+
+    if (dateRange === "day") {
+      return rows.filter((r) => r.shift_date === todayStr);
+    }
+
+    if (dateRange === "wtd") {
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+      monday.setHours(0, 0, 0, 0);
+
+      return rows.filter((r) => {
+        const d = new Date(r.shift_date);
+        return d >= monday && d <= now;
+      });
+    }
+
+    if (dateRange === "mtd") {
+      const first = new Date(now.getFullYear(), now.getMonth(), 1);
+      return rows.filter((r) => {
+        const d = new Date(r.shift_date);
+        return d >= first && d <= now;
+      });
+    }
+
+    if (dateRange === "ytd") {
+      const first = new Date(now.getFullYear(), 0, 1);
+      return rows.filter((r) => {
+        const d = new Date(r.shift_date);
+        return d >= first && d <= now;
+      });
+    }
+
+    if (dateRange === "custom") {
+      // if no dates picked yet, just return everything
+      if (!customFrom && !customTo) return rows;
+
+      return rows.filter((r) => {
+        const d = new Date(r.shift_date);
+        if (customFrom) {
+          const fromDate = new Date(customFrom);
+          fromDate.setHours(0, 0, 0, 0);
+          if (d < fromDate) return false;
+        }
+        if (customTo) {
+          const toDate = new Date(customTo);
+          toDate.setHours(23, 59, 59, 999);
+          if (d > toDate) return false;
+        }
+        return true;
+      });
+    }
+
+    return rows;
+  }, [rows, dateRange, customFrom, customTo]);
+
+  // store filter on top of date-filter
   const filteredRows = useMemo(() => {
-    if (selectedStore === "all") return rows;
-    return rows.filter((r) => r.store === selectedStore);
-  }, [rows, selectedStore]);
+    if (selectedStore === "all") return dateFilteredRows;
+    return dateFilteredRows.filter((r) => r.store === selectedStore);
+  }, [dateFilteredRows, selectedStore]);
 
   // KPIs
   const kpis = useMemo(() => {
@@ -105,15 +169,11 @@ export default function ServiceDashboardPage() {
       if (r.actual_sales != null) totalActual += r.actual_sales;
       if (r.forecast_sales != null) totalForecast += r.forecast_sales;
 
-      if (r.labour_pct != null) {
-        const val = normalisePct(r.labour_pct);
-        if (val != null) labourVals.push(val);
-      }
+      const labour = normalisePct(r.labour_pct);
+      if (labour != null) labourVals.push(labour);
 
-      if (r.dot_pct != null) {
-        const val = normalisePct(r.dot_pct);
-        if (val != null) dotVals.push(val);
-      }
+      const dot = normalisePct(r.dot_pct);
+      if (dot != null) dotVals.push(dot);
 
       if (r.rnl_mins != null) rnlVals.push(r.rnl_mins);
     }
@@ -134,11 +194,14 @@ export default function ServiceDashboardPage() {
     };
   }, [filteredRows]);
 
-  // per store
+  // Store performance (but across ALL stores for the chosen date range)
   const storeData = useMemo(() => {
     const out = STORES.map((storeName) => {
-      const sr = filteredRows.filter((r) => r.store === storeName);
-      if (sr.length === 0) {
+      const rowsForStore = dateFilteredRows.filter(
+        (r) => r.store === storeName
+      );
+
+      if (rowsForStore.length === 0) {
         return {
           store: storeName,
           totalActual: 0,
@@ -160,34 +223,27 @@ export default function ServiceDashboardPage() {
       const rnl: number[] = [];
       const food: number[] = [];
 
-      for (const r of sr) {
+      for (const r of rowsForStore) {
         if (r.actual_sales != null) totalActual += r.actual_sales;
         if (r.forecast_sales != null) totalForecast += r.forecast_sales;
 
-        if (r.labour_pct != null) {
-          const v = normalisePct(r.labour_pct);
-          if (v != null) lab.push(v);
-        }
-        if (r.dot_pct != null) {
-          const v = normalisePct(r.dot_pct);
-          if (v != null) dot.push(v);
-        }
-        if (r.sbr_pct != null) {
-          const v = normalisePct(r.sbr_pct);
-          if (v != null) sbr.push(v);
-        }
-        if (r.rnl_mins != null) rnl.push(r.rnl_mins);
-        if (r.food_var_pct != null) {
-          const v = normaliseFoodVar(r.food_var_pct);
-          if (v != null) food.push(v);
-        }
-      }
+        const l = normalisePct(r.labour_pct);
+        const d = normalisePct(r.dot_pct);
+        const s = normalisePct(r.sbr_pct);
+        const f = normaliseFoodVar(r.food_var_pct);
 
-      const variancePct =
-        totalForecast > 0 ? (totalActual - totalForecast) / totalForecast : 0;
+        if (l != null) lab.push(l);
+        if (d != null) dot.push(d);
+        if (s != null) sbr.push(s);
+        if (r.rnl_mins != null) rnl.push(r.rnl_mins);
+        if (f != null) food.push(f);
+      }
 
       const avg = (arr: number[]) =>
         arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+
+      const variancePct =
+        totalForecast > 0 ? (totalActual - totalForecast) / totalForecast : 0;
 
       return {
         store: storeName,
@@ -202,16 +258,16 @@ export default function ServiceDashboardPage() {
       };
     });
 
-    // rank by DOT, then labour
+    // rank by DOT then Labour
     out.sort((a, b) => {
       if (b.avgDOT !== a.avgDOT) return b.avgDOT - a.avgDOT;
       return a.avgLabour - b.avgLabour;
     });
 
     return out;
-  }, [filteredRows]);
+  }, [dateFilteredRows]);
 
-  // managers
+  // Managers
   const managerData = useMemo(() => {
     const bucket: Record<
       string,
@@ -239,26 +295,20 @@ export default function ServiceDashboardPage() {
           food: [],
         };
       }
+
       bucket[name].shifts += 1;
       if (r.actual_sales != null) bucket[name].sales += r.actual_sales;
 
-      if (r.labour_pct != null) {
-        const v = normalisePct(r.labour_pct);
-        if (v != null) bucket[name].labour.push(v);
-      }
-      if (r.dot_pct != null) {
-        const v = normalisePct(r.dot_pct);
-        if (v != null) bucket[name].dot.push(v);
-      }
-      if (r.sbr_pct != null) {
-        const v = normalisePct(r.sbr_pct);
-        if (v != null) bucket[name].sbr.push(v);
-      }
+      const l = normalisePct(r.labour_pct);
+      const d = normalisePct(r.dot_pct);
+      const s = normalisePct(r.sbr_pct);
+      const f = normaliseFoodVar(r.food_var_pct);
+
+      if (l != null) bucket[name].labour.push(l);
+      if (d != null) bucket[name].dot.push(d);
+      if (s != null) bucket[name].sbr.push(s);
       if (r.rnl_mins != null) bucket[name].rnl.push(r.rnl_mins);
-      if (r.food_var_pct != null) {
-        const v = normaliseFoodVar(r.food_var_pct);
-        if (v != null) bucket[name].food.push(v);
-      }
+      if (f != null) bucket[name].food.push(f);
     }
 
     const avg = (arr: number[]) =>
@@ -275,7 +325,6 @@ export default function ServiceDashboardPage() {
       avgFoodVar: avg(v.food),
     }));
 
-    // best DOT first
     arr.sort((a, b) => b.avgDOT - a.avgDOT);
 
     return arr;
@@ -285,9 +334,21 @@ export default function ServiceDashboardPage() {
     if (typeof window !== "undefined") window.history.back();
   };
 
+  // label for current period
+  const periodLabel =
+    dateRange === "day"
+      ? "Today"
+      : dateRange === "wtd"
+      ? "Week to date"
+      : dateRange === "mtd"
+      ? "Month to date"
+      : dateRange === "ytd"
+      ? "Year to date"
+      : "Custom";
+
   return (
     <main className="wrap">
-      {/* banner - same as other pages */}
+      {/* banner */}
       <div className="banner">
         <img
           src="/mourneoids_forms_header_1600x400.png"
@@ -309,29 +370,91 @@ export default function ServiceDashboardPage() {
       <header className="header">
         <h1>Mourne-oids Service Dashboard</h1>
         <p className="subtitle">
-          Daily service · labour · DOT · SBR · R&amp;L · Food variance
+          Filter by store and by period · Today · WTD · MTD · YTD · Custom
         </p>
       </header>
 
       {/* filters */}
       <section className="container wide">
-        <div className="filters">
-          <button
-            onClick={() => setSelectedStore("all")}
-            className={`btn ${selectedStore === "all" ? "btn--brand" : "btn--ghost"}`}
-          >
-            All stores
-          </button>
-          {STORES.map((s) => (
+        <div className="filters-row">
+          {/* store filters */}
+          <div className="filters">
             <button
-              key={s}
-              onClick={() => setSelectedStore(s)}
-              className={`btn ${selectedStore === s ? "btn--brand" : "btn--ghost"}`}
+              onClick={() => setSelectedStore("all")}
+              className={`btn ${selectedStore === "all" ? "btn--brand" : "btn--ghost"}`}
             >
-              {s}
+              All stores
             </button>
-          ))}
+            {STORES.map((s) => (
+              <button
+                key={s}
+                onClick={() => setSelectedStore(s)}
+                className={`btn ${selectedStore === s ? "btn--brand" : "btn--ghost"}`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+
+          {/* period filters */}
+          <div className="filters period-filters">
+            <button
+              onClick={() => setDateRange("day")}
+              className={`btn small ${dateRange === "day" ? "btn--brand" : "btn--ghost"}`}
+            >
+              Today
+            </button>
+            <button
+              onClick={() => setDateRange("wtd")}
+              className={`btn small ${dateRange === "wtd" ? "btn--brand" : "btn--ghost"}`}
+            >
+              WTD
+            </button>
+            <button
+              onClick={() => setDateRange("mtd")}
+              className={`btn small ${dateRange === "mtd" ? "btn--brand" : "btn--ghost"}`}
+            >
+              MTD
+            </button>
+            <button
+              onClick={() => setDateRange("ytd")}
+              className={`btn small ${dateRange === "ytd" ? "btn--brand" : "btn--ghost"}`}
+            >
+              YTD
+            </button>
+            <button
+              onClick={() => setDateRange("custom")}
+              className={`btn small ${dateRange === "custom" ? "btn--brand" : "btn--ghost"}`}
+            >
+              Custom
+            </button>
+          </div>
         </div>
+
+        {/* custom date inputs */}
+        {dateRange === "custom" && (
+          <div className="custom-dates card">
+            <div className="date-field">
+              <label>From</label>
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+              />
+            </div>
+            <div className="date-field">
+              <label>To</label>
+              <input
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+              />
+            </div>
+            <p className="hint">
+              Showing rows in this custom range. Leave either field blank to make it open-ended.
+            </p>
+          </div>
+        )}
       </section>
 
       {/* content */}
@@ -344,7 +467,7 @@ export default function ServiceDashboardPage() {
             {/* KPI row */}
             <div className="kpi-grid">
               <div className="card kpi">
-                <p className="kpi-title">Area Sales (£)</p>
+                <p className="kpi-title">Sales (£) · {periodLabel}</p>
                 <p className="kpi-value">
                   £
                   {kpis.totalActual.toLocaleString(undefined, {
@@ -407,7 +530,9 @@ export default function ServiceDashboardPage() {
             </div>
 
             {/* Store performance */}
-            <h2 className="section-title">Store performance</h2>
+            <h2 className="section-title">
+              Store performance ({periodLabel})
+            </h2>
             <div className="store-grid">
               {storeData.map((st) => (
                 <div key={st.store} className="card store-card">
@@ -465,7 +590,9 @@ export default function ServiceDashboardPage() {
             </div>
 
             {/* Manager leaderboard */}
-            <h2 className="section-title">Manager / closing leaderboard</h2>
+            <h2 className="section-title">
+              Manager / closing leaderboard ({periodLabel})
+            </h2>
             <div className="card">
               <div className="table-wrap">
                 <table>
@@ -485,7 +612,7 @@ export default function ServiceDashboardPage() {
                     {managerData.length === 0 && (
                       <tr>
                         <td colSpan={8} className="empty">
-                          No manager data yet.
+                          No data for this period.
                         </td>
                       </tr>
                     )}
@@ -549,9 +676,6 @@ export default function ServiceDashboardPage() {
           --brand-dark: #004b75;
           --shadow-card: 0 10px 18px rgba(2, 6, 23, 0.08),
             0 1px 3px rgba(2, 6, 23, 0.06);
-          --green: #15803d;
-          --amber: #d97706;
-          --red: #b91c1c;
         }
 
         .wrap {
@@ -621,11 +745,55 @@ export default function ServiceDashboardPage() {
           gap: 16px;
         }
 
+        .filters-row {
+          display: flex;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 14px;
+          align-items: center;
+        }
+
         .filters {
           display: flex;
           gap: 10px;
           flex-wrap: wrap;
-          justify-content: center;
+          justify-content: flex-start;
+        }
+
+        .period-filters .btn.small {
+          padding: 6px 12px;
+          border-radius: 10px;
+          font-size: 13px;
+        }
+
+        .custom-dates {
+          display: flex;
+          gap: 14px;
+          align-items: flex-end;
+        }
+
+        .date-field {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .date-field label {
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--muted);
+        }
+
+        .date-field input {
+          border: 1px solid rgba(15, 23, 42, 0.15);
+          border-radius: 10px;
+          padding: 6px 8px;
+          font-size: 13px;
+        }
+
+        .hint {
+          font-size: 12px;
+          color: var(--muted);
         }
 
         .btn {
@@ -643,9 +811,10 @@ export default function ServiceDashboardPage() {
 
         .btn--brand {
           background: var(--brand);
-          border-color: var(--brand-dark);
+          border-color: #004b75;
           color: #fff;
-          box-shadow: var(--shadow-card);
+          box-shadow: 0 10px 18px rgba(2, 6, 23, 0.08),
+            0 1px 3px rgba(2, 6, 23, 0.06);
         }
 
         .btn--ghost {
@@ -660,9 +829,10 @@ export default function ServiceDashboardPage() {
         }
 
         .card {
-          background: var(--paper);
+          background: #fff;
           border-radius: 18px;
-          box-shadow: var(--shadow-card);
+          box-shadow: 0 10px 18px rgba(2, 6, 23, 0.04),
+            0 1px 3px rgba(2, 6, 23, 0.04);
           padding: 16px 18px;
           border: 1px solid rgba(0, 0, 0, 0.03);
         }
@@ -830,6 +1000,14 @@ export default function ServiceDashboardPage() {
           .store-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
+          .filters-row {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+          .custom-dates {
+            flex-direction: column;
+            align-items: flex-start;
+          }
         }
         @media (max-width: 700px) {
           .store-grid {
@@ -837,9 +1015,6 @@ export default function ServiceDashboardPage() {
           }
           .container.wide {
             max-width: 94%;
-          }
-          .filters {
-            justify-content: flex-start;
           }
           .nav-row {
             max-width: 94%;
