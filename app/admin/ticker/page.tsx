@@ -168,8 +168,8 @@ export default function TickerAdminPage() {
 
     setServiceSaving(true);
 
-    const payload = {
-      date: svcDate,
+    // build common fields
+    const commonFields = {
       day: svcDay || null,
       store: svcStore,
       forecast_sales: forecastSales ? Number(forecastSales) : null,
@@ -191,29 +191,67 @@ export default function TickerAdminPage() {
       food_variance: foodVariance ? Number(foodVariance) : null,
     };
 
-    const { error } = await supabase.from("service_shifts").insert([payload]);
+    // 1) try with 'date'
+    const { error: err1 } = await supabase.from("service_shifts").insert([
+      {
+        date: svcDate,
+        ...commonFields,
+      },
+    ]);
 
-    if (error) {
-      setServiceMsg(`Upload failed: ${error.message}`);
-    } else {
-      setServiceMsg("✅ Shift saved.");
-      // optionally clear some fields
-      setForecastSales("");
-      setActualSales("");
-      setLabourPct("");
-      setAdditionalHours("");
-      setInstoresScheduled("");
-      setInstoresActual("");
-      setDriversScheduled("");
-      setDriversActual("");
-      setDot("");
-      setExtremes("");
-      setSbr("");
-      setRAndL("");
-      setFoodVariance("");
+    // if success
+    if (!err1) {
+      setServiceMsg("✅ Shift saved (using column 'date').");
+      resetServiceFields();
+      setServiceSaving(false);
+      return;
     }
 
+    // 2) if it failed because 'date' doesn't exist, try 'shift_date'
+    if (
+      err1.message &&
+      err1.message.toLowerCase().includes("'date' column")
+    ) {
+      const { error: err2 } = await supabase.from("service_shifts").insert([
+        {
+          shift_date: svcDate,
+          ...commonFields,
+        },
+      ]);
+      if (!err2) {
+        setServiceMsg("✅ Shift saved (using column 'shift_date').");
+        resetServiceFields();
+        setServiceSaving(false);
+        return;
+      }
+      // still failed
+      setServiceMsg(
+        `Upload failed: ${err2.message} (tried 'date' and 'shift_date')`
+      );
+      setServiceSaving(false);
+      return;
+    }
+
+    // other error
+    setServiceMsg(`Upload failed: ${err1.message}`);
     setServiceSaving(false);
+  };
+
+  const resetServiceFields = () => {
+    setForecastSales("");
+    setActualSales("");
+    setLabourPct("");
+    setAdditionalHours("");
+    setInstoresScheduled("");
+    setInstoresActual("");
+    setDriversScheduled("");
+    setDriversActual("");
+    setDot("");
+    setExtremes("");
+    setSbr("");
+    setRAndL("");
+    setFoodVariance("");
+    // leave date + store so you can enter the next one quickly
   };
 
   return (
@@ -230,7 +268,9 @@ export default function TickerAdminPage() {
         <>
           <header className="header">
             <h1>Mourne-oids Admin</h1>
-            <p className="subtitle">This page is restricted to Mourne-oids management.</p>
+            <p className="subtitle">
+              This page is restricted to Mourne-oids management.
+            </p>
           </header>
           <section className="card">
             <h2>Enter admin password</h2>
@@ -246,7 +286,8 @@ export default function TickerAdminPage() {
             {authError && <p className="error">⚠️ {authError}</p>}
             {!ADMIN_PASSWORD && (
               <p className="muted">
-                No password set in Vercel env <code>NEXT_PUBLIC_TICKER_PASSWORD</code> — allowing access.
+                No password set in Vercel env{" "}
+                <code>NEXT_PUBLIC_TICKER_PASSWORD</code> — allowing access.
               </p>
             )}
             <a href="/" className="btn btn--ghost">
@@ -373,8 +414,10 @@ export default function TickerAdminPage() {
               <section className="card">
                 <h2>Upload service shift</h2>
                 <p className="muted">
-                  Pick the store and date, then fill in the metrics for that shift. This writes straight to
-                  <code> service_shifts </code>.
+                  Pick the store and date, then fill in the metrics for that shift.
+                  This writes straight to <code>service_shifts</code>. If your date
+                  column is called <code>shift_date</code> instead of <code>date</code> it
+                  will try that automatically.
                 </p>
 
                 <div className="form-2col">
@@ -557,7 +600,11 @@ export default function TickerAdminPage() {
                   {serviceSaving ? "Saving…" : "Save shift"}
                 </button>
 
-                {serviceMsg && <p className="muted" style={{ marginTop: 8 }}>{serviceMsg}</p>}
+                {serviceMsg && (
+                  <p className="muted" style={{ marginTop: 8 }}>
+                    {serviceMsg}
+                  </p>
+                )}
               </section>
             </>
           )}
@@ -677,12 +724,6 @@ export default function TickerAdminPage() {
           padding: 8px;
           font-size: 0.9rem;
         }
-        .form-grid {
-          display: grid;
-          grid-template-columns: 1.1fr 0.6fr 0.5fr;
-          gap: 12px;
-          align-items: end;
-        }
         select,
         input[type="text"],
         input[type="number"],
@@ -769,24 +810,12 @@ export default function TickerAdminPage() {
           grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
           gap: 12px;
         }
-        .example {
-          background: #0f172a;
-          color: #e2e8f0;
-          padding: 10px 12px;
-          border-radius: 10px;
-          font-size: 0.7rem;
-          overflow-x: auto;
-          margin-bottom: 10px;
-        }
         .footer {
           margin-top: 24px;
           color: #94a3b8;
           font-size: 0.8rem;
         }
         @media (max-width: 720px) {
-          .form-grid {
-            grid-template-columns: 1fr;
-          }
           .pw-form {
             flex-direction: column;
             align-items: stretch;
