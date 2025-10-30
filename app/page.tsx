@@ -109,6 +109,11 @@ export default function HomePage() {
             🧾 Daily OER Walkthrough
           </a>
 
+          {/* OER Results (renamed from Admin Panel) */}
+          <a href="/admin" className="btn btn--brand">
+            📈 OER Results
+          </a>
+
           {/* Deep Clean */}
           <a href="/deep-clean" className="btn btn--brand">
             🧽 Autumn Deep Clean Checklist
@@ -124,13 +129,8 @@ export default function HomePage() {
             🍕 Pizza of the Week
           </a>
 
-          {/* Admin Panel */}
-          <a href="/admin" className="btn btn--brand">
-            ⚙️ Admin Panel
-          </a>
-
-          {/* NEW: Ticker Admin */}
-          <a href="/admin/ticker" className="btn btn--ghost">
+          {/* Ticker Admin (now same style as others) */}
+          <a href="/admin/ticker" className="btn btn--brand">
             📰 Ticker Admin
           </a>
         </div>
@@ -276,18 +276,6 @@ export default function HomePage() {
         .btn:hover {
           background: var(--brand-dark);
           transform: translateY(-1px);
-        }
-
-        .btn--ghost {
-          background: #fff;
-          color: var(--brand);
-          border: 2px solid var(--brand);
-          font-weight: 700;
-        }
-
-        .btn--ghost:hover {
-          background: var(--brand);
-          color: #fff;
         }
 
         .footer {
