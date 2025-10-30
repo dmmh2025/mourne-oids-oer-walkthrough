@@ -44,22 +44,22 @@ export default function ServiceDashboardPage() {
   const [customFrom, setCustomFrom] = useState<string>("");
   const [customTo, setCustomTo] = useState<string>("");
 
-  // helpers
+  // % helpers
   const normalisePct = (v: number | null) => {
     if (v == null) return null;
-    return v > 1 ? v / 100 : v;
+    return v > 1 ? v / 100 : v; // 58 -> 0.58
   };
 
-  // Damien is entering 0.6 to mean 0.6%
+  // food var: Damien types 0.3 = 0.3%
   const normaliseFoodVar = (v: number | null) => {
     if (v == null) return null;
-    if (v <= 1) return v;
-    return v / 100;
+    if (v <= 1) return v; // 0.3 -> 0.3%
+    return v / 100; // 25 -> 0.25%
   };
 
+  // load from Supabase
   useEffect(() => {
     const load = async () => {
-      // pull last 60 days
       const sixtyDaysAgo = new Date();
       sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
       const dateStr = sixtyDaysAgo.toISOString().slice(0, 10);
@@ -81,7 +81,7 @@ export default function ServiceDashboardPage() {
     load();
   }, []);
 
-  // date-range filtering
+  // 1. DATE FILTER — master filter, drives area, store and manager
   const dateFilteredRows = useMemo(() => {
     const now = new Date();
     const todayStr = now.toISOString().slice(0, 10);
@@ -118,20 +118,18 @@ export default function ServiceDashboardPage() {
     }
 
     if (dateRange === "custom") {
-      // if no dates picked yet, just return everything
       if (!customFrom && !customTo) return rows;
-
       return rows.filter((r) => {
         const d = new Date(r.shift_date);
         if (customFrom) {
-          const fromDate = new Date(customFrom);
-          fromDate.setHours(0, 0, 0, 0);
-          if (d < fromDate) return false;
+          const f = new Date(customFrom);
+          f.setHours(0, 0, 0, 0);
+          if (d < f) return false;
         }
         if (customTo) {
-          const toDate = new Date(customTo);
-          toDate.setHours(23, 59, 59, 999);
-          if (d > toDate) return false;
+          const t = new Date(customTo);
+          t.setHours(23, 59, 59, 999);
+          if (d > t) return false;
         }
         return true;
       });
@@ -140,13 +138,13 @@ export default function ServiceDashboardPage() {
     return rows;
   }, [rows, dateRange, customFrom, customTo]);
 
-  // store filter on top of date-filter
+  // 2. STORE FILTER — sits on top of date filter
   const filteredRows = useMemo(() => {
     if (selectedStore === "all") return dateFilteredRows;
     return dateFilteredRows.filter((r) => r.store === selectedStore);
   }, [dateFilteredRows, selectedStore]);
 
-  // KPIs
+  // 3. AREA OVERVIEW — built from filteredRows
   const kpis = useMemo(() => {
     if (filteredRows.length === 0) {
       return {
@@ -194,9 +192,9 @@ export default function ServiceDashboardPage() {
     };
   }, [filteredRows]);
 
-  // Store performance (but across ALL stores for the chosen date range)
+  // 4. STORE OVERVIEW — built from dateFilteredRows (so it always shows all stores for that period)
   const storeData = useMemo(() => {
-    const out = STORES.map((storeName) => {
+    return STORES.map((storeName) => {
       const rowsForStore = dateFilteredRows.filter(
         (r) => r.store === storeName
       );
@@ -215,6 +213,38 @@ export default function ServiceDashboardPage() {
         };
       }
 
+      // if we picked a single day (or custom narrow range) and there's exactly 1 row → show that exact row
+      const isSingleRowView =
+        (dateRange === "day" || dateRange === "custom") &&
+        rowsForStore.length === 1;
+
+      if (isSingleRowView) {
+        const r = rowsForStore[0];
+
+        const labour = normalisePct(r.labour_pct);
+        const dot = normalisePct(r.dot_pct);
+        const sbr = normalisePct(r.sbr_pct);
+        const food = normaliseFoodVar(r.food_var_pct);
+
+        const actual = r.actual_sales || 0;
+        const forecast = r.forecast_sales || 0;
+        const variance =
+          forecast > 0 ? (actual - forecast) / forecast : 0;
+
+        return {
+          store: storeName,
+          totalActual: actual,
+          totalForecast: forecast,
+          variancePct: variance,
+          avgLabour: labour || 0,
+          avgDOT: dot || 0,
+          avgSBR: sbr || 0,
+          avgRnL: r.rnl_mins || 0,
+          avgFoodVar: food || 0,
+        };
+      }
+
+      // otherwise: average for the period
       let totalActual = 0;
       let totalForecast = 0;
       const lab: number[] = [];
@@ -256,18 +286,13 @@ export default function ServiceDashboardPage() {
         avgRnL: avg(rnl),
         avgFoodVar: avg(food),
       };
-    });
-
-    // rank by DOT then Labour
-    out.sort((a, b) => {
+    }).sort((a, b) => {
       if (b.avgDOT !== a.avgDOT) return b.avgDOT - a.avgDOT;
       return a.avgLabour - b.avgLabour;
     });
+  }, [dateFilteredRows, dateRange]);
 
-    return out;
-  }, [dateFilteredRows]);
-
-  // Managers
+  // 5. MANAGER OVERVIEW — should also follow store + date filters? you said “area, store, manager” so we follow filteredRows (date + store)
   const managerData = useMemo(() => {
     const bucket: Record<
       string,
@@ -334,7 +359,6 @@ export default function ServiceDashboardPage() {
     if (typeof window !== "undefined") window.history.back();
   };
 
-  // label for current period
   const periodLabel =
     dateRange === "day"
       ? "Today"
@@ -370,7 +394,7 @@ export default function ServiceDashboardPage() {
       <header className="header">
         <h1>Mourne-oids Service Dashboard</h1>
         <p className="subtitle">
-          Filter by store and by period · Today · WTD · MTD · YTD · Custom
+          Area → Store → Manager — all driven by the same date range
         </p>
       </header>
 
@@ -396,7 +420,7 @@ export default function ServiceDashboardPage() {
             ))}
           </div>
 
-          {/* period filters */}
+          {/* date filters */}
           <div className="filters period-filters">
             <button
               onClick={() => setDateRange("day")}
@@ -431,7 +455,7 @@ export default function ServiceDashboardPage() {
           </div>
         </div>
 
-        {/* custom date inputs */}
+        {/* custom date pickers */}
         {dateRange === "custom" && (
           <div className="custom-dates card">
             <div className="date-field">
@@ -451,7 +475,7 @@ export default function ServiceDashboardPage() {
               />
             </div>
             <p className="hint">
-              Showing rows in this custom range. Leave either field blank to make it open-ended.
+              Showing rows in this range. Leave one blank to make it open-ended.
             </p>
           </div>
         )}
@@ -464,7 +488,7 @@ export default function ServiceDashboardPage() {
 
         {!loading && !errorMsg && (
           <>
-            {/* KPI row */}
+            {/* AREA OVERVIEW */}
             <div className="kpi-grid">
               <div className="card kpi">
                 <p className="kpi-title">Sales (£) · {periodLabel}</p>
@@ -529,7 +553,7 @@ export default function ServiceDashboardPage() {
               </div>
             </div>
 
-            {/* Store performance */}
+            {/* STORE OVERVIEW */}
             <h2 className="section-title">
               Store performance ({periodLabel})
             </h2>
@@ -589,7 +613,7 @@ export default function ServiceDashboardPage() {
               ))}
             </div>
 
-            {/* Manager leaderboard */}
+            {/* MANAGER OVERVIEW */}
             <h2 className="section-title">
               Manager / closing leaderboard ({periodLabel})
             </h2>
@@ -660,12 +684,12 @@ export default function ServiceDashboardPage() {
         )}
       </section>
 
-      {/* Footer */}
+      {/* footer */}
       <footer className="footer">
         <p>© 2025 Mourne-oids | Domino’s Pizza | Racz Group</p>
       </footer>
 
-      {/* Styles */}
+      {/* styles */}
       <style jsx>{`
         :root {
           --bg: #f2f5f9;
@@ -811,10 +835,9 @@ export default function ServiceDashboardPage() {
 
         .btn--brand {
           background: var(--brand);
-          border-color: #004b75;
+          border-color: var(--brand-dark);
           color: #fff;
-          box-shadow: 0 10px 18px rgba(2, 6, 23, 0.08),
-            0 1px 3px rgba(2, 6, 23, 0.06);
+          box-shadow: var(--shadow-card);
         }
 
         .btn--ghost {
@@ -829,10 +852,9 @@ export default function ServiceDashboardPage() {
         }
 
         .card {
-          background: #fff;
+          background: var(--paper);
           border-radius: 18px;
-          box-shadow: 0 10px 18px rgba(2, 6, 23, 0.04),
-            0 1px 3px rgba(2, 6, 23, 0.04);
+          box-shadow: var(--shadow-card);
           padding: 16px 18px;
           border: 1px solid rgba(0, 0, 0, 0.03);
         }
@@ -847,10 +869,6 @@ export default function ServiceDashboardPage() {
           display: grid;
           gap: 14px;
           grid-template-columns: repeat(4, minmax(0, 1fr));
-        }
-
-        .kpi {
-          min-height: 112px;
         }
 
         .kpi-title {
@@ -899,11 +917,6 @@ export default function ServiceDashboardPage() {
           justify-content: space-between;
           align-items: center;
           margin-bottom: 4px;
-        }
-
-        .store-card h3 {
-          font-size: 15px;
-          font-weight: 700;
         }
 
         .pill {
@@ -1009,6 +1022,7 @@ export default function ServiceDashboardPage() {
             align-items: flex-start;
           }
         }
+
         @media (max-width: 700px) {
           .store-grid {
             grid-template-columns: 1fr;
