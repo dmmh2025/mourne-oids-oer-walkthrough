@@ -894,5 +894,62 @@ export default function AdminPage() {
         }
       `}</style>
     </main>
+        </main>
+
+    <style jsx>{`
+      .wrap {
+        background:
+          radial-gradient(circle at top, rgba(0, 100, 145, 0.12), transparent 42%),
+          #f2f5f9;
+      }
+      .container {
+        max-width: 1100px;
+        margin-top: 28px;
+        padding: 0 1rem;
+      }
+      .buttons {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 16px;
+      }
+      .header {
+        margin-bottom: 0;
+      }
+      .ticker-wrap {
+        border-bottom: none;
+        border-radius: 0 0 16px 16px;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.05);
+      }
+      .btn {
+        border-radius: 16px;
+        box-shadow: 0 12px 26px rgba(0, 64, 94, 0.12);
+        transition: background 0.15s ease, transform 0.15s ease,
+          box-shadow 0.15s ease;
+      }
+      .btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 16px 30px rgba(0, 64, 94, 0.12);
+      }
+      .btn.btn--ghost {
+        background: #ffffff;
+        color: #006491;
+        border: 1px solid rgba(0, 100, 145, 0.2);
+      }
+      .footer {
+        margin-top: 54px;
+        border-top: 1px solid rgba(15, 23, 42, 0.04);
+        width: 100%;
+        text-align: center;
+        padding-top: 16px;
+      }
+      @media (max-width: 600px) {
+        .buttons {
+          grid-template-columns: 1fr;
+        }
+      }
+    `}</style>
+  );
+}
+
   );
 } 
