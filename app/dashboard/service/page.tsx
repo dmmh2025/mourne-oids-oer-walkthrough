@@ -3,7 +3,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-// Supabase client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -40,24 +39,21 @@ export default function ServiceDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedStore, setSelectedStore] = useState<"all" | string>("all");
-  const [dateRange, setDateRange] = useState<DateRange>("wtd"); // default WTD
-  const [customFrom, setCustomFrom] = useState<string>("");
-  const [customTo, setCustomTo] = useState<string>("");
+  const [dateRange, setDateRange] = useState<DateRange>("wtd");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
 
-  // helpers
   const normalisePct = (v: number | null) => {
     if (v == null) return null;
     return v > 1 ? v / 100 : v;
   };
 
-  // Damien enters 0.3 = 0.3%
   const normaliseFoodVar = (v: number | null) => {
     if (v == null) return null;
     if (v <= 1) return v;
     return v / 100;
   };
 
-  // load data
   useEffect(() => {
     const load = async () => {
       const sixtyDaysAgo = new Date();
@@ -81,15 +77,15 @@ export default function ServiceDashboardPage() {
     load();
   }, []);
 
-  // 1. DATE FILTER (master)
+  // master date filter
   const dateFilteredRows = useMemo(() => {
     const now = new Date();
 
     if (dateRange === "yesterday") {
       const y = new Date(now);
       y.setDate(now.getDate() - 1);
-      const yesterdayStr = y.toISOString().slice(0, 10);
-      return rows.filter((r) => r.shift_date === yesterdayStr);
+      const yStr = y.toISOString().slice(0, 10);
+      return rows.filter((r) => r.shift_date === yStr);
     }
 
     if (dateRange === "wtd") {
@@ -140,13 +136,13 @@ export default function ServiceDashboardPage() {
     return rows;
   }, [rows, dateRange, customFrom, customTo]);
 
-  // 2. STORE FILTER
+  // store filter
   const filteredRows = useMemo(() => {
     if (selectedStore === "all") return dateFilteredRows;
     return dateFilteredRows.filter((r) => r.store === selectedStore);
   }, [dateFilteredRows, selectedStore]);
 
-  // 3. AREA OVERVIEW (follows date + store)
+  // area overview
   const kpis = useMemo(() => {
     if (filteredRows.length === 0) {
       return {
@@ -194,7 +190,7 @@ export default function ServiceDashboardPage() {
     };
   }, [filteredRows]);
 
-  // 4. STORE OVERVIEW (always shows all stores, but for chosen period)
+  // store overview
   const storeData = useMemo(() => {
     return STORES.map((storeName) => {
       const rowsForStore = dateFilteredRows.filter(
@@ -215,7 +211,6 @@ export default function ServiceDashboardPage() {
         };
       }
 
-      // special case: "yesterday" or a single custom day with exactly 1 row → show raw values
       const isSingleRowView =
         (dateRange === "yesterday" || dateRange === "custom") &&
         rowsForStore.length === 1;
@@ -246,7 +241,7 @@ export default function ServiceDashboardPage() {
         };
       }
 
-      // otherwise average across the period
+      // average for period
       let totalActual = 0;
       let totalForecast = 0;
       const lab: number[] = [];
@@ -294,7 +289,7 @@ export default function ServiceDashboardPage() {
     });
   }, [dateFilteredRows, dateRange]);
 
-  // 5. MANAGER OVERVIEW (follows date+store)
+  // manager overview
   const managerData = useMemo(() => {
     const bucket: Record<
       string,
@@ -392,108 +387,112 @@ export default function ServiceDashboardPage() {
         </a>
       </div>
 
-      {/* heading */}
+      {/* header */}
       <header className="header">
         <h1>Mourne-oids Service Dashboard</h1>
         <p className="subtitle">
-          Area → Store → Manager — all driven by the same date range
+          Track sales, labour, DOT, SBR, R&amp;L and food variance — by store and by manager.
         </p>
       </header>
 
       {/* filters */}
       <section className="container wide">
-        <div className="filters-row">
-          {/* store filters */}
-          <div className="filters">
-            <button
-              onClick={() => setSelectedStore("all")}
-              className={`btn ${selectedStore === "all" ? "btn--brand" : "btn--ghost"}`}
-            >
-              All stores
-            </button>
-            {STORES.map((s) => (
+        <div className="filters-panel card soft">
+          <div className="filters-block">
+            <p className="filters-title">Stores</p>
+            <div className="filters">
               <button
-                key={s}
-                onClick={() => setSelectedStore(s)}
-                className={`btn ${selectedStore === s ? "btn--brand" : "btn--ghost"}`}
+                onClick={() => setSelectedStore("all")}
+                className={`chip ${selectedStore === "all" ? "chip--active" : ""}`}
               >
-                {s}
+                All stores
               </button>
-            ))}
+              {STORES.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setSelectedStore(s)}
+                  className={`chip ${selectedStore === s ? "chip--active" : ""}`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* date filters */}
-          <div className="filters period-filters">
-            <button
-              onClick={() => setDateRange("yesterday")}
-              className={`btn small ${dateRange === "yesterday" ? "btn--brand" : "btn--ghost"}`}
-            >
-              Yesterday
-            </button>
-            <button
-              onClick={() => setDateRange("wtd")}
-              className={`btn small ${dateRange === "wtd" ? "btn--brand" : "btn--ghost"}`}
-            >
-              WTD
-            </button>
-            <button
-              onClick={() => setDateRange("mtd")}
-              className={`btn small ${dateRange === "mtd" ? "btn--brand" : "btn--ghost"}`}
-            >
-              MTD
-            </button>
-            <button
-              onClick={() => setDateRange("ytd")}
-              className={`btn small ${dateRange === "ytd" ? "btn--brand" : "btn--ghost"}`}
-            >
-              YTD
-            </button>
-            <button
-              onClick={() => setDateRange("custom")}
-              className={`btn small ${dateRange === "custom" ? "btn--brand" : "btn--ghost"}`}
-            >
-              Custom
-            </button>
+          <div className="filters-block">
+            <p className="filters-title">Period</p>
+            <div className="filters">
+              <button
+                onClick={() => setDateRange("yesterday")}
+                className={`chip small ${dateRange === "yesterday" ? "chip--active" : ""}`}
+              >
+                Yesterday
+              </button>
+              <button
+                onClick={() => setDateRange("wtd")}
+                className={`chip small ${dateRange === "wtd" ? "chip--active" : ""}`}
+              >
+                WTD
+              </button>
+              <button
+                onClick={() => setDateRange("mtd")}
+                className={`chip small ${dateRange === "mtd" ? "chip--active" : ""}`}
+              >
+                MTD
+              </button>
+              <button
+                onClick={() => setDateRange("ytd")}
+                className={`chip small ${dateRange === "ytd" ? "chip--active" : ""}`}
+              >
+                YTD
+              </button>
+              <button
+                onClick={() => setDateRange("custom")}
+                className={`chip small ${dateRange === "custom" ? "chip--active" : ""}`}
+              >
+                Custom
+              </button>
+            </div>
           </div>
+
+          {dateRange === "custom" && (
+            <div className="custom-row">
+              <div className="date-field">
+                <label>From</label>
+                <input
+                  type="date"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                />
+              </div>
+              <div className="date-field">
+                <label>To</label>
+                <input
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
         </div>
-
-        {/* custom date pickers */}
-        {dateRange === "custom" && (
-          <div className="custom-dates card">
-            <div className="date-field">
-              <label>From</label>
-              <input
-                type="date"
-                value={customFrom}
-                onChange={(e) => setCustomFrom(e.target.value)}
-              />
-            </div>
-            <div className="date-field">
-              <label>To</label>
-              <input
-                type="date"
-                value={customTo}
-                onChange={(e) => setCustomTo(e.target.value)}
-              />
-            </div>
-            <p className="hint">
-              Showing rows in this range. Leave one blank to make it open-ended.
-            </p>
-          </div>
-        )}
       </section>
 
       {/* content */}
-      <section className="container wide">
+      <section className="container wide content">
         {loading && <div className="card">Loading Mourne-oids data…</div>}
         {errorMsg && <div className="card error">Error: {errorMsg}</div>}
 
         {!loading && !errorMsg && (
           <>
             {/* AREA OVERVIEW */}
+            <div className="section-head">
+              <h2>Area overview</h2>
+              <p className="section-sub">{periodLabel}</p>
+            </div>
             <div className="kpi-grid">
               <div className="card kpi">
-                <p className="kpi-title">Sales (£) · {periodLabel}</p>
+                <p className="kpi-title">Sales (£)</p>
                 <p className="kpi-value">
                   £
                   {kpis.totalActual.toLocaleString(undefined, {
@@ -556,9 +555,10 @@ export default function ServiceDashboardPage() {
             </div>
 
             {/* STORE OVERVIEW */}
-            <h2 className="section-title">
-              Store performance ({periodLabel})
-            </h2>
+            <div className="section-head mt">
+              <h2>Store overview</h2>
+              <p className="section-sub">{periodLabel}</p>
+            </div>
             <div className="store-grid">
               {storeData.map((st) => (
                 <div key={st.store} className="card store-card">
@@ -576,50 +576,62 @@ export default function ServiceDashboardPage() {
                       {Math.round(st.avgDOT * 100)}% DOT
                     </span>
                   </div>
-                  <p className="metric">
-                    Sales: £{st.totalActual.toLocaleString()}
-                  </p>
-                  <p className="metric muted">
-                    Forecast:{" "}
-                    {st.totalForecast
-                      ? "£" + st.totalForecast.toLocaleString()
-                      : "—"}
-                  </p>
-                  <p
-                    className={`metric ${
-                      st.variancePct >= 0
-                        ? "pos"
-                        : st.variancePct >= -0.05
-                        ? "warn"
-                        : "neg"
-                    }`}
-                  >
-                    Var: {(st.variancePct * 100).toFixed(1)}%
-                  </p>
-                  <p className="metric">
-                    Labour: {(st.avgLabour * 100).toFixed(1)}%
-                  </p>
-                  <p className="metric">
-                    SBR: {(st.avgSBR * 100).toFixed(0)}%
-                  </p>
-                  <p className="metric">
-                    R&amp;L: {st.avgRnL.toFixed(1)}m
-                  </p>
-                  <p className="metric">
-                    Food var:{" "}
-                    {st.avgFoodVar != null
-                      ? st.avgFoodVar.toFixed(2) + "%"
-                      : "—"}
-                  </p>
+                  <div className="store-rows">
+                    <p className="metric">
+                      <span>Sales</span>
+                      <strong>£{st.totalActual.toLocaleString()}</strong>
+                    </p>
+                    <p className="metric">
+                      <span>Forecast</span>
+                      <strong>
+                        {st.totalForecast
+                          ? "£" + st.totalForecast.toLocaleString()
+                          : "—"}
+                      </strong>
+                    </p>
+                    <p
+                      className={`metric ${
+                        st.variancePct >= 0
+                          ? "pos"
+                          : st.variancePct >= -0.05
+                          ? "warn"
+                          : "neg"
+                      }`}
+                    >
+                      <span>Variance</span>
+                      <strong>{(st.variancePct * 100).toFixed(1)}%</strong>
+                    </p>
+                    <p className="metric">
+                      <span>Labour</span>
+                      <strong>{(st.avgLabour * 100).toFixed(1)}%</strong>
+                    </p>
+                    <p className="metric">
+                      <span>SBR</span>
+                      <strong>{(st.avgSBR * 100).toFixed(0)}%</strong>
+                    </p>
+                    <p className="metric">
+                      <span>R&amp;L</span>
+                      <strong>{st.avgRnL.toFixed(1)}m</strong>
+                    </p>
+                    <p className="metric">
+                      <span>Food var</span>
+                      <strong>
+                        {st.avgFoodVar != null
+                          ? st.avgFoodVar.toFixed(2) + "%"
+                          : "—"}
+                      </strong>
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>
 
             {/* MANAGER OVERVIEW */}
-            <h2 className="section-title">
-              Manager / closing leaderboard ({periodLabel})
-            </h2>
-            <div className="card">
+            <div className="section-head mt">
+              <h2>Manager / closing overview</h2>
+              <p className="section-sub">{periodLabel}</p>
+            </div>
+            <div className="card table-card">
               <div className="table-wrap">
                 <table>
                   <thead>
@@ -702,12 +714,12 @@ export default function ServiceDashboardPage() {
           --brand-dark: #004b75;
           --shadow-card: 0 10px 18px rgba(2, 6, 23, 0.08),
             0 1px 3px rgba(2, 6, 23, 0.06);
+          --border: rgba(15, 23, 42, 0.06);
         }
 
         .wrap {
           background: var(--bg);
           min-height: 100dvh;
-          color: var(--text);
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -727,7 +739,6 @@ export default function ServiceDashboardPage() {
         .banner img {
           max-width: 92%;
           height: auto;
-          display: block;
         }
 
         .nav-row {
@@ -742,25 +753,25 @@ export default function ServiceDashboardPage() {
 
         .header {
           text-align: center;
-          margin: 16px 16px 16px;
+          margin: 16px 16px 8px;
         }
 
         .header h1 {
           font-size: 26px;
           font-weight: 900;
-          margin-bottom: 6px;
+          color: var(--text);
         }
 
         .subtitle {
           color: var(--muted);
           font-size: 14px;
-          font-weight: 500;
+          margin-top: 3px;
         }
 
         .container {
           width: 100%;
           max-width: 420px;
-          margin-top: 18px;
+          margin-top: 16px;
           display: flex;
           justify-content: center;
         }
@@ -771,28 +782,61 @@ export default function ServiceDashboardPage() {
           gap: 16px;
         }
 
-        .filters-row {
+        .filters-panel {
           display: flex;
-          justify-content: space-between;
-          flex-wrap: wrap;
-          gap: 14px;
+          gap: 24px;
           align-items: center;
+          justify-content: space-between;
+        }
+
+        .filters-panel.soft {
+          background: rgba(255, 255, 255, 0.6);
+          backdrop-filter: blur(4px);
+        }
+
+        .filters-block {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .filters-title {
+          font-size: 12px;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          color: var(--muted);
+          font-weight: 600;
         }
 
         .filters {
           display: flex;
-          gap: 10px;
+          gap: 8px;
           flex-wrap: wrap;
-          justify-content: flex-start;
         }
 
-        .period-filters .btn.small {
-          padding: 6px 12px;
-          border-radius: 10px;
+        .chip {
+          background: #fff;
+          border: 1px solid rgba(0, 0, 0, 0.03);
+          border-radius: 999px;
+          padding: 6px 14px;
           font-size: 13px;
+          font-weight: 600;
+          color: #0f172a;
+          cursor: pointer;
+          transition: 0.15s ease;
+        }
+        .chip.small {
+          padding: 5px 11px;
+          font-size: 12px;
+        }
+        .chip--active {
+          background: var(--brand);
+          color: #fff;
+          border-color: #004b75;
+          box-shadow: 0 6px 10px rgba(0, 100, 145, 0.26);
         }
 
-        .custom-dates {
+        .custom-row {
           display: flex;
           gap: 14px;
           align-items: flex-end;
@@ -806,71 +850,61 @@ export default function ServiceDashboardPage() {
 
         .date-field label {
           font-size: 12px;
-          font-weight: 600;
           color: var(--muted);
+          font-weight: 500;
         }
 
         .date-field input {
-          border: 1px solid rgba(15, 23, 42, 0.15);
+          border: 1px solid rgba(15, 23, 42, 0.12);
           border-radius: 10px;
-          padding: 6px 8px;
+          padding: 5px 8px;
           font-size: 13px;
         }
 
-        .hint {
+        .content {
+          gap: 20px;
+        }
+
+        .section-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-top: 8px;
+        }
+
+        .section-head.mt {
+          margin-top: 26px;
+        }
+
+        .section-head h2 {
+          font-size: 16px;
+          font-weight: 700;
+        }
+
+        .section-sub {
           font-size: 12px;
           color: var(--muted);
         }
 
-        .btn {
-          display: inline-block;
-          text-align: center;
-          padding: 10px 14px;
-          border-radius: 14px;
-          font-weight: 700;
-          font-size: 14px;
-          text-decoration: none;
-          border: 2px solid transparent;
-          transition: background 0.2s, transform 0.1s;
-          cursor: pointer;
-        }
-
-        .btn--brand {
-          background: var(--brand);
-          border-color: var(--brand-dark);
-          color: #fff;
-          box-shadow: var(--shadow-card);
-        }
-
-        .btn--ghost {
-          background: #fff;
-          border-color: rgba(0, 0, 0, 0.02);
-          color: var(--text);
-        }
-
-        .btn--brand:hover,
-        .btn--ghost:hover {
-          transform: translateY(-1px);
+        .kpi-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 14px;
         }
 
         .card {
-          background: var(--paper);
+          background: #fff;
           border-radius: 18px;
           box-shadow: var(--shadow-card);
-          padding: 16px 18px;
-          border: 1px solid rgba(0, 0, 0, 0.03);
+          border: 1px solid rgba(0, 0, 0, 0.02);
         }
 
-        .card.error {
-          background: #fee2e2;
-          border: 1px solid #fca5a5;
-          color: #991b1b;
+        .card.soft {
+          box-shadow: none;
         }
 
-        .kpi-grid {
-          display: grid;
-          gap: 14px;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
+        .kpi {
+          padding: 14px 16px;
         }
 
         .kpi-title {
@@ -878,34 +912,28 @@ export default function ServiceDashboardPage() {
           text-transform: uppercase;
           letter-spacing: 0.03em;
           color: var(--muted);
-          margin-bottom: 6px;
+          margin-bottom: 2px;
         }
 
         .kpi-value {
-          font-size: 24px;
+          font-size: 22px;
           font-weight: 800;
         }
 
         .kpi-sub {
           font-size: 12px;
           color: var(--muted);
-          margin-top: 6px;
+          margin-top: 4px;
         }
 
         .kpi--green {
-          border-left: 5px solid #22c55e;
+          border-left: 4px solid #22c55e;
         }
         .kpi--amber {
-          border-left: 5px solid #f97316;
+          border-left: 4px solid #f97316;
         }
         .kpi--red {
-          border-left: 5px solid #ef4444;
-        }
-
-        .section-title {
-          font-size: 16px;
-          font-weight: 700;
-          margin: 10px 0 6px;
+          border-left: 4px solid #ef4444;
         }
 
         .store-grid {
@@ -914,11 +942,40 @@ export default function ServiceDashboardPage() {
           gap: 14px;
         }
 
+        .store-card {
+          padding: 12px 14px 10px;
+        }
+
         .store-card__header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 4px;
+          margin-bottom: 6px;
+        }
+
+        .store-rows {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+        }
+
+        .metric {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 13px;
+        }
+        .metric span {
+          color: var(--muted);
+        }
+        .metric.pos strong {
+          color: #166534;
+        }
+        .metric.warn strong {
+          color: #b45309;
+        }
+        .metric.neg strong {
+          color: #b91c1c;
         }
 
         .pill {
@@ -940,21 +997,8 @@ export default function ServiceDashboardPage() {
           color: #991b1b;
         }
 
-        .metric {
-          font-size: 13px;
-          margin-bottom: 2px;
-        }
-        .metric.muted {
-          color: var(--muted);
-        }
-        .metric.pos {
-          color: #166534;
-        }
-        .metric.warn {
-          color: #b45309;
-        }
-        .metric.neg {
-          color: #b91c1c;
+        .table-card {
+          padding: 0;
         }
 
         .table-wrap {
@@ -968,13 +1012,13 @@ export default function ServiceDashboardPage() {
         }
 
         thead {
-          background: #eff3f6;
+          background: #f0f4f8;
         }
 
         th,
         td {
+          padding: 9px 10px;
           text-align: left;
-          padding: 8px 6px;
         }
 
         tbody tr:nth-child(even) {
@@ -1000,6 +1044,33 @@ export default function ServiceDashboardPage() {
           color: var(--muted);
         }
 
+        .btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          text-align: center;
+          padding: 10px 14px;
+          border-radius: 14px;
+          font-weight: 700;
+          font-size: 14px;
+          text-decoration: none;
+          border: 2px solid transparent;
+          transition: background 0.2s, transform 0.1s;
+          cursor: pointer;
+        }
+
+        .btn--brand {
+          background: var(--brand);
+          border-color: var(--brand-dark);
+          color: #fff;
+        }
+
+        .btn--ghost {
+          background: #fff;
+          border-color: rgba(0, 0, 0, 0.02);
+          color: #0f172a;
+        }
+
         .footer {
           text-align: center;
           margin-top: 36px;
@@ -1007,7 +1078,6 @@ export default function ServiceDashboardPage() {
           font-size: 13px;
         }
 
-        /* responsive */
         @media (max-width: 1100px) {
           .kpi-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1015,11 +1085,7 @@ export default function ServiceDashboardPage() {
           .store-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
-          .filters-row {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-          .custom-dates {
+          .filters-panel {
             flex-direction: column;
             align-items: flex-start;
           }
@@ -1030,9 +1096,6 @@ export default function ServiceDashboardPage() {
             grid-template-columns: 1fr;
           }
           .container.wide {
-            max-width: 94%;
-          }
-          .nav-row {
             max-width: 94%;
           }
         }
