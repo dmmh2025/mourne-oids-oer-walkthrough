@@ -33,7 +33,7 @@ type ShiftRow = {
   food_var_pct: number | null;
 };
 
-type DateRange = "day" | "wtd" | "mtd" | "ytd" | "custom";
+type DateRange = "yesterday" | "wtd" | "mtd" | "ytd" | "custom";
 
 export default function ServiceDashboardPage() {
   const [rows, setRows] = useState<ShiftRow[]>([]);
@@ -44,20 +44,20 @@ export default function ServiceDashboardPage() {
   const [customFrom, setCustomFrom] = useState<string>("");
   const [customTo, setCustomTo] = useState<string>("");
 
-  // % helpers
+  // helpers
   const normalisePct = (v: number | null) => {
     if (v == null) return null;
-    return v > 1 ? v / 100 : v; // 58 -> 0.58
+    return v > 1 ? v / 100 : v;
   };
 
-  // food var: Damien types 0.3 = 0.3%
+  // Damien enters 0.3 = 0.3%
   const normaliseFoodVar = (v: number | null) => {
     if (v == null) return null;
-    if (v <= 1) return v; // 0.3 -> 0.3%
-    return v / 100; // 25 -> 0.25%
+    if (v <= 1) return v;
+    return v / 100;
   };
 
-  // load from Supabase
+  // load data
   useEffect(() => {
     const load = async () => {
       const sixtyDaysAgo = new Date();
@@ -81,13 +81,15 @@ export default function ServiceDashboardPage() {
     load();
   }, []);
 
-  // 1. DATE FILTER — master filter, drives area, store and manager
+  // 1. DATE FILTER (master)
   const dateFilteredRows = useMemo(() => {
     const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10);
 
-    if (dateRange === "day") {
-      return rows.filter((r) => r.shift_date === todayStr);
+    if (dateRange === "yesterday") {
+      const y = new Date(now);
+      y.setDate(now.getDate() - 1);
+      const yesterdayStr = y.toISOString().slice(0, 10);
+      return rows.filter((r) => r.shift_date === yesterdayStr);
     }
 
     if (dateRange === "wtd") {
@@ -138,13 +140,13 @@ export default function ServiceDashboardPage() {
     return rows;
   }, [rows, dateRange, customFrom, customTo]);
 
-  // 2. STORE FILTER — sits on top of date filter
+  // 2. STORE FILTER
   const filteredRows = useMemo(() => {
     if (selectedStore === "all") return dateFilteredRows;
     return dateFilteredRows.filter((r) => r.store === selectedStore);
   }, [dateFilteredRows, selectedStore]);
 
-  // 3. AREA OVERVIEW — built from filteredRows
+  // 3. AREA OVERVIEW (follows date + store)
   const kpis = useMemo(() => {
     if (filteredRows.length === 0) {
       return {
@@ -192,7 +194,7 @@ export default function ServiceDashboardPage() {
     };
   }, [filteredRows]);
 
-  // 4. STORE OVERVIEW — built from dateFilteredRows (so it always shows all stores for that period)
+  // 4. STORE OVERVIEW (always shows all stores, but for chosen period)
   const storeData = useMemo(() => {
     return STORES.map((storeName) => {
       const rowsForStore = dateFilteredRows.filter(
@@ -213,9 +215,9 @@ export default function ServiceDashboardPage() {
         };
       }
 
-      // if we picked a single day (or custom narrow range) and there's exactly 1 row → show that exact row
+      // special case: "yesterday" or a single custom day with exactly 1 row → show raw values
       const isSingleRowView =
-        (dateRange === "day" || dateRange === "custom") &&
+        (dateRange === "yesterday" || dateRange === "custom") &&
         rowsForStore.length === 1;
 
       if (isSingleRowView) {
@@ -244,7 +246,7 @@ export default function ServiceDashboardPage() {
         };
       }
 
-      // otherwise: average for the period
+      // otherwise average across the period
       let totalActual = 0;
       let totalForecast = 0;
       const lab: number[] = [];
@@ -292,7 +294,7 @@ export default function ServiceDashboardPage() {
     });
   }, [dateFilteredRows, dateRange]);
 
-  // 5. MANAGER OVERVIEW — should also follow store + date filters? you said “area, store, manager” so we follow filteredRows (date + store)
+  // 5. MANAGER OVERVIEW (follows date+store)
   const managerData = useMemo(() => {
     const bucket: Record<
       string,
@@ -360,8 +362,8 @@ export default function ServiceDashboardPage() {
   };
 
   const periodLabel =
-    dateRange === "day"
-      ? "Today"
+    dateRange === "yesterday"
+      ? "Yesterday"
       : dateRange === "wtd"
       ? "Week to date"
       : dateRange === "mtd"
@@ -423,10 +425,10 @@ export default function ServiceDashboardPage() {
           {/* date filters */}
           <div className="filters period-filters">
             <button
-              onClick={() => setDateRange("day")}
-              className={`btn small ${dateRange === "day" ? "btn--brand" : "btn--ghost"}`}
+              onClick={() => setDateRange("yesterday")}
+              className={`btn small ${dateRange === "yesterday" ? "btn--brand" : "btn--ghost"}`}
             >
-              Today
+              Yesterday
             </button>
             <button
               onClick={() => setDateRange("wtd")}
