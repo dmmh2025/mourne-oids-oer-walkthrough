@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-// create supabase client (same as other pages)
 const supabase =
   typeof window !== "undefined"
     ? createClient(
@@ -15,7 +14,7 @@ const supabase =
 export default function HomePage() {
   const [tickerMessages, setTickerMessages] = useState<string[]>([]);
 
-  // load ticker messages
+  // load ticker messages from Supabase
   useEffect(() => {
     const load = async () => {
       if (!supabase) return;
@@ -42,13 +41,16 @@ export default function HomePage() {
         />
       </div>
 
-      {/* News Ticker (only shows if there is data) */}
+      {/* News Ticker (red) */}
       {tickerMessages.length > 0 && (
         <div className="ticker-wrap" aria-label="Mourne-oids latest updates">
           <div className="ticker">
             {tickerMessages.map((m, i) => (
               <span key={i} className="ticker-item">
                 {m}
+                {i < tickerMessages.length - 1 && (
+                  <span className="separator"> • </span>
+                )}
               </span>
             ))}
           </div>
@@ -107,6 +109,7 @@ export default function HomePage() {
           --muted: #475569;
           --brand: #006491;
           --brand-dark: #004b75;
+          --ticker-bg: #e31837; /* Domino's red for ticker */
           --shadow-card: 0 10px 18px rgba(2, 6, 23, 0.08),
             0 1px 3px rgba(2, 6, 23, 0.06);
         }
@@ -137,26 +140,33 @@ export default function HomePage() {
           display: block;
         }
 
-        /* NEW: Ticker */
+        /* === NEWS TICKER === */
         .ticker-wrap {
           width: 100%;
           overflow: hidden;
-          background: var(--brand);
+          background: var(--ticker-bg);
           color: #fff;
-          border-bottom: 2px solid var(--brand-dark);
-          box-shadow: inset 0 -1px 2px rgba(0, 0, 0, 0.12);
+          border-bottom: 2px solid rgba(0, 0, 0, 0.12);
           white-space: nowrap;
+          box-shadow: inset 0 -1px 2px rgba(0, 0, 0, 0.15);
         }
         .ticker {
           display: inline-block;
-          animation: scroll 25s linear infinite;
-          padding: 6px 0;
+          animation: scroll 30s linear infinite;
+          padding: 8px 0;
         }
         .ticker-item {
           display: inline-block;
-          padding: 0 2.4rem;
-          font-weight: 600;
+          padding: 0 2.2rem;
+          font-weight: 700;
           font-size: 0.9rem;
+        }
+        .separator {
+          opacity: 0.7;
+          padding-left: 0.75rem;
+        }
+        .ticker-wrap:hover .ticker {
+          animation-play-state: paused; /* nice UX: pause on hover */
         }
         @keyframes scroll {
           0% {
@@ -228,7 +238,7 @@ export default function HomePage() {
 
         @media (max-width: 500px) {
           .ticker {
-            animation-duration: 35s;
+            animation-duration: 36s;
           }
           .ticker-item {
             padding: 0 1.4rem;
