@@ -109,7 +109,7 @@ export default function HomePage() {
             🧾 Daily OER Walkthrough
           </a>
 
-          {/* OER Results (renamed from Admin Panel) */}
+          {/* OER Results */}
           <a href="/admin" className="btn btn--brand">
             📈 OER Results
           </a>
@@ -129,9 +129,9 @@ export default function HomePage() {
             🍕 Pizza of the Week
           </a>
 
-          {/* Ticker Admin (now same style as others) */}
+          {/* Admin (was Ticker Admin) */}
           <a href="/admin/ticker" className="btn btn--brand">
-            📰 Ticker Admin
+            ⚙️ Admin
           </a>
         </div>
       </section>
