@@ -24,7 +24,7 @@ const ADMIN_PASSWORD =
     ? process.env.NEXT_PUBLIC_TICKER_PASSWORD || ""
     : "";
 
-// turn "8:30" or "05:19" into minutes
+// turn "05:19" into minutes
 function timeTextToMinutes(val: string): number | null {
   if (!val) return null;
   if (!val.includes(":")) {
@@ -36,11 +36,12 @@ function timeTextToMinutes(val: string): number | null {
   const s = Number(ss);
   if (isNaN(m)) return null;
   if (isNaN(s)) return m;
-  return m * 60 + s;
+  // you store minutes, so s is ignored
+  return m;
 }
 
 export default function AdminPage() {
-  // password gate
+  // gate
   const [enteredPassword, setEnteredPassword] = useState("");
   const [isAuthed, setIsAuthed] = useState(false);
   const [authError, setAuthError] = useState("");
@@ -57,7 +58,7 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // service form state — matched to your columns
+  // service form state — EXACT column names
   const [svcDate, setSvcDate] = useState<string>("");
   const [svcDayName, setSvcDayName] = useState<string>("");
   const [svcStore, setSvcStore] = useState<string>("Downpatrick");
@@ -67,9 +68,9 @@ export default function AdminPage() {
   const [additionalHours, setAdditionalHours] = useState<string>("");
   const [openingManager, setOpeningManager] = useState<string>("");
   const [closingManager, setClosingManager] = useState<string>("");
-  const [instoresSched, setInstoresSched] = useState<string>("");
-  const [actualInstore, setActualInstore] = useState<string>("");
-  const [driversSched, setDriversSched] = useState<string>("");
+  const [instoresScheduled, setInstoresScheduled] = useState<string>("");
+  const [actualInstores, setActualInstores] = useState<string>("");
+  const [driversScheduled, setDriversScheduled] = useState<string>("");
   const [actualDrivers, setActualDrivers] = useState<string>("");
   const [dotPct, setDotPct] = useState<string>("");
   const [extremesPct, setExtremesPct] = useState<string>("");
@@ -129,7 +130,7 @@ export default function AdminPage() {
           active: newActive,
         },
       ])
-      .select();
+      .select(); // ← no .single()
 
     if (error) {
       setError(error.message);
@@ -148,7 +149,7 @@ export default function AdminPage() {
       .from("news_ticker")
       .update({ active: !row.active })
       .eq("id", row.id)
-      .select();
+      .select(); // ← IMPORTANT: no .single()
 
     if (error) {
       setError(error.message);
@@ -181,7 +182,7 @@ export default function AdminPage() {
     }
   };
 
-  // helper to clear only metric fields
+  // SERVICE: clear metric fields
   const resetServiceFields = () => {
     setForecastSales("");
     setActualSales("");
@@ -189,9 +190,9 @@ export default function AdminPage() {
     setAdditionalHours("");
     setOpeningManager("");
     setClosingManager("");
-    setInstoresSched("");
-    setActualInstore("");
-    setDriversSched("");
+    setInstoresScheduled("");
+    setActualInstores("");
+    setDriversScheduled("");
     setActualDrivers("");
     setDotPct("");
     setExtremesPct("");
@@ -200,7 +201,7 @@ export default function AdminPage() {
     setFoodVariance("");
   };
 
-  // SERVICE: submit (with fallback column name)
+  // SERVICE: submit — uses YOUR real column names
   const handleServiceSubmit = async () => {
     if (!supabase) return;
     setServiceMsg(null);
@@ -212,11 +213,9 @@ export default function AdminPage() {
 
     setServiceSaving(true);
 
-    // convert R&L text to minutes
     const rnlMinutes = timeTextToMinutes(rnlText);
 
-    // payload with the names from your screenshot
-    const basePayload: any = {
+    const payload = {
       shift_date: svcDate,
       day_name: svcDayName || null,
       store: svcStore,
@@ -226,60 +225,30 @@ export default function AdminPage() {
       additional_hours: additionalHours ? Number(additionalHours) : null,
       opening_manager: openingManager || null,
       closing_manager: closingManager || null,
-      instores_sched: instoresSched ? Number(instoresSched) : null,
-      actual_instore: actualInstore ? Number(actualInstore) : null, // first attempt
-      drivers_sched: driversSched ? Number(driversSched) : null,
+      instores_scheduled: instoresScheduled ? Number(instoresScheduled) : null,
+      actual_instores: actualInstores ? Number(actualInstores) : null,
+      drivers_scheduled: driversScheduled ? Number(driversScheduled) : null,
       actual_drivers: actualDrivers ? Number(actualDrivers) : null,
       dot_pct: dotPct ? Number(dotPct) : null,
       extremes_pct: extremesPct ? Number(extremesPct) : null,
       sbr_pct: sbrPct ? Number(sbrPct) : null,
       rnl_minutes: rnlMinutes,
-      food_variance: foodVariance ? Number(foodVariance) : null,
+      food_variance_pct: foodVariance ? Number(foodVariance) : null,
+      source_file: null,
     };
 
-    // 1) try with actual_instore
-    const { error: err1 } = await supabase
+    const { error } = await supabase
       .from("service_shifts")
-      .insert([basePayload]);
+      .insert([payload]);
 
-    if (!err1) {
-      setServiceMsg("✅ Shift saved to service_shifts.");
-      resetServiceFields();
+    if (error) {
+      setServiceMsg(`Upload failed: ${error.message}`);
       setServiceSaving(false);
       return;
     }
 
-    // if Supabase says the column doesn't exist, try the plural form
-    const e1 = err1.message?.toLowerCase() || "";
-    if (e1.includes("actual_instore") && e1.includes("could not find")) {
-      const altPayload: any = {
-        ...basePayload,
-        actual_instores: basePayload.actual_instore,
-      };
-      delete altPayload.actual_instore;
-
-      const { error: err2 } = await supabase
-        .from("service_shifts")
-        .insert([altPayload]);
-
-      if (!err2) {
-        setServiceMsg(
-          "✅ Shift saved to service_shifts (used column 'actual_instores')."
-        );
-        resetServiceFields();
-        setServiceSaving(false);
-        return;
-      }
-
-      setServiceMsg(
-        `Upload failed: ${err2.message} (tried 'actual_instore' and 'actual_instores')`
-      );
-      setServiceSaving(false);
-      return;
-    }
-
-    // some other error
-    setServiceMsg(`Upload failed: ${err1.message}`);
+    setServiceMsg("✅ Shift saved to service_shifts.");
+    resetServiceFields();
     setServiceSaving(false);
   };
 
@@ -443,8 +412,8 @@ export default function AdminPage() {
               <section className="card">
                 <h2>Upload service shift</h2>
                 <p className="muted">
-                  This form writes directly into{" "}
-                  <code>service_shifts</code> using your real column names.
+                  Writes directly into <code>service_shifts</code> using your
+                  column names.
                 </p>
 
                 <div className="form-2col">
@@ -537,8 +506,8 @@ export default function AdminPage() {
                     <label>Instores – scheduled</label>
                     <input
                       type="number"
-                      value={instoresSched}
-                      onChange={(e) => setInstoresSched(e.target.value)}
+                      value={instoresScheduled}
+                      onChange={(e) => setInstoresScheduled(e.target.value)}
                       placeholder="5"
                     />
                   </div>
@@ -546,8 +515,8 @@ export default function AdminPage() {
                     <label>Instores – actual</label>
                     <input
                       type="number"
-                      value={actualInstore}
-                      onChange={(e) => setActualInstore(e.target.value)}
+                      value={actualInstores}
+                      onChange={(e) => setActualInstores(e.target.value)}
                       placeholder="5"
                     />
                   </div>
@@ -555,8 +524,8 @@ export default function AdminPage() {
                     <label>Drivers – scheduled</label>
                     <input
                       type="number"
-                      value={driversSched}
-                      onChange={(e) => setDriversSched(e.target.value)}
+                      value={driversScheduled}
+                      onChange={(e) => setDriversScheduled(e.target.value)}
                       placeholder="4"
                     />
                   </div>
@@ -609,7 +578,7 @@ export default function AdminPage() {
                     />
                   </div>
                   <div>
-                    <label>Food variance</label>
+                    <label>Food variance %</label>
                     <input
                       type="number"
                       step="0.01"
