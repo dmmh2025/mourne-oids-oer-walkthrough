@@ -15,7 +15,6 @@ export default function HomePage() {
   const [tickerMessages, setTickerMessages] = useState<string[]>([]);
   const [tickerError, setTickerError] = useState<string | null>(null);
 
-  // load ticker messages from Supabase
   useEffect(() => {
     const load = async () => {
       if (!supabase) {
@@ -58,7 +57,7 @@ export default function HomePage() {
         />
       </div>
 
-      {/* News Ticker – force blue */}
+      {/* News Ticker */}
       <div
         className="ticker-wrap"
         aria-label="Mourne-oids latest updates"
@@ -100,28 +99,39 @@ export default function HomePage() {
       {/* Buttons */}
       <section className="container">
         <div className="buttons">
+          {/* Service Dashboard */}
           <a href="/dashboard/service" className="btn btn--brand">
             📊 Service Dashboard
           </a>
 
+          {/* OER Walkthrough */}
           <a href="/walkthrough" className="btn btn--brand">
             🧾 Daily OER Walkthrough
           </a>
 
+          {/* Deep Clean */}
           <a href="/deep-clean" className="btn btn--brand">
             🧽 Autumn Deep Clean Checklist
           </a>
 
+          {/* MemoMailer */}
           <a href="/memomailer" className="btn btn--brand">
             📬 Weekly MemoMailer
           </a>
 
+          {/* Pizza of the Week */}
           <a href="/pizza-of-the-week" className="btn btn--brand">
             🍕 Pizza of the Week
           </a>
 
+          {/* Admin Panel */}
           <a href="/admin" className="btn btn--brand">
             ⚙️ Admin Panel
+          </a>
+
+          {/* NEW: Ticker Admin */}
+          <a href="/admin/ticker" className="btn btn--ghost">
+            📰 Ticker Admin
           </a>
         </div>
       </section>
@@ -140,7 +150,6 @@ export default function HomePage() {
           --muted: #475569;
           --brand: #006491;
           --brand-dark: #004b75;
-          --ticker-bg: #006491;
           --shadow-card: 0 10px 18px rgba(2, 6, 23, 0.08),
             0 1px 3px rgba(2, 6, 23, 0.06);
         }
@@ -175,16 +184,17 @@ export default function HomePage() {
         .ticker-wrap {
           width: 100%;
           overflow: hidden;
-          /* background set inline to force blue */
           border-bottom: 2px solid rgba(0, 0, 0, 0.12);
           white-space: nowrap;
           box-shadow: inset 0 -1px 2px rgba(0, 0, 0, 0.15);
         }
+
         .ticker {
           display: inline-block;
           animation: scroll 30s linear infinite;
-          padding: 10px 0; /* a little taller */
+          padding: 10px 0;
         }
+
         .ticker-item {
           display: inline-block;
           padding: 0 2.2rem;
@@ -192,22 +202,21 @@ export default function HomePage() {
           font-size: 0.9rem;
           color: #fff;
         }
+
         .ticker-item.muted {
           opacity: 0.9;
           color: #fff;
         }
-        .ticker-item.error {
-          background: rgba(0, 0, 0, 0.25);
-          border-radius: 999px;
-          padding: 4px 1.5rem;
-        }
+
         .separator {
           opacity: 0.7;
           padding-left: 0.75rem;
         }
+
         .ticker-wrap:hover .ticker {
           animation-play-state: paused;
         }
+
         @keyframes scroll {
           0% {
             transform: translateX(100%);
@@ -267,6 +276,18 @@ export default function HomePage() {
         .btn:hover {
           background: var(--brand-dark);
           transform: translateY(-1px);
+        }
+
+        .btn--ghost {
+          background: #fff;
+          color: var(--brand);
+          border: 2px solid var(--brand);
+          font-weight: 700;
+        }
+
+        .btn--ghost:hover {
+          background: var(--brand);
+          color: #fff;
         }
 
         .footer {
