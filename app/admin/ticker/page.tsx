@@ -42,12 +42,30 @@ export default function TickerAdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // service upload data
-  const [serviceText, setServiceText] = useState("");
-  const [serviceUploading, setServiceUploading] = useState(false);
-  const [serviceMsg, setServiceMsg] = useState<string | null>(null);
+  // service form data
+  const [svcDate, setSvcDate] = useState<string>("");
+  const [svcDay, setSvcDay] = useState<string>("");
+  const [svcStore, setSvcStore] = useState<string>("Downpatrick");
+  const [forecastSales, setForecastSales] = useState<string>("");
+  const [actualSales, setActualSales] = useState<string>("");
+  const [labourPct, setLabourPct] = useState<string>("");
+  const [additionalHours, setAdditionalHours] = useState<string>("");
+  const [openingManager, setOpeningManager] = useState<string>("");
+  const [closingManager, setClosingManager] = useState<string>("");
+  const [instoresScheduled, setInstoresScheduled] = useState<string>("");
+  const [instoresActual, setInstoresActual] = useState<string>("");
+  const [driversScheduled, setDriversScheduled] = useState<string>("");
+  const [driversActual, setDriversActual] = useState<string>("");
+  const [dot, setDot] = useState<string>("");
+  const [extremes, setExtremes] = useState<string>("");
+  const [sbr, setSbr] = useState<string>("");
+  const [rAndL, setRAndL] = useState<string>("");
+  const [foodVariance, setFoodVariance] = useState<string>("");
 
-  // when authed, load ticker
+  const [serviceMsg, setServiceMsg] = useState<string | null>(null);
+  const [serviceSaving, setServiceSaving] = useState(false);
+
+  // load ticker
   useEffect(() => {
     const load = async () => {
       if (!isAuthed) return;
@@ -69,7 +87,6 @@ export default function TickerAdminPage() {
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // if no password set in env, allow
     if (!ADMIN_PASSWORD) {
       setIsAuthed(true);
       return;
@@ -96,7 +113,7 @@ export default function TickerAdminPage() {
           active: newActive,
         },
       ])
-      .select(); // return array
+      .select();
 
     if (error) {
       setError(error.message);
@@ -108,14 +125,14 @@ export default function TickerAdminPage() {
     setSaving(false);
   };
 
-  // FIXED: don't use .single()
+  // fixed toggle
   const toggleActive = async (row: TickerRow) => {
     if (!supabase) return;
     const { data, error } = await supabase
       .from("news_ticker")
       .update({ active: !row.active })
       .eq("id", row.id)
-      .select(); // returns array
+      .select();
 
     if (error) {
       setError(error.message);
@@ -128,108 +145,75 @@ export default function TickerAdminPage() {
     }
   };
 
-  // -------------- SERVICE UPLOAD --------------
-  const handleServiceUpload = async () => {
-    if (!supabase) return;
-    if (!serviceText.trim()) {
-      setServiceMsg("Nothing to upload.");
-      return;
+  // detect day from date
+  const handleDateChange = (val: string) => {
+    setSvcDate(val);
+    if (val) {
+      const d = new Date(val);
+      if (!isNaN(d.getTime())) {
+        const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        setSvcDay(days[d.getDay()]);
+      }
     }
+  };
 
-    setServiceUploading(true);
+  const handleServiceSubmit = async () => {
+    if (!supabase) return;
     setServiceMsg(null);
 
-    // each line = 1 row
-    const lines = serviceText
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
-
-    // expected CSV order:
-    // date,day,store,forecast_sales,actual_sales,labour_pct,additional_hours,opening_manager,closing_manager,instores_scheduled,instores_actual,drivers_scheduled,drivers_actual,dot,extremes,sbr,r_and_l,food_variance
-    const toInsert: any[] = [];
-    const skipped: string[] = [];
-
-    for (const line of lines) {
-      const parts = line.split(",").map((p) => p.trim());
-      if (parts.length < 3) {
-        skipped.push(line);
-        continue;
-      }
-
-      const [
-        date,
-        day,
-        store,
-        forecast_sales,
-        actual_sales,
-        labour_pct,
-        additional_hours,
-        opening_manager,
-        closing_manager,
-        instores_scheduled,
-        instores_actual,
-        drivers_scheduled,
-        drivers_actual,
-        dot,
-        extremes,
-        sbr,
-        r_and_l,
-        food_variance,
-      ] = parts;
-
-      if (!date || !store) {
-        skipped.push(line);
-        continue;
-      }
-
-      toInsert.push({
-        date: date,
-        day: day || null,
-        store: store || null,
-        forecast_sales: forecast_sales ? Number(forecast_sales) : null,
-        actual_sales: actual_sales ? Number(actual_sales) : null,
-        labour_pct: labour_pct ? Number(labour_pct) : null,
-        additional_hours: additional_hours ? Number(additional_hours) : null,
-        opening_manager: opening_manager || null,
-        closing_manager: closing_manager || null,
-        instores_scheduled: instores_scheduled
-          ? Number(instores_scheduled)
-          : null,
-        instores_actual: instores_actual ? Number(instores_actual) : null,
-        drivers_scheduled: drivers_scheduled
-          ? Number(drivers_scheduled)
-          : null,
-        drivers_actual: drivers_actual ? Number(drivers_actual) : null,
-        dot: dot ? Number(dot) : null,
-        extremes: extremes ? Number(extremes) : null,
-        sbr: sbr ? Number(sbr) : null,
-        r_and_l: r_and_l || null,
-        food_variance: food_variance ? Number(food_variance) : null,
-      });
-    }
-
-    if (toInsert.length === 0) {
-      setServiceMsg(
-        `No valid rows found. Check your column order. Skipped ${skipped.length} lines.`
-      );
-      setServiceUploading(false);
+    if (!svcDate || !svcStore) {
+      setServiceMsg("Please pick a date and store.");
       return;
     }
 
-    // ✅ your actual table name
-    const { error } = await supabase.from("service_shifts").insert(toInsert);
+    setServiceSaving(true);
+
+    const payload = {
+      date: svcDate,
+      day: svcDay || null,
+      store: svcStore,
+      forecast_sales: forecastSales ? Number(forecastSales) : null,
+      actual_sales: actualSales ? Number(actualSales) : null,
+      labour_pct: labourPct ? Number(labourPct) : null,
+      additional_hours: additionalHours ? Number(additionalHours) : null,
+      opening_manager: openingManager || null,
+      closing_manager: closingManager || null,
+      instores_scheduled: instoresScheduled
+        ? Number(instoresScheduled)
+        : null,
+      instores_actual: instoresActual ? Number(instoresActual) : null,
+      drivers_scheduled: driversScheduled ? Number(driversScheduled) : null,
+      drivers_actual: driversActual ? Number(driversActual) : null,
+      dot: dot ? Number(dot) : null,
+      extremes: extremes ? Number(extremes) : null,
+      sbr: sbr ? Number(sbr) : null,
+      r_and_l: rAndL || null,
+      food_variance: foodVariance ? Number(foodVariance) : null,
+    };
+
+    const { error } = await supabase.from("service_shifts").insert([payload]);
 
     if (error) {
       setServiceMsg(`Upload failed: ${error.message}`);
     } else {
-      setServiceMsg(
-        `Uploaded ${toInsert.length} rows. Skipped ${skipped.length}.`
-      );
-      setServiceText("");
+      setServiceMsg("✅ Shift saved.");
+      // optionally clear some fields
+      setForecastSales("");
+      setActualSales("");
+      setLabourPct("");
+      setAdditionalHours("");
+      setInstoresScheduled("");
+      setInstoresActual("");
+      setDriversScheduled("");
+      setDriversActual("");
+      setDot("");
+      setExtremes("");
+      setSbr("");
+      setRAndL("");
+      setFoodVariance("");
     }
 
-    setServiceUploading(false);
+    setServiceSaving(false);
   };
 
   return (
@@ -246,9 +230,7 @@ export default function TickerAdminPage() {
         <>
           <header className="header">
             <h1>Mourne-oids Admin</h1>
-            <p className="subtitle">
-              This page is restricted to Mourne-oids management.
-            </p>
+            <p className="subtitle">This page is restricted to Mourne-oids management.</p>
           </header>
           <section className="card">
             <h2>Enter admin password</h2>
@@ -264,8 +246,7 @@ export default function TickerAdminPage() {
             {authError && <p className="error">⚠️ {authError}</p>}
             {!ADMIN_PASSWORD && (
               <p className="muted">
-                No password set in Vercel env{" "}
-                <code>NEXT_PUBLIC_TICKER_PASSWORD</code> — allowing access.
+                No password set in Vercel env <code>NEXT_PUBLIC_TICKER_PASSWORD</code> — allowing access.
               </p>
             )}
             <a href="/" className="btn btn--ghost">
@@ -388,40 +369,195 @@ export default function TickerAdminPage() {
             </>
           ) : (
             <>
-              {/* SERVICE UPLOAD */}
+              {/* SERVICE UPLOAD FORM */}
               <section className="card">
-                <h2>Upload service dashboard data</h2>
+                <h2>Upload service shift</h2>
                 <p className="muted">
-                  Paste CSV-style lines below. One line = one store/day. Expected
-                  order:
+                  Pick the store and date, then fill in the metrics for that shift. This writes straight to
+                  <code> service_shifts </code>.
                 </p>
-                <pre className="example">
-{`date,day,store,forecast_sales,actual_sales,labour_pct,additional_hours,opening_manager,closing_manager,instores_scheduled,instores_actual,drivers_scheduled,drivers_actual,dot,extremes,sbr,r_and_l,food_variance
 
-2025-10-30,Thu,Downpatrick,2200,2315,24.5,0,Stuart,Hannah,5,5,4,4,78,0,76,8:30,0.12
-2025-10-30,Thu,Kilkeel,2400,2388,26.1,1,Harshil,,4,4,4,4,82,0,75,7:45,0.05
-`}
-                </pre>
-
-                <textarea
-                  value={serviceText}
-                  onChange={(e) => setServiceText(e.target.value)}
-                  rows={10}
-                  placeholder="Paste your rows here..."
-                />
+                <div className="form-2col">
+                  <div>
+                    <label>Date</label>
+                    <input
+                      type="date"
+                      value={svcDate}
+                      onChange={(e) => handleDateChange(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label>Day</label>
+                    <input
+                      type="text"
+                      value={svcDay}
+                      onChange={(e) => setSvcDay(e.target.value)}
+                      placeholder="Mon / Tue / Wed..."
+                    />
+                  </div>
+                  <div>
+                    <label>Store</label>
+                    <select
+                      value={svcStore}
+                      onChange={(e) => setSvcStore(e.target.value)}
+                    >
+                      <option>Downpatrick</option>
+                      <option>Kilkeel</option>
+                      <option>Newcastle</option>
+                      <option>Ballynahinch</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label>Forecast sales (£)</label>
+                    <input
+                      type="number"
+                      value={forecastSales}
+                      onChange={(e) => setForecastSales(e.target.value)}
+                      placeholder="2200"
+                    />
+                  </div>
+                  <div>
+                    <label>Actual sales (£)</label>
+                    <input
+                      type="number"
+                      value={actualSales}
+                      onChange={(e) => setActualSales(e.target.value)}
+                      placeholder="2315"
+                    />
+                  </div>
+                  <div>
+                    <label>Labour %</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={labourPct}
+                      onChange={(e) => setLabourPct(e.target.value)}
+                      placeholder="24.5"
+                    />
+                  </div>
+                  <div>
+                    <label>Additional hours</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={additionalHours}
+                      onChange={(e) => setAdditionalHours(e.target.value)}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label>Opening manager</label>
+                    <input
+                      type="text"
+                      value={openingManager}
+                      onChange={(e) => setOpeningManager(e.target.value)}
+                      placeholder="Stuart"
+                    />
+                  </div>
+                  <div>
+                    <label>Closing manager</label>
+                    <input
+                      type="text"
+                      value={closingManager}
+                      onChange={(e) => setClosingManager(e.target.value)}
+                      placeholder="Hannah"
+                    />
+                  </div>
+                  <div>
+                    <label>Instores – scheduled</label>
+                    <input
+                      type="number"
+                      value={instoresScheduled}
+                      onChange={(e) => setInstoresScheduled(e.target.value)}
+                      placeholder="5"
+                    />
+                  </div>
+                  <div>
+                    <label>Instores – actual</label>
+                    <input
+                      type="number"
+                      value={instoresActual}
+                      onChange={(e) => setInstoresActual(e.target.value)}
+                      placeholder="5"
+                    />
+                  </div>
+                  <div>
+                    <label>Drivers – scheduled</label>
+                    <input
+                      type="number"
+                      value={driversScheduled}
+                      onChange={(e) => setDriversScheduled(e.target.value)}
+                      placeholder="4"
+                    />
+                  </div>
+                  <div>
+                    <label>Drivers – actual</label>
+                    <input
+                      type="number"
+                      value={driversActual}
+                      onChange={(e) => setDriversActual(e.target.value)}
+                      placeholder="4"
+                    />
+                  </div>
+                  <div>
+                    <label>DOT %</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={dot}
+                      onChange={(e) => setDot(e.target.value)}
+                      placeholder="78"
+                    />
+                  </div>
+                  <div>
+                    <label>Extremes</label>
+                    <input
+                      type="number"
+                      value={extremes}
+                      onChange={(e) => setExtremes(e.target.value)}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label>SBR %</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={sbr}
+                      onChange={(e) => setSbr(e.target.value)}
+                      placeholder="76"
+                    />
+                  </div>
+                  <div>
+                    <label>R & L</label>
+                    <input
+                      type="text"
+                      value={rAndL}
+                      onChange={(e) => setRAndL(e.target.value)}
+                      placeholder="8:30"
+                    />
+                  </div>
+                  <div>
+                    <label>Food variance</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={foodVariance}
+                      onChange={(e) => setFoodVariance(e.target.value)}
+                      placeholder="0.12"
+                    />
+                  </div>
+                </div>
 
                 <button
-                  onClick={handleServiceUpload}
-                  disabled={serviceUploading}
+                  onClick={handleServiceSubmit}
+                  disabled={serviceSaving}
                   className="upload-btn"
                 >
-                  {serviceUploading ? "Uploading…" : "Upload rows"}
+                  {serviceSaving ? "Saving…" : "Save shift"}
                 </button>
 
-                {serviceMsg && <p className="muted">{serviceMsg}</p>}
-                <p className="muted">
-                  Inserting into <code>service_shifts</code>.
-                </p>
+                {serviceMsg && <p className="muted" style={{ marginTop: 8 }}>{serviceMsg}</p>}
               </section>
             </>
           )}
@@ -547,11 +683,15 @@ export default function TickerAdminPage() {
           gap: 12px;
           align-items: end;
         }
-        select {
+        select,
+        input[type="text"],
+        input[type="number"],
+        input[type="date"] {
           width: 100%;
           border-radius: 10px;
           border: 1px solid #d4dbe3;
           padding: 6px 8px;
+          font-size: 0.85rem;
         }
         .toggle-row {
           display: flex;
@@ -570,7 +710,7 @@ export default function TickerAdminPage() {
           cursor: pointer;
         }
         .upload-btn {
-          margin-top: 12px;
+          margin-top: 14px;
         }
         .error {
           color: #b91c1c;
@@ -579,7 +719,6 @@ export default function TickerAdminPage() {
         .muted {
           color: #94a3b8;
           font-size: 0.8rem;
-          margin-top: 6px;
         }
         .ticker-list {
           list-style: none;
@@ -624,6 +763,11 @@ export default function TickerAdminPage() {
         .ts {
           font-size: 0.65rem;
           color: #94a3b8;
+        }
+        .form-2col {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 12px;
         }
         .example {
           background: #0f172a;
