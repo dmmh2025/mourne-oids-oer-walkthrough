@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -12,275 +11,53 @@ const supabase =
       )
     : null;
 
-type TickerRow = {
-  id: string;
+type TickerItem = {
   message: string;
-  category: string | null;
   active: boolean;
-  created_at: string;
+  category?: string | null;
 };
 
-const ADMIN_PASSWORD =
-  typeof window !== "undefined"
-    ? process.env.NEXT_PUBLIC_TICKER_PASSWORD || ""
-    : "";
+export default function HomePage() {
+  const [tickerMessages, setTickerMessages] = useState<TickerItem[]>([]);
+  const [tickerError, setTickerError] = useState<string | null>(null);
 
-// turn "05:19" into minutes
-function timeTextToMinutes(val: string): number | null {
-  if (!val) return null;
-  if (!val.includes(":")) {
-    const num = Number(val);
-    return isNaN(num) ? null : num;
-  }
-  const [mm, ss] = val.split(":");
-  const m = Number(mm);
-  const s = Number(ss);
-  if (isNaN(m)) return null;
-  if (isNaN(s)) return m;
-  // you store minutes, so s is ignored
-  return m;
-}
-
-export default function AdminPage() {
-  // gate
-  const [enteredPassword, setEnteredPassword] = useState("");
-  const [isAuthed, setIsAuthed] = useState(false);
-  const [authError, setAuthError] = useState("");
-
-  // 🚨 original had only "ticker" | "service"
-  // we add "memomailer" but keep the default as "ticker"
-  const [activeTab, setActiveTab] = useState<
-    "ticker" | "service" | "memomailer"
-  >("ticker");
-
-  // ticker state
-  const [loading, setLoading] = useState(true);
-  const [rows, setRows] = useState<TickerRow[]>([]);
-  const [newMessage, setNewMessage] = useState("");
-  const [newCategory, setNewCategory] = useState("Announcement");
-  const [newActive, setNewActive] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  // service form state — EXACT column names
-  const [svcDate, setSvcDate] = useState<string>("");
-  const [svcDayName, setSvcDayName] = useState<string>("");
-  const [svcStore, setSvcStore] = useState<string>("Downpatrick");
-  const [forecastSales, setForecastSales] = useState<string>("");
-  const [actualSales, setActualSales] = useState<string>("");
-  const [labourPct, setLabourPct] = useState<string>("");
-  const [additionalHours, setAdditionalHours] = useState<string>("");
-  const [openingManager, setOpeningManager] = useState<string>("");
-  const [closingManager, setClosingManager] = useState<string>("");
-  const [instoresScheduled, setInstoresScheduled] = useState<string>("");
-  const [actualInstores, setActualInstores] = useState<string>("");
-  const [driversScheduled, setDriversScheduled] = useState<string>("");
-  const [actualDrivers, setActualDrivers] = useState<string>("");
-  const [dotPct, setDotPct] = useState<string>("");
-  const [extremesPct, setExtremesPct] = useState<string>("");
-  const [sbrPct, setSbrPct] = useState<string>("");
-  const [rnlText, setRnlText] = useState<string>("");
-  const [foodVariance, setFoodVariance] = useState<string>("");
-
-  const [serviceMsg, setServiceMsg] = useState<string | null>(null);
-  const [serviceSaving, setServiceSaving] = useState(false);
-
-  // ✅ NEW: memomailer state (only this)
-  const [memoFile, setMemoFile] = useState<File | null>(null);
-  const [memoMsg, setMemoMsg] = useState<string | null>(null);
-  const [memoSaving, setMemoSaving] = useState(false);
-
-  // load ticker rows when authed
   useEffect(() => {
     const load = async () => {
-      if (!isAuthed) return;
-      if (!supabase) return;
+      if (!supabase) {
+        setTickerError("Supabase client not available");
+        return;
+      }
       const { data, error } = await supabase
         .from("news_ticker")
-        .select("*")
+        .select("message, active, category")
         .order("created_at", { ascending: false });
 
       if (error) {
-        setError(error.message);
-      } else {
-        setRows((data || []) as TickerRow[]);
+        setTickerError(error.message);
+        return;
       }
-      setLoading(false);
+
+      if (!data || data.length === 0) {
+        setTickerMessages([]);
+        return;
+      }
+
+      // prefer active messages, fallback to all
+      const active = data.filter((d: any) => d.active === true);
+      setTickerMessages((active.length > 0 ? active : data) as TickerItem[]);
     };
     load();
-  }, [isAuthed]);
+  }, []);
 
-  const handlePasswordSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!ADMIN_PASSWORD) {
-      setIsAuthed(true);
-      return;
-    }
-    if (enteredPassword === ADMIN_PASSWORD) {
-      setIsAuthed(true);
-      setAuthError("");
-    } else {
-      setAuthError("Incorrect password");
-    }
-  };
-
-  // TICKER: add
-  const handleAdd = async () => {
-    if (!supabase) return;
-    if (!newMessage.trim()) return;
-
-    setSaving(true);
-    const { data, error } = await supabase
-      .from("news_ticker")
-      .insert([
-        {
-          message: newMessage.trim(),
-          category: newCategory,
-          active: newActive,
-        },
-      ])
-      .select(); // ← no .single()
-
-    if (error) {
-      setError(error.message);
-    } else if (data && data.length > 0) {
-      setRows((prev) => [data[0] as TickerRow, ...prev]);
-      setNewMessage("");
-      setNewActive(true);
-    }
-    setSaving(false);
-  };
-
-  // TICKER: toggle
-  const toggleActive = async (row: TickerRow) => {
-    if (!supabase) return;
-    const { data, error } = await supabase
-      .from("news_ticker")
-      .update({ active: !row.active })
-      .eq("id", row.id)
-      .select(); // ← IMPORTANT: no .single()
-
-    if (error) {
-      setError(error.message);
-      return;
-    }
-
-    if (data && data.length > 0) {
-      const updated = data[0] as TickerRow;
-      setRows((prev) => prev.map((r) => (r.id === row.id ? updated : r)));
-    }
-  };
-
-  // SERVICE: when date changes, fill day_name
-  const handleDateChange = (val: string) => {
-    setSvcDate(val);
-    if (val) {
-      const d = new Date(val);
-      if (!isNaN(d.getTime())) {
-        const longNames = [
-          "Sunday",
-          "Monday",
-          "Tuesday",
-          "Wednesday",
-          "Thursday",
-          "Friday",
-          "Saturday",
-        ];
-        setSvcDayName(longNames[d.getDay()]);
-      }
-    }
-  };
-
-  // SERVICE: clear metric fields
-  const resetServiceFields = () => {
-    setForecastSales("");
-    setActualSales("");
-    setLabourPct("");
-    setAdditionalHours("");
-    setOpeningManager("");
-    setClosingManager("");
-    setInstoresScheduled("");
-    setActualInstores("");
-    setDriversScheduled("");
-    setActualDrivers("");
-    setDotPct("");
-    setExtremesPct("");
-    setSbrPct("");
-    setRnlText("");
-    setFoodVariance("");
-  };
-
-  // SERVICE: submit — uses YOUR real column names
-  const handleServiceSubmit = async () => {
-    if (!supabase) return;
-    setServiceMsg(null);
-
-    if (!svcDate || !svcStore) {
-      setServiceMsg("Please pick a date and store.");
-      return;
-    }
-
-    setServiceSaving(true);
-
-    const rnlMinutes = timeTextToMinutes(rnlText);
-
-    const payload = {
-      shift_date: svcDate,
-      day_name: svcDayName || null,
-      store: svcStore,
-      forecast_sales: forecastSales ? Number(forecastSales) : null,
-      actual_sales: actualSales ? Number(actualSales) : null,
-      labour_pct: labourPct ? Number(labourPct) : null,
-      additional_hours: additionalHours ? Number(additionalHours) : null,
-      opening_manager: openingManager || null,
-      closing_manager: closingManager || null,
-      instores_scheduled: instoresScheduled ? Number(instoresScheduled) : null,
-      actual_instores: actualInstores ? Number(actualInstores) : null,
-      drivers_scheduled: driversScheduled ? Number(driversScheduled) : null,
-      actual_drivers: actualDrivers ? Number(actualDrivers) : null,
-      dot_pct: dotPct ? Number(dotPct) : null,
-      extremes_pct: extremesPct ? Number(extremesPct) : null,
-      sbr_pct: sbrPct ? Number(sbrPct) : null,
-      rnl_minutes: rnlMinutes,
-      food_variance_pct: foodVariance ? Number(foodVariance) : null,
-      source_file: null,
-    };
-
-    const { error } = await supabase.from("service_shifts").insert([payload]);
-
-    if (error) {
-      setServiceMsg(`Upload failed: ${error.message}`);
-      setServiceSaving(false);
-      return;
-    }
-
-    setServiceMsg("✅ Shift saved to service_shifts.");
-    resetServiceFields();
-    setServiceSaving(false);
-  };
-
-  // ✅ MEMOMAILER: upload to storage
-  const handleMemoUpload = async () => {
-    if (!supabase) return;
-    if (!memoFile) {
-      setMemoMsg("Please choose a PDF first.");
-      return;
-    }
-    setMemoSaving(true);
-    const { error } = await supabase.storage
-      .from("memomailer")
-      .upload("memomailer-latest.pdf", memoFile, {
-        upsert: true,
-        cacheControl: "0",
-        contentType: "application/pdf",
-      });
-
-    if (error) {
-      setMemoMsg("❌ Upload failed: " + error.message);
-    } else {
-      setMemoMsg("✅ MemoMailer updated.");
-    }
-    setMemoSaving(false);
+  // category → colour bar
+  const getCategoryColor = (cat?: string | null) => {
+    const c = (cat || "").toLowerCase();
+    if (c === "service push") return "#E31837"; // red
+    if (c === "celebration") return "#16A34A"; // green
+    if (c === "ops") return "#F59E0B"; // amber
+    if (c === "warning") return "#7C3AED"; // purple
+    // default / announcement
+    return "#ffffff";
   };
 
   return (
@@ -293,659 +70,326 @@ export default function AdminPage() {
         />
       </div>
 
-      {!isAuthed ? (
-        <>
-          <header className="header">
-            <h1>Mourne-oids Admin</h1>
-            <p className="subtitle">
-              This page is restricted to Mourne-oids management.
-            </p>
-          </header>
-          <section className="card">
-            <h2>Enter admin password</h2>
-            <form onSubmit={handlePasswordSubmit} className="pw-form">
-              <input
-                type="password"
-                value={enteredPassword}
-                onChange={(e) => setEnteredPassword(e.target.value)}
-                placeholder="Enter password"
-              />
-              <button type="submit">Unlock</button>
-            </form>
-            {authError && <p className="error">⚠️ {authError}</p>}
-            {!ADMIN_PASSWORD && (
-              <p className="muted">
-                No password set in Vercel env{" "}
-                <code>NEXT_PUBLIC_TICKER_PASSWORD</code> — allowing access.
-              </p>
-            )}
-            <a href="/" className="btn btn--ghost">
-              ← Back to Hub
-            </a>
-          </section>
-        </>
-      ) : (
-        <>
-          {/* Header */}
-          <header className="header">
-            <h1>Mourne-oids Admin</h1>
-            <p className="subtitle">
-              Ticker · Service dashboard uploads · future admin
-            </p>
-            <div className="actions">
-              <a href="/" className="btn btn--ghost">
-                ← Back to Hub
-              </a>
-            </div>
-          </header>
-
-          {/* Tabs */}
-          <div className="tabs">
-            <button
-              className={activeTab === "ticker" ? "tab active" : "tab"}
-              onClick={() => setActiveTab("ticker")}
-            >
-              📰 Ticker
-            </button>
-            <button
-              className={activeTab === "service" ? "tab active" : "tab"}
-              onClick={() => setActiveTab("service")}
-            >
-              📊 Service Data Upload
-            </button>
-            {/* ✅ NEW TAB */}
-            <button
-              className={activeTab === "memomailer" ? "tab active" : "tab"}
-              onClick={() => setActiveTab("memomailer")}
-            >
-              📬 MemoMailer Upload
-            </button>
-          </div>
-
-          {activeTab === "ticker" ? (
-            <>
-              {/* Add ticker */}
-              <section className="card">
-                <h2>Add ticker message</h2>
-                <div className="form-row">
-                  <label>Message</label>
-                  <textarea
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    rows={2}
-                    placeholder="e.g. Congratulations Kilkeel on 4⭐ OER!"
+      {/* News Ticker */}
+      <div className="ticker-shell" aria-label="Mourne-oids latest updates">
+        <div className="ticker-inner">
+          <div className="ticker">
+            {tickerError ? (
+              <span className="ticker-item error">
+                <span className="cat-pill" style={{ background: "#ffffff" }} />
+                ⚠️ Ticker error: {tickerError}
+              </span>
+            ) : tickerMessages.length === 0 ? (
+              <span className="ticker-item muted">
+                <span className="cat-pill" style={{ background: "#ffffff" }} />
+                📰 No news items found in Supabase (table:{" "}
+                <code>news_ticker</code>)
+              </span>
+            ) : (
+              tickerMessages.map((item, i) => (
+                <span key={i} className="ticker-item">
+                  <span
+                    className="cat-pill"
+                    style={{ background: getCategoryColor(item.category) }}
+                    title={item.category || "Announcement"}
                   />
-                </div>
+                  {item.message}
+                  {i < tickerMessages.length - 1 && (
+                    <span className="separator">•</span>
+                  )}
+                </span>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
 
-                <div className="form-grid">
-                  <div>
-                    <label>Category</label>
-                    <select
-                      value={newCategory}
-                      onChange={(e) => setNewCategory(e.target.value)}
-                    >
-                      <option value="Announcement">Announcement</option>
-                      <option value="Service Push">Service Push</option>
-                      <option value="Ops">Ops</option>
-                      <option value="Celebration">Celebration</option>
-                      <option value="Warning">Warning</option>
-                    </select>
-                  </div>
-                  <div className="toggle-row">
-                    <label>Active</label>
-                    <input
-                      type="checkbox"
-                      checked={newActive}
-                      onChange={(e) => setNewActive(e.target.checked)}
-                    />
-                  </div>
-                  <div className="btn-cell">
-                    <button
-                      onClick={handleAdd}
-                      disabled={saving || !newMessage.trim()}
-                    >
-                      {saving ? "Saving…" : "Add message"}
-                    </button>
-                  </div>
-                </div>
+      {/* Page content */}
+      <div className="shell">
+        {/* Title */}
+        <header className="header">
+          <h1>Mourne-oids Hub</h1>
+          <p className="subtitle">
+            Daily OER Walkthrough · Autumn Deep Clean · Weekly MemoMailer
+          </p>
+        </header>
 
-                {error && <p className="error">⚠️ {error}</p>}
-              </section>
+        {/* Buttons */}
+        <section className="grid">
+          <a href="/dashboard/service" className="card-link">
+            <div className="card-link__icon">📊</div>
+            <div className="card-link__body">
+              <h2>Service Dashboard</h2>
+              <p>Live snapshots, sales, service metrics.</p>
+            </div>
+            <div className="card-link__chevron">›</div>
+          </a>
 
-              {/* List */}
-              <section className="card">
-                <h2>Current messages</h2>
-                {loading ? (
-                  <p>Loading…</p>
-                ) : rows.length === 0 ? (
-                  <p className="muted">No messages yet.</p>
-                ) : (
-                  <ul className="ticker-list">
-                    {rows.map((row) => (
-                      <li
-                        key={row.id}
-                        className={row.active ? "active" : "inactive"}
-                      >
-                        <div className="row-top">
-                          <span className="category">
-                            {row.category || "General"}
-                          </span>
-                          <button onClick={() => toggleActive(row)}>
-                            {row.active ? "Deactivate" : "Activate"}
-                          </button>
-                        </div>
-                        <p className="msg">{row.message}</p>
-                        <p className="ts">
-                          {new Date(row.created_at).toLocaleString("en-GB")}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            </>
-          ) : activeTab === "service" ? (
-            <>
-              {/* SERVICE FORM */}
-              <section className="card">
-                <h2>Upload service shift</h2>
-                <p className="muted">
-                  Writes directly into <code>service_shifts</code> using your
-                  column names.
-                </p>
+          <a href="/walkthrough" className="card-link">
+            <div className="card-link__icon">🧾</div>
+            <div className="card-link__body">
+              <h2>Daily OER Walkthrough</h2>
+              <p>Store readiness + photos + automatic summary.</p>
+            </div>
+            <div className="card-link__chevron">›</div>
+          </a>
 
-                <div className="form-2col">
-                  <div>
-                    <label>Date</label>
-                    <input
-                      type="date"
-                      value={svcDate}
-                      onChange={(e) => handleDateChange(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label>Day name</label>
-                    <input
-                      type="text"
-                      value={svcDayName}
-                      onChange={(e) => setSvcDayName(e.target.value)}
-                      placeholder="Wednesday"
-                    />
-                  </div>
-                  <div>
-                    <label>Store</label>
-                    <select
-                      value={svcStore}
-                      onChange={(e) => setSvcStore(e.target.value)}
-                    >
-                      <option>Downpatrick</option>
-                      <option>Kilkeel</option>
-                      <option>Newcastle</option>
-                      <option>Ballynahinch</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label>Forecast sales (£)</label>
-                    <input
-                      type="number"
-                      value={forecastSales}
-                      onChange={(e) => setForecastSales(e.target.value)}
-                      placeholder="2200"
-                    />
-                  </div>
-                  <div>
-                    <label>Actual sales (£)</label>
-                    <input
-                      type="number"
-                      value={actualSales}
-                      onChange={(e) => setActualSales(e.target.value)}
-                      placeholder="2315"
-                    />
-                  </div>
-                  <div>
-                    <label>Labour %</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={labourPct}
-                      onChange={(e) => setLabourPct(e.target.value)}
-                      placeholder="24.5"
-                    />
-                  </div>
-                  <div>
-                    <label>Additional hours</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={additionalHours}
-                      onChange={(e) => setAdditionalHours(e.target.value)}
-                      placeholder="0"
-                    />
-                  </div>
-                  <div>
-                    <label>Opening manager</label>
-                    <input
-                      type="text"
-                      value={openingManager}
-                      onChange={(e) => setOpeningManager(e.target.value)}
-                      placeholder="Stuart"
-                    />
-                  </div>
-                  <div>
-                    <label>Closing manager</label>
-                    <input
-                      type="text"
-                      value={closingManager}
-                      onChange={(e) => setClosingManager(e.target.value)}
-                      placeholder="Hannah"
-                    />
-                  </div>
-                  <div>
-                    <label>Instores – scheduled</label>
-                    <input
-                      type="number"
-                      value={instoresScheduled}
-                      onChange={(e) => setInstoresScheduled(e.target.value)}
-                      placeholder="5"
-                    />
-                  </div>
-                  <div>
-                    <label>Instores – actual</label>
-                    <input
-                      type="number"
-                      value={actualInstores}
-                      onChange={(e) => setActualInstores(e.target.value)}
-                      placeholder="5"
-                    />
-                  </div>
-                  <div>
-                    <label>Drivers – scheduled</label>
-                    <input
-                      type="number"
-                      value={driversScheduled}
-                      onChange={(e) => setDriversScheduled(e.target.value)}
-                      placeholder="4"
-                    />
-                  </div>
-                  <div>
-                    <label>Drivers – actual</label>
-                    <input
-                      type="number"
-                      value={actualDrivers}
-                      onChange={(e) => setActualDrivers(e.target.value)}
-                      placeholder="4"
-                    />
-                  </div>
-                  <div>
-                    <label>DOT %</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={dotPct}
-                      onChange={(e) => setDotPct(e.target.value)}
-                      placeholder="78"
-                    />
-                  </div>
-                  <div>
-                    <label>Extremes %</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={extremesPct}
-                      onChange={(e) => setExtremesPct(e.target.value)}
-                      placeholder="0"
-                    />
-                  </div>
-                  <div>
-                    <label>SBR %</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={sbrPct}
-                      onChange={(e) => setSbrPct(e.target.value)}
-                      placeholder="76"
-                    />
-                  </div>
-                  <div>
-                    <label>R & L (mm:ss)</label>
-                    <input
-                      type="text"
-                      value={rnlText}
-                      onChange={(e) => setRnlText(e.target.value)}
-                      placeholder="05:19"
-                    />
-                  </div>
-                  <div>
-                    <label>Food variance %</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={foodVariance}
-                      onChange={(e) => setFoodVariance(e.target.value)}
-                      placeholder="0.12"
-                    />
-                  </div>
-                </div>
+          <a href="/admin" className="card-link">
+            <div className="card-link__icon">📈</div>
+            <div className="card-link__body">
+              <h2>OER Results</h2>
+              <p>Review store performance and submissions.</p>
+            </div>
+            <div className="card-link__chevron">›</div>
+          </a>
 
-                <button
-                  onClick={handleServiceSubmit}
-                  disabled={serviceSaving}
-                  className="upload-btn"
-                >
-                  {serviceSaving ? "Saving…" : "Save shift"}
-                </button>
+          <a href="/deep-clean" className="card-link">
+            <div className="card-link__icon">🧽</div>
+            <div className="card-link__body">
+              <h2>Autumn Deep Clean</h2>
+              <p>Track progress across all stores.</p>
+            </div>
+            <div className="card-link__chevron">›</div>
+          </a>
 
-                {serviceMsg && (
-                  <p className="muted" style={{ marginTop: 8 }}>
-                    {serviceMsg}
-                  </p>
-                )}
-              </section>
-            </>
-          ) : (
-            // ✅ NEW MEMOMAILER SECTION
-            <section className="card">
-              <h2>Upload MemoMailer PDF</h2>
-              <p className="muted">
-                This will overwrite <code>memomailer-latest.pdf</code> in the
-                <code> memomailer </code> bucket.
-              </p>
-              <input
-                type="file"
-                accept="application/pdf"
-                onChange={(e) => setMemoFile(e.target.files?.[0] || null)}
-                style={{ marginTop: 12 }}
-              />
-              <button
-                onClick={handleMemoUpload}
-                disabled={memoSaving}
-                className="upload-btn"
-              >
-                {memoSaving ? "Uploading…" : "Upload PDF"}
-              </button>
-              {memoMsg && (
-                <p className="muted" style={{ marginTop: 8 }}>
-                  {memoMsg}
-                </p>
-              )}
-            </section>
-          )}
-        </>
-      )}
+          <a href="/memomailer" className="card-link">
+            <div className="card-link__icon">📬</div>
+            <div className="card-link__body">
+              <h2>Weekly MemoMailer</h2>
+              <p>Latest PDF loaded from Supabase.</p>
+            </div>
+            <div className="card-link__chevron">›</div>
+          </a>
 
+          <a href="/pizza-of-the-week" className="card-link">
+            <div className="card-link__icon">🍕</div>
+            <div className="card-link__body">
+              <h2>Pizza of the Week</h2>
+              <p>Current promo assets for team briefings.</p>
+            </div>
+            <div className="card-link__chevron">›</div>
+          </a>
+
+          <a href="/admin/ticker" className="card-link">
+            <div className="card-link__icon">⚙️</div>
+            <div className="card-link__body">
+              <h2>Admin</h2>
+              <p>Manage ticker, service uploads, memomailer.</p>
+            </div>
+            <div className="card-link__chevron">›</div>
+          </a>
+        </section>
+      </div>
+
+      {/* Footer */}
       <footer className="footer">
         <p>© 2025 Mourne-oids | Domino’s Pizza | Racz Group</p>
       </footer>
 
       <style jsx>{`
+        :root {
+          --bg: #0f172a;
+          --paper: rgba(255, 255, 255, 0.08);
+          --paper-solid: #ffffff;
+          --text: #0f172a;
+          --muted: #475569;
+          --brand: #006491;
+          --brand-dark: #004b75;
+          --radius-lg: 1.4rem;
+          --shadow-card: 0 16px 40px rgba(0, 0, 0, 0.05);
+        }
+
         .wrap {
-          background: #f2f5f9;
-          min-height: 100vh;
+          min-height: 100dvh;
+          background:
+            radial-gradient(circle at top, rgba(0, 100, 145, 0.08), transparent 45%),
+            linear-gradient(180deg, #e3edf4 0%, #f2f5f9 30%, #f2f5f9 100%);
           display: flex;
           flex-direction: column;
           align-items: center;
+          color: var(--text);
           padding-bottom: 40px;
         }
+
         .banner {
-          width: 100%;
-          background: #fff;
-          border-bottom: 3px solid #006491;
           display: flex;
           justify-content: center;
-          box-shadow: 0 10px 18px rgba(2, 6, 23, 0.08);
+          align-items: center;
+          background: #fff;
+          border-bottom: 3px solid var(--brand);
+          box-shadow: 0 12px 35px rgba(2, 6, 23, 0.08);
+          width: 100%;
         }
+
         .banner img {
-          max-width: 92%;
+          max-width: min(1160px, 92%);
+          height: auto;
+          display: block;
         }
+
+        .ticker-shell {
+          width: min(1100px, 94vw);
+          margin-top: 16px;
+          background: linear-gradient(90deg, #006491 0%, #004b75 100%);
+          border-radius: 9999px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          overflow: hidden;
+          box-shadow: 0 15px 30px rgba(0, 0, 0, 0.06);
+        }
+
+        .ticker-inner {
+          white-space: nowrap;
+          overflow: hidden;
+        }
+
+        .ticker {
+          display: inline-block;
+          animation: scroll 30s linear infinite;
+          padding: 9px 0;
+        }
+
+        .ticker-shell:hover .ticker {
+          animation-play-state: paused;
+        }
+
+        .ticker-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.6rem;
+          padding: 0 1.8rem;
+          font-weight: 700;
+          font-size: 0.9rem;
+          color: #fff;
+        }
+
+        .ticker-item.error {
+          color: #fee2e2;
+        }
+
+        .cat-pill {
+          width: 12px;
+          height: 20px;
+          border-radius: 8px;
+          box-shadow: 0 0 10px rgba(0, 0, 0, 0.25);
+        }
+
+        .separator {
+          opacity: 0.45;
+        }
+
+        @keyframes scroll {
+          0% {
+            transform: translateX(100%);
+          }
+          100% {
+            transform: translateX(-100%);
+          }
+        }
+
+        .shell {
+          width: min(1100px, 94vw);
+          margin-top: 26px;
+          background: rgba(255, 255, 255, 0.55);
+          backdrop-filter: saturate(160%) blur(6px);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 1.5rem;
+          box-shadow: var(--shadow-card);
+          padding: 30px 26px 34px;
+        }
+
         .header {
           text-align: center;
-          margin: 24px 16px 8px;
+          margin-bottom: 20px;
         }
+
         .header h1 {
-          font-size: 26px;
+          font-size: clamp(2.1rem, 3vw, 2.4rem);
           font-weight: 900;
+          letter-spacing: -0.015em;
         }
+
         .subtitle {
-          color: #475569;
+          color: #64748b;
+          font-size: 0.95rem;
+          margin-top: 6px;
         }
-        .actions {
-          margin-top: 8px;
+
+        .grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 16px;
         }
-        .btn.btn--ghost {
-          display: inline-block;
-          background: #fff;
-          border: 2px solid #006491;
-          color: #006491;
-          padding: 4px 14px;
-          border-radius: 12px;
-          font-weight: 600;
+
+        .card-link {
+          display: flex;
+          gap: 14px;
+          align-items: center;
+          background: #ffffff;
+          border-radius: 1.25rem;
           text-decoration: none;
+          padding: 14px 16px 14px 14px;
+          border: 1px solid rgba(0, 100, 145, 0.12);
+          box-shadow: 0 10px 25px rgba(15, 23, 42, 0.03);
+          transition: transform 0.12s ease-out, box-shadow 0.12s ease-out,
+            border 0.12s ease-out;
         }
-        .tabs {
-          display: flex;
-          gap: 8px;
-          margin-top: 10px;
+
+        .card-link__icon {
+          width: 46px;
+          height: 46px;
+          border-radius: 1.2rem;
+          background: radial-gradient(circle, #006491 0%, #1f2937 100%);
+          display: grid;
+          place-items: center;
+          font-size: 1.6rem;
+          color: #fff;
+          flex: 0 0 46px;
         }
-        .tab {
-          background: #e2e8f0;
-          border: none;
-          border-radius: 999px;
-          padding: 6px 16px;
-          font-weight: 600;
+
+        .card-link__body h2 {
+          font-size: 1rem;
+          font-weight: 700;
           color: #0f172a;
-          cursor: pointer;
         }
-        .tab.active {
-          background: #006491;
-          color: #fff;
+
+        .card-link__body p {
+          font-size: 0.78rem;
+          color: #6b7280;
+          margin-top: 2px;
         }
-        .card {
-          background: #fff;
-          width: min(900px, 94vw);
-          margin-top: 18px;
-          border-radius: 14px;
-          box-shadow: 0 10px 18px rgba(2, 6, 23, 0.04);
-          padding: 16px 18px 20px;
+
+        .card-link__chevron {
+          margin-left: auto;
+          font-size: 1.6rem;
+          line-height: 1;
+          color: rgba(15, 23, 42, 0.38);
         }
-        .card h2 {
-          font-size: 18px;
-          margin-bottom: 12px;
+
+        .card-link:hover {
+          transform: translateY(-2px);
+          border: 1px solid rgba(0, 100, 145, 0.28);
+          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.04);
         }
-        .pw-form {
-          display: flex;
-          gap: 10px;
-          margin-bottom: 14px;
-        }
-        .pw-form input {
-          flex: 1;
-          border: 1px solid #d4dbe3;
-          border-radius: 10px;
-          padding: 7px 10px;
-        }
-        .pw-form button {
-          background: #006491;
-          color: #fff;
-          border: none;
-          border-radius: 10px;
-          padding: 7px 14px;
-          font-weight: 600;
-          cursor: pointer;
-        }
-        label {
-          display: block;
-          font-weight: 600;
-          margin-bottom: 4px;
-        }
-        textarea {
-          width: 100%;
-          border-radius: 10px;
-          border: 1px solid #d4dbe3;
-          padding: 8px;
-          font-size: 0.9rem;
-        }
-        select,
-        input[type="text"],
-        input[type="number"],
-        input[type="date"] {
-          width: 100%;
-          border-radius: 10px;
-          border: 1px solid #d4dbe3;
-          padding: 6px 8px;
-          font-size: 0.85rem;
-        }
-        .form-grid {
-          display: grid;
-          grid-template-columns: 1.1fr 0.6fr 0.5fr;
-          gap: 12px;
-          align-items: end;
-        }
-        .toggle-row {
-          display: flex;
-          gap: 8px;
-          align-items: center;
-        }
-        .btn-cell button,
-        .upload-btn {
-          width: 100%;
-          background: #006491;
-          color: #fff;
-          border: none;
-          border-radius: 10px;
-          padding: 8px 0;
-          font-weight: 700;
-          cursor: pointer;
-        }
-        .upload-btn {
-          margin-top: 14px;
-        }
-        .muted {
-          color: #94a3b8;
-          font-size: 0.8rem;
-        }
-        .error {
-          color: #b91c1c;
-          margin-top: 12px;
-        }
-        .ticker-list {
-          list-style: none;
-          padding: 0;
-          margin: 0;
-          display: grid;
-          gap: 10px;
-        }
-        .ticker-list li {
-          border: 1px solid #e2e8f0;
-          border-radius: 10px;
-          padding: 10px 12px;
-          background: #f8fafc;
-        }
-        .ticker-list li.active {
-          border-color: #006491;
-        }
-        .row-top {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        .row-top button {
-          background: transparent;
-          border: 1px solid #006491;
-          color: #006491;
-          border-radius: 999px;
-          padding: 3px 10px;
-          font-size: 0.7rem;
-          cursor: pointer;
-        }
-        .category {
-          font-size: 0.7rem;
-          font-weight: 700;
-          text-transform: uppercase;
-          color: #006491;
-        }
-        .msg {
-          margin: 6px 0 4px;
-          font-weight: 600;
-        }
-        .ts {
-          font-size: 0.65rem;
-          color: #94a3b8;
-        }
-        .form-2col {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-          gap: 12px;
-        }
+
         .footer {
+          text-align: center;
           margin-top: 24px;
           color: #94a3b8;
           font-size: 0.8rem;
         }
+
         @media (max-width: 720px) {
-          .pw-form {
-            flex-direction: column;
-            align-items: stretch;
+          .shell {
+            padding: 24px 16px 28px;
           }
-          .pw-form button {
-            width: 100%;
+          .card-link {
+            border-radius: 1rem;
           }
-          .tabs {
-            flex-wrap: wrap;
+          .ticker-shell {
+            border-radius: 1.2rem;
           }
         }
       `}</style>
-       </main>
-
-    <style jsx>{`
-      .wrap {
-        background:
-          radial-gradient(circle at top, rgba(0, 100, 145, 0.12), transparent 42%),
-          #f2f5f9;
-      }
-      .container {
-        max-width: 1100px;
-        margin-top: 28px;
-        padding: 0 1rem;
-      }
-      .buttons {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-        gap: 16px;
-      }
-      .header {
-        margin-bottom: 0;
-      }
-      .ticker-wrap {
-        border-bottom: none;
-        border-radius: 0 0 16px 16px;
-        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.05);
-      }
-      .btn {
-        border-radius: 16px;
-        box-shadow: 0 12px 26px rgba(0, 64, 94, 0.12);
-        transition: background 0.15s ease, transform 0.15s ease,
-          box-shadow 0.15s ease;
-      }
-      .btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 16px 30px rgba(0, 64, 94, 0.12);
-      }
-      .btn.btn--ghost {
-        background: #ffffff;
-        color: #006491;
-        border: 1px solid rgba(0, 100, 145, 0.2);
-      }
-      .footer {
-        margin-top: 54px;
-        border-top: 1px solid rgba(15, 23, 42, 0.04);
-        width: 100%;
-        text-align: center;
-        padding-top: 16px;
-      }
-      @media (max-width: 600px) {
-        .buttons {
-          grid-template-columns: 1fr;
-        }
-      }
-    `}</style>
+    </main>
   );
 }
