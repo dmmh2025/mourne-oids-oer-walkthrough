@@ -1,8 +1,37 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+// create supabase client (same as other pages)
+const supabase =
+  typeof window !== "undefined"
+    ? createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
+    : null;
 
 export default function HomePage() {
+  const [tickerMessages, setTickerMessages] = useState<string[]>([]);
+
+  // load ticker messages
+  useEffect(() => {
+    const load = async () => {
+      if (!supabase) return;
+      const { data, error } = await supabase
+        .from("news_ticker")
+        .select("message")
+        .eq("active", true)
+        .order("created_at", { ascending: false });
+
+      if (!error && data) {
+        setTickerMessages(data.map((d) => d.message));
+      }
+    };
+    load();
+  }, []);
+
   return (
     <main className="wrap">
       {/* Banner */}
@@ -12,6 +41,19 @@ export default function HomePage() {
           alt="Mourne-oids Header Banner"
         />
       </div>
+
+      {/* News Ticker (only shows if there is data) */}
+      {tickerMessages.length > 0 && (
+        <div className="ticker-wrap" aria-label="Mourne-oids latest updates">
+          <div className="ticker">
+            {tickerMessages.map((m, i) => (
+              <span key={i} className="ticker-item">
+                {m}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Title */}
       <header className="header">
@@ -95,6 +137,36 @@ export default function HomePage() {
           display: block;
         }
 
+        /* NEW: Ticker */
+        .ticker-wrap {
+          width: 100%;
+          overflow: hidden;
+          background: var(--brand);
+          color: #fff;
+          border-bottom: 2px solid var(--brand-dark);
+          box-shadow: inset 0 -1px 2px rgba(0, 0, 0, 0.12);
+          white-space: nowrap;
+        }
+        .ticker {
+          display: inline-block;
+          animation: scroll 25s linear infinite;
+          padding: 6px 0;
+        }
+        .ticker-item {
+          display: inline-block;
+          padding: 0 2.4rem;
+          font-weight: 600;
+          font-size: 0.9rem;
+        }
+        @keyframes scroll {
+          0% {
+            transform: translateX(100%);
+          }
+          100% {
+            transform: translateX(-100%);
+          }
+        }
+
         .header {
           text-align: center;
           margin: 24px 16px 8px;
@@ -152,6 +224,15 @@ export default function HomePage() {
           margin-top: 40px;
           color: var(--muted);
           font-size: 13px;
+        }
+
+        @media (max-width: 500px) {
+          .ticker {
+            animation-duration: 35s;
+          }
+          .ticker-item {
+            padding: 0 1.4rem;
+          }
         }
       `}</style>
     </main>
