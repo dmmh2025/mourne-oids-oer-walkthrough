@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-// Supabase client from env
+// same public client as the test page
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -62,7 +62,7 @@ export default function ServiceDashboardPage() {
     load();
   }, []);
 
-  // filter by store
+  // filter
   const filteredRows = useMemo(() => {
     if (selectedStore === "all") return rows;
     return rows.filter((r) => r.store === selectedStore);
@@ -83,16 +83,16 @@ export default function ServiceDashboardPage() {
 
     let totalActual = 0;
     let totalForecast = 0;
-    const labourVals: number[] = [];
-    const dotVals: number[] = [];
-    const rnlVals: number[] = [];
+    const lab: number[] = [];
+    const dot: number[] = [];
+    const rnl: number[] = [];
 
     for (const r of filteredRows) {
       if (r.actual_sales != null) totalActual += r.actual_sales;
       if (r.forecast_sales != null) totalForecast += r.forecast_sales;
-      if (r.labour_pct != null) labourVals.push(r.labour_pct);
-      if (r.dot_pct != null) dotVals.push(r.dot_pct);
-      if (r.rnl_mins != null) rnlVals.push(r.rnl_mins);
+      if (r.labour_pct != null) lab.push(r.labour_pct);
+      if (r.dot_pct != null) dot.push(r.dot_pct);
+      if (r.rnl_mins != null) rnl.push(r.rnl_mins);
     }
 
     const variancePct =
@@ -105,13 +105,13 @@ export default function ServiceDashboardPage() {
       totalActual,
       totalForecast,
       variancePct,
-      avgLabour: avg(labourVals),
-      avgDOT: avg(dotVals),
-      avgRnL: avg(rnlVals),
+      avgLabour: avg(lab),
+      avgDOT: avg(dot),
+      avgRnL: avg(rnl),
     };
   }, [filteredRows]);
 
-  // per store
+  // stores
   const storeData = useMemo(() => {
     const out = STORES.map((storeName) => {
       const sr = filteredRows.filter((r) => r.store === storeName);
@@ -162,7 +162,7 @@ export default function ServiceDashboardPage() {
       };
     });
 
-    // order by DOT desc, then labour asc
+    // sort: your rule
     out.sort((a, b) => {
       if (b.avgDOT !== a.avgDOT) return b.avgDOT - a.avgDOT;
       return a.avgLabour - b.avgLabour;
@@ -223,9 +223,16 @@ export default function ServiceDashboardPage() {
     return arr;
   }, [filteredRows]);
 
+  // handlers
+  const handleBack = () => {
+    if (typeof window !== "undefined") {
+      window.history.back();
+    }
+  };
+
   return (
     <main className="wrap">
-      {/* Banner */}
+      {/* Shared banner (same as other pages) */}
       <div className="banner">
         <img
           src="/mourneoids_forms_header_1600x400.png"
@@ -233,11 +240,21 @@ export default function ServiceDashboardPage() {
         />
       </div>
 
-      {/* Title */}
+      {/* Nav (Back + Home) */}
+      <div className="nav-row">
+        <button onClick={handleBack} className="btn btn--ghost">
+          ← Back
+        </button>
+        <a href="/" className="btn btn--brand">
+          🏠 Home
+        </a>
+      </div>
+
+      {/* Page title */}
       <header className="header">
-        <h1>Service & Staffing Dashboard</h1>
+        <h1>Mourne-oids Service Dashboard</h1>
         <p className="subtitle">
-          Area overview · Store performance · Manager leaderboard
+          Daily service + labour data · pulled from Supabase
         </p>
       </header>
 
@@ -264,13 +281,8 @@ export default function ServiceDashboardPage() {
 
       {/* Content */}
       <section className="container wide">
-        {loading && (
-          <div className="card">Loading Mourne-oids data…</div>
-        )}
-
-        {errorMsg && (
-          <div className="card error">Error: {errorMsg}</div>
-        )}
+        {loading && <div className="card">Loading Mourne-oids data…</div>}
+        {errorMsg && <div className="card error">Error: {errorMsg}</div>}
 
         {!loading && !errorMsg && (
           <>
@@ -320,7 +332,7 @@ export default function ServiceDashboardPage() {
                 <p className="kpi-value">
                   {(kpis.avgLabour * 100).toFixed(1)}%
                 </p>
-                <p className="kpi-sub">Target: 25% (area)</p>
+                <p className="kpi-sub">Target: 25%</p>
               </div>
               <div
                 className={`card kpi ${
@@ -501,9 +513,19 @@ export default function ServiceDashboardPage() {
           display: block;
         }
 
+        .nav-row {
+          width: 100%;
+          max-width: 1100px;
+          display: flex;
+          gap: 10px;
+          justify-content: flex-start;
+          margin-top: 16px;
+          padding: 0 16px;
+        }
+
         .header {
           text-align: center;
-          margin: 24px 16px 16px;
+          margin: 16px 16px 16px;
         }
 
         .header h1 {
@@ -529,7 +551,7 @@ export default function ServiceDashboardPage() {
         .container.wide {
           max-width: 1100px;
           flex-direction: column;
-          gap: 18px;
+          gap: 16px;
         }
 
         .filters {
@@ -549,6 +571,7 @@ export default function ServiceDashboardPage() {
           text-decoration: none;
           border: 2px solid transparent;
           transition: background 0.2s, transform 0.1s;
+          cursor: pointer;
         }
 
         .btn--brand {
@@ -560,7 +583,7 @@ export default function ServiceDashboardPage() {
 
         .btn--ghost {
           background: #fff;
-          border-color: rgba(0, 0, 0, 0.04);
+          border-color: rgba(0, 0, 0, 0.02);
           color: var(--text);
         }
 
@@ -587,7 +610,6 @@ export default function ServiceDashboardPage() {
           display: grid;
           gap: 14px;
           grid-template-columns: repeat(4, minmax(0, 1fr));
-          margin-bottom: 14px;
         }
 
         .kpi {
@@ -626,7 +648,7 @@ export default function ServiceDashboardPage() {
         .section-title {
           font-size: 16px;
           font-weight: 700;
-          margin: 10px 0 8px;
+          margin: 10px 0 6px;
         }
 
         .store-grid {
@@ -751,6 +773,9 @@ export default function ServiceDashboardPage() {
           }
           .filters {
             justify-content: flex-start;
+          }
+          .nav-row {
+            max-width: 94%;
           }
         }
       `}</style>
