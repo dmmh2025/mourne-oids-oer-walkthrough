@@ -39,20 +39,18 @@ export default function ServiceDashboardPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedStore, setSelectedStore] = useState<"all" | string>("all");
 
-  // helper: fix %-that-were-entered-as-whole-numbers
+  // % helpers
   const normalisePct = (v: number | null) => {
     if (v == null) return null;
-    // if user typed 58 instead of 0.58
-    if (v > 1) return v / 100;
-    return v;
+    return v > 1 ? v / 100 : v; // 58 -> 0.58, 0.82 -> 0.82
   };
 
-  // food variance is usually small (like 0.3%), so if someone typed 30, make it 0.3
+  // food variance helper
+  // Damien's style: 0.6 -> 0.6%, not 60%
   const normaliseFoodVar = (v: number | null) => {
     if (v == null) return null;
-    // if someone typed 30 or 12, they probably meant %
-    if (v > 5) return v / 100;
-    return v;
+    if (v <= 1) return v; // already tiny, treat as 0.6%
+    return v / 100; // 30 -> 0.3, 6 -> 0.06
   };
 
   useEffect(() => {
@@ -284,14 +282,12 @@ export default function ServiceDashboardPage() {
   }, [filteredRows]);
 
   const handleBack = () => {
-    if (typeof window !== "undefined") {
-      window.history.back();
-    }
+    if (typeof window !== "undefined") window.history.back();
   };
 
   return (
     <main className="wrap">
-      {/* shared banner */}
+      {/* banner - same as other pages */}
       <div className="banner">
         <img
           src="/mourneoids_forms_header_1600x400.png"
@@ -299,7 +295,7 @@ export default function ServiceDashboardPage() {
         />
       </div>
 
-      {/* nav row */}
+      {/* nav */}
       <div className="nav-row">
         <button onClick={handleBack} className="btn btn--ghost">
           ← Back
@@ -313,7 +309,7 @@ export default function ServiceDashboardPage() {
       <header className="header">
         <h1>Mourne-oids Service Dashboard</h1>
         <p className="subtitle">
-          Daily service, labour, DOT, SBR and R&amp;L · live from Supabase
+          Daily service · labour · DOT · SBR · R&amp;L · Food variance
         </p>
       </header>
 
@@ -460,7 +456,9 @@ export default function ServiceDashboardPage() {
                   </p>
                   <p className="metric">
                     Food var:{" "}
-                    {st.avgFoodVar ? (st.avgFoodVar * 100).toFixed(2) + "%" : "—"}
+                    {st.avgFoodVar != null
+                      ? st.avgFoodVar.toFixed(2) + "%"
+                      : "—"}
                   </p>
                 </div>
               ))}
@@ -521,8 +519,8 @@ export default function ServiceDashboardPage() {
                         <td>{(mgr.avgSBR * 100).toFixed(0)}%</td>
                         <td>{mgr.avgRnL.toFixed(1)}m</td>
                         <td>
-                          {mgr.avgFoodVar
-                            ? (mgr.avgFoodVar * 100).toFixed(2) + "%"
+                          {mgr.avgFoodVar != null
+                            ? mgr.avgFoodVar.toFixed(2) + "%"
                             : "—"}
                         </td>
                       </tr>
