@@ -1,7 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseClient } from "@/supabaseClient";
+
+const supabase = getSupabaseClient();
+
 
 // ---------- Types ----------
 type Item = {
