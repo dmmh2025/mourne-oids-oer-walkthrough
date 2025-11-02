@@ -5,13 +5,6 @@ import { getSupabaseClient } from "@/utils/supabase/client";
 
 const supabase = getSupabaseClient();
 
-// 👇 add the people who are allowed to see /admin
-const ADMIN_EMAILS = [
-  "damien@example.com",
-  // "leona@example.com",
-  // "peter@example.com",
-];
-
 // ---------- Types ----------
 type Item = {
   key: string;
@@ -164,21 +157,46 @@ function BarChart({
 
 // ---------- Page ----------
 export default function AdminPage() {
-  // NEW: admin/auth guard
+  // NEW: admin/auth guard (now using profiles, not hardcoded emails)
   const [authLoading, setAuthLoading] = React.useState(true);
   const [isAdmin, setIsAdmin] = React.useState(false);
   const [who, setWho] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     (async () => {
-      const { data } = await supabase.auth.getUser();
-      const email = data.user?.email || null;
+      // get current session/user
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      if (!session) {
+        setWho(null);
+        setIsAdmin(false);
+        setAuthLoading(false);
+        return;
+      }
+
+      const user = session.user;
+      const email = user.email ?? null;
       setWho(email);
-      if (email && ADMIN_EMAILS.map((e) => e.toLowerCase()).includes(email.toLowerCase())) {
+
+      // look up their profile + role
+      const { data: profile, error } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (error || !profile) {
+        setIsAdmin(false);
+        setAuthLoading(false);
+        return;
+      }
+
+      if (profile.role === "admin") {
         setIsAdmin(true);
       } else {
         setIsAdmin(false);
       }
+
       setAuthLoading(false);
     })();
   }, []);
@@ -619,7 +637,10 @@ export default function AdminPage() {
                     </div>
 
                     <div style={{ display: "grid", gap: 6 }}>
-                      <BarChart labels={s.secLabels.map((l) => l.replace(" & ", "/").split(" ")[0])} values={sectionPercents} />
+                      <BarChart
+                        labels={s.secLabels.map((l) => l.replace(" & ", "/").split(" ")[0])}
+                        values={sectionPercents}
+                      />
                       <small style={{ color: "#64748b" }}>Section performance (avg % of max)</small>
                     </div>
                   </div>
