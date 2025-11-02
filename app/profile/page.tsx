@@ -7,15 +7,6 @@ const supabase = getSupabaseClient();
 
 const STORES = ["Downpatrick", "Kilkeel", "Newcastle", "Ballynahinch"];
 
-type ProfileRow = {
-  id?: string;
-  user_id?: string;
-  email?: string;
-  full_name?: string;
-  job_role?: string;
-  store?: string;
-};
-
 export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -39,11 +30,10 @@ export default function ProfilePage() {
       setErrorMsg(null);
       setSuccessMsg(null);
 
-      // 1) try getUser first
+      // get current user (try both getUser and getSession)
       let { data: userData } = await supabase.auth.getUser();
       let user = userData?.user ?? null;
 
-      // 2) if for some reason user is null, try session (sometimes on first load)
       if (!user) {
         const { data: sessionData } = await supabase.auth.getSession();
         user = sessionData?.session?.user ?? null;
@@ -59,11 +49,11 @@ export default function ProfilePage() {
       const userEmail = user.email || "";
       setEmail(userEmail);
 
-      // try to load profile
+      // profiles table uses "id" as PK
       const { data: prof, error: profErr } = await supabase
         .from("profiles")
         .select("*")
-        .eq("user_id", userId)
+        .eq("id", userId)
         .maybeSingle();
 
       if (profErr) {
@@ -73,7 +63,7 @@ export default function ProfilePage() {
         setJobRole(prof.job_role || "");
         setStore(prof.store || "");
       } else {
-        // no profile yet — user can save to create
+        // no profile yet
         setStore("");
       }
 
@@ -101,7 +91,7 @@ export default function ProfilePage() {
     }
 
     const payload = {
-      user_id: user.id,
+      id: user.id, // 👈 use id, not user_id
       email: user.email,
       full_name: fullName,
       job_role: jobRole,
@@ -109,7 +99,7 @@ export default function ProfilePage() {
     };
 
     const { error } = await supabase.from("profiles").upsert(payload, {
-      onConflict: "user_id",
+      onConflict: "id", // 👈 conflict on id
     });
 
     if (error) {
@@ -195,9 +185,7 @@ export default function ProfilePage() {
                 <div className="field">
                   <label>Email (login)</label>
                   <input type="text" value={email} disabled />
-                  <p className="hint">
-                    This is your Supabase / hub login.
-                  </p>
+                  <p className="hint">This is your Supabase / hub login.</p>
                 </div>
 
                 <div className="field">
