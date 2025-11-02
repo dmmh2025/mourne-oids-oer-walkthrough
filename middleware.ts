@@ -1,58 +1,73 @@
+// middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-// add or remove protected paths here
-const PROTECTED_PATHS = ["/admin", "/deep-clean", "/oer", "/memo", "/memomailer"];
-
-export async function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
-
-  // only protect certain routes
-  const isProtected = PROTECTED_PATHS.some((p) => pathname.startsWith(p));
-  if (!isProtected) {
-    return NextResponse.next();
+// this is what you said you're using on Vercel
+// e.g. BASIC_AUTH_JSON='{"damien":"supersecret","leona":"another"}'
+const raw = process.env.BASIC_AUTH_JSON || "";
+let USERS: Record<string, string> = {};
+try {
+  if (raw) {
+    USERS = JSON.parse(raw);
   }
-
-  // 1) check for Supabase browser session (very simple check)
-  // different Supabase versions name this slightly differently so we check a couple
-  const hasSupabaseSession =
-    req.cookies.get("sb-access-token") ||
-    req.cookies.get("sb:token") ||
-    req.cookies.get("supabase-auth-token");
-
-  if (hasSupabaseSession) {
-    return NextResponse.next();
-  }
-
-  // 2) fall back to your existing Basic Auth (what you already had on Vercel)
-  const basicAuthHeader = req.headers.get("authorization");
-  const json = process.env.BASIC_AUTH_JSON; // this is what you said you already had in Vercel
-
-  if (json && basicAuthHeader?.startsWith("Basic ")) {
-    // decode provided credentials
-    const base64Credentials = basicAuthHeader.split(" ")[1];
-    const [incomingUser, incomingPass] = Buffer.from(base64Credentials, "base64")
-      .toString("utf-8")
-      .split(":");
-
-    // stored credentials (e.g. { "admin": "password123", "damien": "pizza" })
-    const allowed = JSON.parse(json) as Record<string, string>;
-
-    const isValid = Object.entries(allowed).some(
-      ([user, pass]) => user === incomingUser && pass === incomingPass
-    );
-
-    if (isValid) {
-      return NextResponse.next();
-    }
-  }
-
-  // 3) otherwise, go to login
-  const loginUrl = new URL("/login", req.url);
-  loginUrl.searchParams.set("redirectedFrom", pathname);
-  return NextResponse.redirect(loginUrl);
+} catch (e) {
+  // ignore bad JSON
+  USERS = {};
 }
 
+export function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+
+  // 1) always allow these paths
+  if (
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/auth/callback") ||
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/api") ||
+    pathname === "/favicon.ico"
+  ) {
+    return NextResponse.next();
+  }
+
+  // 2) 👉 IMPORTANT: allow /admin to render, so the page can do its own Supabase
+  //    "is this email in ADMIN_EMAILS?" check
+  if (pathname.startsWith("/admin")) {
+    return NextResponse.next();
+  }
+
+  // 3) everything else = check basic auth
+  const auth = req.headers.get("authorization");
+
+  if (!auth || !auth.startsWith("Basic ")) {
+    const res = NextResponse.redirect(new URL("/login", req.url));
+    // ask browser for basic auth creds
+    res.headers.set("WWW-Authenticate", 'Basic realm="Mourne-oids Hub"');
+    return res;
+  }
+
+  // parse basic auth header
+  const base64 = auth.split(" ")[1] || "";
+  const [user, pass] = Buffer.from(base64, "base64").toString().split(":");
+
+  if (!user || !pass) {
+    const res = NextResponse.redirect(new URL("/login", req.url));
+    res.headers.set("WWW-Authenticate", 'Basic realm="Mourne-oids Hub"');
+    return res;
+  }
+
+  const expected = USERS[user];
+
+  if (!expected || expected !== pass) {
+    const res = NextResponse.redirect(new URL("/login", req.url));
+    res.headers.set("WWW-Authenticate", 'Basic realm="Mourne-oids Hub"');
+    return res;
+  }
+
+  // 4) authenticated → carry on
+  return NextResponse.next();
+}
+
+// match everything except the obvious static bits
 export const config = {
-  matcher: ["/admin/:path*", "/deep-clean/:path*", "/oer/:path*", "/memo/:path*", "/memomailer/:path*"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
