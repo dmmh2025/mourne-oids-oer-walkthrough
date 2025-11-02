@@ -11,6 +11,10 @@ if (!url || !key) {
   );
 }
 
+// for new code
 export function getSupabaseClient() {
   return createBrowserClient(url, key);
 }
+
+// for old code (like app/deep-clean/page.tsx)
+export const supabase = getSupabaseClient();
