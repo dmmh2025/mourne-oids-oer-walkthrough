@@ -13,12 +13,20 @@ try {
   USERS = {};
 }
 
+// this is the standard pattern to skip public files
+const PUBLIC_FILE = /\.(.*)$/;
+
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // 1) always allow these paths
+  // 0) always let public files through (stuff in /public like your banner)
+  if (PUBLIC_FILE.test(pathname)) {
+    return NextResponse.next();
+  }
+
+  // 1) always allow these app routes
   if (
-    pathname === "/" ||                     // 👈 let the hub / signup screen load
+    pathname === "/" ||                     // your hub / login screen
     pathname.startsWith("/login") ||
     pathname.startsWith("/auth/callback") ||
     pathname.startsWith("/_next") ||
@@ -28,12 +36,12 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2) also allow /admin through so the page itself can decide using Supabase
+  // 2) let /admin through — the page itself will check Supabase + email
   if (pathname.startsWith("/admin")) {
     return NextResponse.next();
   }
 
-  // 3) everything else still uses your Basic Auth
+  // 3) everything else: use your old Basic Auth
   const auth = req.headers.get("authorization");
 
   if (!auth || !auth.startsWith("Basic ")) {
