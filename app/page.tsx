@@ -110,7 +110,7 @@ export default function HomePage() {
         <header className="header">
           <h1>Mourne-oids Hub</h1>
           <p className="subtitle">
-            Scaling New Peaks, One Shift at a Time. ⛰️🍕
+            “Climbing New Peaks, One Shift at a Time.” ⛰️🍕
           </p>
         </header>
 
