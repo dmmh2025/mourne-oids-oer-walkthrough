@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -140,6 +139,16 @@ export default function HubPage() {
             <div className="card-link__body">
               <h2>OER Results</h2>
               <p>Review store performance and submissions.</p>
+            </div>
+            <div className="card-link__chevron">›</div>
+          </a>
+
+          {/* NEW PROFILE LINK (same style) */}
+          <a href="/profile" className="card-link">
+            <div className="card-link__icon">👤</div>
+            <div className="card-link__body">
+              <h2>My Profile</h2>
+              <p>Update details & password.</p>
             </div>
             <div className="card-link__chevron">›</div>
           </a>
