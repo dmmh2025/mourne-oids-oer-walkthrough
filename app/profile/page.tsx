@@ -1,372 +1,503 @@
 "use client";
 
-import * as React from "react";
-import { getSupabaseClient } from "@/utils/supabase/client";
+import React, { useEffect, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
 
-const supabase = getSupabaseClient();
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+const STORES = ["Downpatrick", "Kilkeel", "Newcastle", "Ballynahinch"];
+
+type ProfileRow = {
+  id?: string;
+  user_id?: string;
+  email?: string;
+  full_name?: string;
+  job_role?: string;
+  store?: string;
+};
 
 export default function ProfilePage() {
-  const [loading, setLoading] = React.useState(true);
-  const [saving, setSaving] = React.useState(false);
-  const [pwdSaving, setPwdSaving] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [pwdError, setPwdError] = React.useState<string | null>(null);
-  const [pwdSuccess, setPwdSuccess] = React.useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [pwdSaving, setPwdSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [pwdMsg, setPwdMsg] = useState<string | null>(null);
 
-  const [userEmail, setUserEmail] = React.useState<string>("");
-  const [userId, setUserId] = React.useState<string>("");
+  const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [jobRole, setJobRole] = useState("");
+  const [store, setStore] = useState<"" | string>("");
 
-  const [displayName, setDisplayName] = React.useState("");
-  const [store, setStore] = React.useState("");
-  const [jobRole, setJobRole] = React.useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
-  const [newPassword, setNewPassword] = React.useState("");
-  const [confirmPassword, setConfirmPassword] = React.useState("");
-
-  React.useEffect(() => {
-    (async () => {
+  // load current user + their profile
+  useEffect(() => {
+    const load = async () => {
       setLoading(true);
-      setError(null);
-
-      // 1) get current auth user
-      const { data: userData, error: userErr } = await supabase.auth.getUser();
-      if (userErr || !userData.user) {
-        setError("You must be signed in to view your profile.");
+      setErrorMsg(null);
+      setSuccessMsg(null);
+      const { data: authData, error: authErr } = await supabase.auth.getUser();
+      if (authErr || !authData.user) {
+        setErrorMsg("Not signed in.");
         setLoading(false);
         return;
       }
 
-      const user = userData.user;
-      setUserEmail(user.email || "");
-      setUserId(user.id);
+      const user = authData.user;
+      const userId = user.id;
+      const userEmail = user.email || "";
 
-      // 2) load profile row
+      setEmail(userEmail);
+
+      // try to load profile
       const { data: prof, error: profErr } = await supabase
         .from("profiles")
-        .select("display_name, store, job_role")
-        .eq("id", user.id)
+        .select("*")
+        .eq("user_id", userId)
         .maybeSingle();
 
       if (profErr) {
-        // still let them see the page
-        setError("Could not load profile info (profiles table).");
+        // could not load profile, but we still have the user
+        setErrorMsg(profErr.message);
       } else if (prof) {
-        setDisplayName(prof.display_name ?? "");
-        setStore(prof.store ?? "");
-        setJobRole(prof.job_role ?? "");
+        setFullName(prof.full_name || "");
+        setJobRole(prof.job_role || "");
+        setStore(prof.store || "");
+      } else {
+        // no profile yet — that’s ok, we’ll create on save
+        setStore("");
       }
 
       setLoading(false);
-    })();
+    };
+
+    load();
   }, []);
 
-  const handleSaveProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userId) return;
-    setSaving(true);
-    setError(null);
-    const { error: updErr } = await supabase
-      .from("profiles")
-      .update({
-        display_name: displayName,
-        store,
-        job_role: jobRole,
-      })
-      .eq("id", userId);
+  const handleBack = () => {
+    if (typeof window !== "undefined") window.history.back();
+  };
 
-    if (updErr) {
-      setError(updErr.message);
+  const handleSave = async () => {
+    setSaving(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    const { data: authData } = await supabase.auth.getUser();
+    const user = authData.user;
+    if (!user) {
+      setErrorMsg("Not signed in.");
+      setSaving(false);
+      return;
+    }
+
+    const payload = {
+      user_id: user.id,
+      email: user.email,
+      full_name: fullName,
+      job_role: jobRole,
+      store: store || null,
+    };
+
+    // upsert by user_id
+    const { error } = await supabase.from("profiles").upsert(payload, {
+      onConflict: "user_id",
+    });
+
+    if (error) {
+      setErrorMsg(error.message);
+    } else {
+      setSuccessMsg("Profile updated ✅");
     }
     setSaving(false);
   };
 
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPwdError(null);
-    setPwdSuccess(null);
+  const handlePasswordChange = async () => {
+    setPwdSaving(true);
+    setPwdMsg(null);
 
-    if (!newPassword || !confirmPassword) {
-      setPwdError("Please enter and confirm your new password.");
+    if (!newPassword) {
+      setPwdMsg("Please enter a new password.");
+      setPwdSaving(false);
       return;
     }
     if (newPassword !== confirmPassword) {
-      setPwdError("Passwords do not match.");
+      setPwdMsg("Passwords do not match.");
+      setPwdSaving(false);
       return;
     }
 
-    setPwdSaving(true);
-    const { error: pwdErr } = await supabase.auth.updateUser({
+    const { error } = await supabase.auth.updateUser({
       password: newPassword,
     });
-    setPwdSaving(false);
 
-    if (pwdErr) {
-      setPwdError(pwdErr.message);
-      return;
+    if (error) {
+      setPwdMsg(error.message);
+    } else {
+      setPwdMsg("Password updated ✅");
+      setNewPassword("");
+      setConfirmPassword("");
     }
-
-    setPwdSuccess("Password updated.");
-    setNewPassword("");
-    setConfirmPassword("");
+    setPwdSaving(false);
   };
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    // send them back to the login screen
-    window.location.href = "/login";
-  };
-
-  if (loading) {
-    return (
-      <main style={{ maxWidth: 720, margin: "50px auto", padding: 16 }}>
-        <p>Loading your profile…</p>
-      </main>
-    );
-  }
 
   return (
-    <main
-      style={{
-        maxWidth: 720,
-        margin: "28px auto",
-        padding: 16,
-        display: "grid",
-        gap: 16,
-      }}
-    >
-      {/* header */}
-      <div
-        style={{
-          background: "#fff",
-          border: "1px solid #e2e8f0",
-          borderRadius: 16,
-          padding: 14,
-          display: "flex",
-          gap: 12,
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <div>
-          <h1 style={{ margin: 0, fontSize: 22 }}>Your Mourne-oids Profile</h1>
-          <p style={{ margin: 0, color: "#64748b" }}>
-            Signed in as <strong>{userEmail || "(no email)"}</strong>
-          </p>
-        </div>
-        <button
-          onClick={handleLogout}
-          style={{
-            background: "#e11d48",
-            color: "#fff",
-            border: "none",
-            borderRadius: 999,
-            padding: "8px 18px",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          Log out
-        </button>
+    <main className="wrap">
+      {/* banner */}
+      <div className="banner">
+        <img
+          src="/mourneoids_forms_header_1600x400.png"
+          alt="Mourne-oids Header Banner"
+        />
       </div>
 
-      {/* error (top-level) */}
-      {error ? (
-        <div
-          style={{
-            background: "#fef2f2",
-            border: "1px solid #fecaca",
-            borderRadius: 12,
-            padding: 12,
-            color: "#7f1d1d",
-          }}
-        >
-          {error}
-        </div>
-      ) : null}
-
-      {/* profile form */}
-      <form
-        onSubmit={handleSaveProfile}
-        style={{
-          background: "#fff",
-          border: "1px solid #e2e8f0",
-          borderRadius: 16,
-          padding: 16,
-          display: "grid",
-          gap: 12,
-        }}
-      >
-        <h2 style={{ margin: 0, fontSize: 18 }}>Profile details</h2>
-        <p style={{ margin: 0, color: "#94a3b8" }}>
-          This is just for the hub — job role and store help you filter later.
-        </p>
-
-        <label style={{ display: "grid", gap: 4 }}>
-          Email (can’t change here)
-          <input
-            value={userEmail}
-            disabled
-            style={{
-              padding: "8px 10px",
-              border: "1px solid #cbd5e1",
-              borderRadius: 10,
-              background: "#f8fafc",
-            }}
-          />
-        </label>
-
-        <label style={{ display: "grid", gap: 4 }}>
-          Display name
-          <input
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="e.g. Damien, Leona, Peter"
-            style={{
-              padding: "8px 10px",
-              border: "1px solid #cbd5e1",
-              borderRadius: 10,
-            }}
-          />
-        </label>
-
-        <label style={{ display: "grid", gap: 4 }}>
-          Store
-          <input
-            value={store}
-            onChange={(e) => setStore(e.target.value)}
-            placeholder="Downpatrick / Kilkeel / Newcastle / Ballynahinch"
-            style={{
-              padding: "8px 10px",
-              border: "1px solid #cbd5e1",
-              borderRadius: 10,
-            }}
-          />
-        </label>
-
-        <label style={{ display: "grid", gap: 4 }}>
-          Job role
-          <input
-            value={jobRole}
-            onChange={(e) => setJobRole(e.target.value)}
-            placeholder="e.g. Area Manager, Trainer, Store Manager"
-            style={{
-              padding: "8px 10px",
-              border: "1px solid #cbd5e1",
-              borderRadius: 10,
-            }}
-          />
-        </label>
-
-        <button
-          type="submit"
-          disabled={saving}
-          style={{
-            background: "#006491",
-            color: "#fff",
-            border: "none",
-            borderRadius: 999,
-            padding: "10px 18px",
-            fontWeight: 700,
-            cursor: "pointer",
-            opacity: saving ? 0.6 : 1,
-            width: "fit-content",
-          }}
-        >
-          {saving ? "Saving…" : "Save profile"}
+      {/* nav */}
+      <div className="nav-row">
+        <button onClick={handleBack} className="btn btn--ghost">
+          ← Back
         </button>
-      </form>
+        <a href="/" className="btn btn--brand">
+          🏠 Home
+        </a>
+      </div>
 
-      {/* password form */}
-      <form
-        onSubmit={handleChangePassword}
-        style={{
-          background: "#fff",
-          border: "1px solid #e2e8f0",
-          borderRadius: 16,
-          padding: 16,
-          display: "grid",
-          gap: 10,
-        }}
-      >
-        <h2 style={{ margin: 0, fontSize: 18 }}>Change password</h2>
-        <p style={{ margin: 0, color: "#94a3b8" }}>
-          This updates your Supabase auth password for the hub.
+      {/* header */}
+      <header className="header">
+        <h1>My Mourne-oids Profile</h1>
+        <p className="subtitle">
+          Update your details so Damien knows who’s in the hub 👋
         </p>
+      </header>
 
-        <label style={{ display: "grid", gap: 4 }}>
-          New password
-          <input
-            type="password"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            style={{
-              padding: "8px 10px",
-              border: "1px solid #cbd5e1",
-              borderRadius: 10,
-            }}
-          />
-        </label>
+      {/* content */}
+      <section className="container wide content">
+        {loading ? (
+          <div className="card">Loading your profile…</div>
+        ) : (
+          <>
+            {errorMsg ? <div className="card error">❌ {errorMsg}</div> : null}
+            {successMsg ? <div className="card success">✅ {successMsg}</div> : null}
 
-        <label style={{ display: "grid", gap: 4 }}>
-          Confirm password
-          <input
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            style={{
-              padding: "8px 10px",
-              border: "1px solid #cbd5e1",
-              borderRadius: 10,
-            }}
-          />
-        </label>
+            {/* PROFILE CARD */}
+            <div className="card profile-card">
+              <h2>Profile details</h2>
+              <p className="section-sub">Who are you and where do you work?</p>
 
-        {pwdError ? (
-          <div
-            style={{
-              background: "#fef2f2",
-              border: "1px solid #fecaca",
-              borderRadius: 10,
-              padding: 10,
-              color: "#991b1b",
-            }}
-          >
-            {pwdError}
-          </div>
-        ) : null}
+              <div className="form-grid">
+                <div className="field">
+                  <label>Email (login)</label>
+                  <input type="text" value={email} disabled />
+                  <p className="hint">
+                    This is your Supabase / hub login. Ask Damien if it’s wrong.
+                  </p>
+                </div>
 
-        {pwdSuccess ? (
-          <div
-            style={{
-              background: "#ecfdf3",
-              border: "1px solid #bbf7d0",
-              borderRadius: 10,
-              padding: 10,
-              color: "#14532d",
-            }}
-          >
-            {pwdSuccess}
-          </div>
-        ) : null}
+                <div className="field">
+                  <label>Full name</label>
+                  <input
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="e.g. Chrissy Graham"
+                  />
+                </div>
 
-        <button
-          type="submit"
-          disabled={pwdSaving}
-          style={{
-            background: "#0f172a",
-            color: "#fff",
-            border: "none",
-            borderRadius: 999,
-            padding: "10px 18px",
-            fontWeight: 700,
-            cursor: "pointer",
-            opacity: pwdSaving ? 0.6 : 1,
-            width: "fit-content",
-          }}
-        >
-          {pwdSaving ? "Updating…" : "Update password"}
-        </button>
-      </form>
+                <div className="field">
+                  <label>Job role</label>
+                  <input
+                    type="text"
+                    value={jobRole}
+                    onChange={(e) => setJobRole(e.target.value)}
+                    placeholder="e.g. Store Manager, ASM, Trainer"
+                  />
+                </div>
+
+                <div className="field">
+                  <label>Store</label>
+                  <select
+                    value={store}
+                    onChange={(e) => setStore(e.target.value)}
+                  >
+                    <option value="">— Select store —</option>
+                    {STORES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSave}
+                className="btn btn--brand mt-btn"
+                disabled={saving}
+              >
+                {saving ? "Saving…" : "Save profile"}
+              </button>
+            </div>
+
+            {/* PASSWORD CARD */}
+            <div className="card profile-card">
+              <h2>Change password</h2>
+              <p className="section-sub">Keep your hub secure.</p>
+
+              <div className="form-grid small">
+                <div className="field">
+                  <label>New password</label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Enter new password"
+                  />
+                </div>
+                <div className="field">
+                  <label>Confirm password</label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter new password"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handlePasswordChange}
+                className="btn btn--ghost mt-btn"
+                disabled={pwdSaving}
+              >
+                {pwdSaving ? "Updating…" : "Update password"}
+              </button>
+
+              {pwdMsg ? <p className="pwd-msg">{pwdMsg}</p> : null}
+            </div>
+          </>
+        )}
+      </section>
+
+      {/* footer */}
+      <footer className="footer">
+        <p>© 2025 Mourne-oids | Domino’s Pizza | Racz Group</p>
+      </footer>
+
+      {/* styles (copied from dashboard style + a few profile tweaks) */}
+      <style jsx>{`
+        :root {
+          --bg: #f2f5f9;
+          --paper: #ffffff;
+          --text: #0f172a;
+          --muted: #475569;
+          --brand: #006491;
+          --brand-dark: #004b75;
+          --shadow-card: 0 10px 18px rgba(2, 6, 23, 0.08),
+            0 1px 3px rgba(2, 6, 23, 0.06);
+        }
+
+        .wrap {
+          background: var(--bg);
+          min-height: 100dvh;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding-bottom: 40px;
+        }
+
+        .banner {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          background: #fff;
+          border-bottom: 3px solid var(--brand);
+          box-shadow: var(--shadow-card);
+          width: 100%;
+        }
+
+        .banner img {
+          max-width: 92%;
+          height: auto;
+        }
+
+        .nav-row {
+          width: 100%;
+          max-width: 1100px;
+          display: flex;
+          gap: 10px;
+          justify-content: flex-start;
+          margin-top: 16px;
+          padding: 0 16px;
+        }
+
+        .header {
+          text-align: center;
+          margin: 16px 16px 8px;
+        }
+
+        .header h1 {
+          font-size: 26px;
+          font-weight: 900;
+          color: var(--text);
+        }
+
+        .subtitle {
+          color: var(--muted);
+          font-size: 14px;
+          margin-top: 3px;
+        }
+
+        .container {
+          width: 100%;
+          max-width: 420px;
+          margin-top: 16px;
+          display: flex;
+          justify-content: center;
+        }
+
+        .container.wide {
+          max-width: 1100px;
+          flex-direction: column;
+          gap: 16px;
+        }
+
+        .content {
+          gap: 20px;
+        }
+
+        .card {
+          background: #fff;
+          border-radius: 18px;
+          box-shadow: var(--shadow-card);
+          border: 1px solid rgba(0, 0, 0, 0.02);
+          padding: 16px 18px 20px;
+        }
+
+        .card.error {
+          border-left: 4px solid #b91c1c;
+          color: #b91c1c;
+        }
+
+        .card.success {
+          border-left: 4px solid #166534;
+          color: #166534;
+        }
+
+        .profile-card h2 {
+          font-size: 16px;
+          font-weight: 700;
+          margin-bottom: 4px;
+        }
+
+        .section-sub {
+          font-size: 12px;
+          color: var(--muted);
+          margin-bottom: 14px;
+        }
+
+        .form-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px 16px;
+        }
+
+        .form-grid.small {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .field {
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+        }
+
+        .field label {
+          font-size: 13px;
+          font-weight: 600;
+          color: #0f172a;
+        }
+
+        .field input,
+        .field select {
+          border: 1px solid rgba(15, 23, 42, 0.12);
+          border-radius: 10px;
+          padding: 7px 10px;
+          font-size: 13px;
+          background: #fff;
+        }
+
+        .field input[disabled] {
+          background: #e2e8f0;
+          cursor: not-allowed;
+        }
+
+        .hint {
+          font-size: 11.5px;
+          color: #94a3b8;
+        }
+
+        .btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          text-align: center;
+          padding: 10px 14px;
+          border-radius: 14px;
+          font-weight: 700;
+          font-size: 14px;
+          text-decoration: none;
+          border: 2px solid transparent;
+          transition: background 0.2s, transform 0.1s;
+          cursor: pointer;
+        }
+
+        .btn--brand {
+          background: var(--brand);
+          border-color: var(--brand-dark);
+          color: #fff;
+        }
+
+        .btn--ghost {
+          background: #fff;
+          border-color: rgba(0, 0, 0, 0.02);
+          color: #0f172a;
+        }
+
+        .mt-btn {
+          margin-top: 16px;
+        }
+
+        .pwd-msg {
+          margin-top: 10px;
+          font-size: 13px;
+          color: #0f172a;
+        }
+
+        .footer {
+          text-align: center;
+          margin-top: 36px;
+          color: var(--muted);
+          font-size: 13px;
+        }
+
+        @media (max-width: 900px) {
+          .form-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        @media (max-width: 700px) {
+          .container.wide {
+            max-width: 94%;
+          }
+        }
+      `}</style>
     </main>
   );
 }
