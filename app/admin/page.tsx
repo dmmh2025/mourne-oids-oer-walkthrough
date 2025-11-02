@@ -5,6 +5,13 @@ import { getSupabaseClient } from "@/utils/supabase/client";
 
 const supabase = getSupabaseClient();
 
+// 👇 add the people who are allowed to see /admin
+const ADMIN_EMAILS = [
+  "damien@example.com",
+  // "manager@example.com",
+  // "another@example.com",
+];
+
 // ---------- Types ----------
 type Item = {
   key: string;
@@ -153,6 +160,25 @@ function BarChart({
 
 // ---------- Page ----------
 export default function AdminPage() {
+  // 👇 NEW: auth + admin check
+  const [authLoading, setAuthLoading] = React.useState(true);
+  const [isAdmin, setIsAdmin] = React.useState(false);
+  const [who, setWho] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      const email = data.user?.email || null;
+      setWho(email);
+      if (email && ADMIN_EMAILS.map((e) => e.toLowerCase()).includes(email.toLowerCase())) {
+        setIsAdmin(true);
+      } else {
+        setIsAdmin(false);
+      }
+      setAuthLoading(false);
+    })();
+  }, []);
+
   const [rows, setRows] = React.useState<Submission[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState<string | null>(null);
@@ -171,6 +197,7 @@ export default function AdminPage() {
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc");
 
   React.useEffect(() => {
+    if (!isAdmin) return; // don't fetch data if not admin
     (async () => {
       setLoading(true);
       setErr(null);
@@ -217,7 +244,7 @@ export default function AdminPage() {
         setLoading(false);
       }
     })();
-  }, [fromDate, toDate, storeFilter]);
+  }, [fromDate, toDate, storeFilter, isAdmin]);
 
   // Summary stats (top strip)
   const summary = React.useMemo(() => {
@@ -343,6 +370,27 @@ export default function AdminPage() {
   };
   const arrow = (key: typeof sortKey) => (sortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : "");
 
+  // ---------- RENDER ----------
+  if (authLoading) {
+    return (
+      <main style={{ maxWidth: 480, margin: "50px auto", textAlign: "center" }}>
+        <p>Checking your access…</p>
+      </main>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <main style={{ maxWidth: 500, margin: "50px auto", textAlign: "center" }}>
+        <h1 style={{ marginBottom: 8 }}>Access denied</h1>
+        <p style={{ color: "#64748b" }}>
+          This page is restricted to Mourne-oids admins.
+        </p>
+        {who ? <p style={{ marginTop: 10 }}>You are signed in as: <strong>{who}</strong></p> : null}
+      </main>
+    );
+  }
+
   return (
     <>
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: 16 }}>
@@ -368,7 +416,7 @@ export default function AdminPage() {
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <button
               type="button"
-              onClick={() => (window.location.href = "/")}
+              onClick={() => (window.location.href = "/hub")}
               style={{
                 padding: "10px 12px",
                 borderRadius: 10,
@@ -378,7 +426,7 @@ export default function AdminPage() {
                 cursor: "pointer",
               }}
             >
-              ← Back to Home
+              ← Back to Hub
             </button>
 
             <h1 style={{ margin: 0, fontSize: 22 }}>Admin — Analytics & Submissions</h1>
