@@ -11,7 +11,7 @@ if (!url || !key) {
   );
 }
 
-// 👉 this is the ONLY thing the rest of your app will import
+// 👇 THIS is what admin/page.tsx is trying to import
 export function getSupabaseClient() {
   return createBrowserClient(url, key);
 }
