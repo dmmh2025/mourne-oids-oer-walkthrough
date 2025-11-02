@@ -8,8 +8,8 @@ const supabase = getSupabaseClient();
 // 👇 add the people who are allowed to see /admin
 const ADMIN_EMAILS = [
   "damien@example.com",
-  // "manager@example.com",
-  // "another@example.com",
+  // "leona@example.com",
+  // "peter@example.com",
 ];
 
 // ---------- Types ----------
@@ -152,15 +152,19 @@ function BarChart({
           </g>
         );
       })}
-      <text x={pad - 6} y={pad + 6} textAnchor="end" fontSize="10" fill="#94a3b8">100%</text>
-      <text x={pad - 6} y={pad + innerH} textAnchor="end" fontSize="10" fill="#94a3b8">0%</text>
+      <text x={pad - 6} y={pad + 6} textAnchor="end" fontSize="10" fill="#94a3b8">
+        100%
+      </text>
+      <text x={pad - 6} y={pad + innerH} textAnchor="end" fontSize="10" fill="#94a3b8">
+        0%
+      </text>
     </svg>
   );
 }
 
 // ---------- Page ----------
 export default function AdminPage() {
-  // 👇 NEW: auth + admin check
+  // NEW: admin/auth guard
   const [authLoading, setAuthLoading] = React.useState(true);
   const [isAdmin, setIsAdmin] = React.useState(false);
   const [who, setWho] = React.useState<string | null>(null);
@@ -197,7 +201,7 @@ export default function AdminPage() {
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc");
 
   React.useEffect(() => {
-    if (!isAdmin) return; // don't fetch data if not admin
+    if (!isAdmin) return; // don't fetch if not admin
     (async () => {
       setLoading(true);
       setErr(null);
@@ -207,7 +211,9 @@ export default function AdminPage() {
 
         let query = supabase
           .from("walkthrough_submissions")
-          .select("id, created_at, store, user_name, section_total, service_total, predicted, adt, sbr, extreme_lates, sections")
+          .select(
+            "id, created_at, store, user_name, section_total, service_total, predicted, adt, sbr, extreme_lates, sections"
+          )
           .gte("created_at", fromISO)
           .lte("created_at", toISO)
           .order("created_at", { ascending: false })
@@ -370,7 +376,7 @@ export default function AdminPage() {
   };
   const arrow = (key: typeof sortKey) => (sortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : "");
 
-  // ---------- RENDER ----------
+  // ---- RENDER GUARDS ----
   if (authLoading) {
     return (
       <main style={{ maxWidth: 480, margin: "50px auto", textAlign: "center" }}>
@@ -381,12 +387,14 @@ export default function AdminPage() {
 
   if (!isAdmin) {
     return (
-      <main style={{ maxWidth: 500, margin: "50px auto", textAlign: "center" }}>
+      <main style={{ maxWidth: 520, margin: "50px auto", textAlign: "center" }}>
         <h1 style={{ marginBottom: 8 }}>Access denied</h1>
-        <p style={{ color: "#64748b" }}>
-          This page is restricted to Mourne-oids admins.
-        </p>
-        {who ? <p style={{ marginTop: 10 }}>You are signed in as: <strong>{who}</strong></p> : null}
+        <p style={{ color: "#64748b" }}>This page is restricted to Mourne-oids admins.</p>
+        {who ? (
+          <p style={{ marginTop: 10 }}>
+            You are signed in as: <strong>{who}</strong>
+          </p>
+        ) : null}
       </main>
     );
   }
@@ -416,7 +424,7 @@ export default function AdminPage() {
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <button
               type="button"
-              onClick={() => (window.location.href = "/hub")}
+              onClick={() => (window.location.href = "/")}
               style={{
                 padding: "10px 12px",
                 borderRadius: 10,
@@ -426,7 +434,7 @@ export default function AdminPage() {
                 cursor: "pointer",
               }}
             >
-              ← Back to Hub
+              ← Back to Home
             </button>
 
             <h1 style={{ margin: 0, fontSize: 22 }}>Admin — Analytics & Submissions</h1>
@@ -611,10 +619,7 @@ export default function AdminPage() {
                     </div>
 
                     <div style={{ display: "grid", gap: 6 }}>
-                      <BarChart
-                        labels={s.secLabels.map((l) => l.replace(" & ", "/").split(" ")[0])}
-                        values={sectionPercents}
-                      />
+                      <BarChart labels={s.secLabels.map((l) => l.replace(" & ", "/").split(" ")[0])} values={sectionPercents} />
                       <small style={{ color: "#64748b" }}>Section performance (avg % of max)</small>
                     </div>
                   </div>
