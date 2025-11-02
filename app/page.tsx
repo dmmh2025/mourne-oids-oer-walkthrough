@@ -110,7 +110,7 @@ export default function HomePage() {
         <header className="header">
           <h1>Mourne-oids Hub</h1>
           <p className="subtitle">
-            Daily OER Walkthrough · Autumn Deep Clean · Weekly MemoMailer
+            Scaling New Peaks, One Shift at a Time. ⛰️🍕
           </p>
         </header>
 
