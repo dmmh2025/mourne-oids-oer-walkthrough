@@ -1,80 +1,58 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-// Read list of allowed users from an environment variable.
-// Format: [{"user":"Damien","pass":"Pepperoni1"}, ...]
-const raw = process.env.BASIC_AUTH_JSON || "[]";
+// add or remove protected paths here
+const PROTECTED_PATHS = ["/admin", "/deep-clean", "/oer", "/memo", "/memomailer"];
 
-type Cred = { user: string; pass: string };
-let ALLOWED: Cred[] = [];
-try {
-  const parsed = JSON.parse(raw);
-  if (Array.isArray(parsed)) {
-    ALLOWED = parsed
-      .filter((x) => x && typeof x.user === "string" && typeof x.pass === "string")
-      .map((x) => ({ user: x.user, pass: x.pass }));
-  }
-} catch {
-  // ignore
-}
-
-function unauthorized() {
-  const res = new NextResponse("Authentication required.", { status: 401 });
-  res.headers.set("WWW-Authenticate", 'Basic realm="Mourne-oids Hub", charset="UTF-8"');
-  return res;
-}
-
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // 1) Always skip API routes (this fixes your /api/submit)
-  if (pathname.startsWith("/api/")) {
+  // only protect certain routes
+  const isProtected = PROTECTED_PATHS.some((p) => pathname.startsWith(p));
+  if (!isProtected) {
     return NextResponse.next();
   }
 
-  // 2) Skip static assets / Next internals
-  if (
-    pathname.startsWith("/_next/") ||
-    pathname.startsWith("/public/") ||
-    pathname.match(/\.(png|jpg|jpeg|webp|gif|svg|ico|css|js|map|woff2?|ttf|txt|pdf)$/i)
-  ) {
+  // 1) check for Supabase browser session (very simple check)
+  // different Supabase versions name this slightly differently so we check a couple
+  const hasSupabaseSession =
+    req.cookies.get("sb-access-token") ||
+    req.cookies.get("sb:token") ||
+    req.cookies.get("supabase-auth-token");
+
+  if (hasSupabaseSession) {
     return NextResponse.next();
   }
 
-  // 3) Protect pages (extend the list as needed)
-  const protectedPaths = [
-    "/",                // home
-    "/walkthrough",
-    "/admin",
-    "/success",
-    "/deep-clean",
-    "/memomailer",
-    "/pizza-of-the-week",
-  ];
-  const isProtected = protectedPaths.some(
-    (p) => pathname === p || pathname.startsWith(p + "/")
-  );
-  if (!isProtected) return NextResponse.next();
+  // 2) fall back to your existing Basic Auth (what you already had on Vercel)
+  const basicAuthHeader = req.headers.get("authorization");
+  const json = process.env.BASIC_AUTH_JSON; // this is what you said you already had in Vercel
 
-  // 4) Check Basic Auth
-  const auth = req.headers.get("authorization");
-  if (!auth || !auth.startsWith("Basic ")) return unauthorized();
+  if (json && basicAuthHeader?.startsWith("Basic ")) {
+    // decode provided credentials
+    const base64Credentials = basicAuthHeader.split(" ")[1];
+    const [incomingUser, incomingPass] = Buffer.from(base64Credentials, "base64")
+      .toString("utf-8")
+      .split(":");
 
-  try {
-    const base64 = auth.replace("Basic ", "");
-    const decoded = Buffer.from(base64, "base64").toString("utf8"); // "user:pass"
-    const idx = decoded.indexOf(":");
-    if (idx === -1) return unauthorized();
-    const user = decoded.slice(0, idx);
-    const pass = decoded.slice(idx + 1);
+    // stored credentials (e.g. { "admin": "password123", "damien": "pizza" })
+    const allowed = JSON.parse(json) as Record<string, string>;
 
-    const ok = ALLOWED.some((c) => c.user === user && c.pass === pass);
-    return ok ? NextResponse.next() : unauthorized();
-  } catch {
-    return unauthorized();
+    const isValid = Object.entries(allowed).some(
+      ([user, pass]) => user === incomingUser && pass === incomingPass
+    );
+
+    if (isValid) {
+      return NextResponse.next();
+    }
   }
+
+  // 3) otherwise, go to login
+  const loginUrl = new URL("/login", req.url);
+  loginUrl.searchParams.set("redirectedFrom", pathname);
+  return NextResponse.redirect(loginUrl);
 }
 
-// Run on pages only (exclude /api and _next at the matcher level too)
 export const config = {
-  matcher: ["/((?!api|_next|favicon.ico).*)"],
+  matcher: ["/admin/:path*", "/deep-clean/:path*", "/oer/:path*", "/memo/:path*", "/memomailer/:path*"],
 };
