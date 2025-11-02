@@ -1,146 +1,219 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
-import { getSupabaseClient } from "@/utils/supabase/client";
+import { createClient } from "@supabase/supabase-js";
+import { useRouter, useSearchParams } from "next/navigation";
 
-const supabase = getSupabaseClient();
+const supabase =
+  typeof window !== "undefined"
+    ? createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
+    : null;
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const modeFromUrl = searchParams?.get("mode") === "signup" ? "signup" : "signin";
 
-  // we'll fill this after mount
-  const [redirectedFrom, setRedirectedFrom] = React.useState("/admin");
-
-  const [mode, setMode] = React.useState<"signin" | "signup">("signin");
+  const [mode, setMode] = React.useState<"signin" | "signup">(modeFromUrl);
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
 
-  // read ?redirectedFrom=... from the URL on the client
   React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const from = params.get("redirectedFrom");
-    if (from) {
-      setRedirectedFrom(from);
-    }
-  }, []);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-
-    try {
-      if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-        });
-        if (error) throw error;
-        router.replace(redirectedFrom);
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) throw error;
-        router.replace(redirectedFrom);
+    // try to fetch current session and skip login if already logged in
+    (async () => {
+      if (!supabase) return;
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        router.replace("/"); // already logged in
       }
-    } catch (err: any) {
-      setError(err.message || "Login failed");
-    } finally {
-      setLoading(false);
+    })();
+  }, [router]);
+
+  const handleSignIn = async () => {
+    if (!supabase) return;
+    setLoading(true);
+    setError(null);
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    setLoading(false);
+
+    if (error) {
+      setError(error.message);
+      return;
     }
-  }
+
+    if (!data.session) {
+      // this happens if email confirmation is still ON
+      setError("Sign-in succeeded but no active session. Check email confirmations in Supabase.");
+      return;
+    }
+
+    router.replace("/");
+  };
+
+  const handleSignUp = async () => {
+    if (!supabase) return;
+    setLoading(true);
+    setError(null);
+
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+
+    setLoading(false);
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
+    // CASE 1: email confirmations OFF  -> we get a session immediately
+    if (data.session) {
+      router.replace("/");
+      return;
+    }
+
+    // CASE 2: email confirmations ON -> user must click link
+    setError(
+      "We’ve sent you a confirmation email. Open it and click the link, then come back and sign in."
+    );
+  };
 
   return (
     <main
       style={{
-        maxWidth: 420,
-        margin: "50px auto",
-        background: "white",
-        padding: 24,
-        borderRadius: 12,
-        border: "1px solid #e2e8f0",
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        background:
+          "radial-gradient(circle at top, rgba(0, 100, 145, 0.08), transparent 45%), linear-gradient(180deg, #e3edf4 0%, #f2f5f9 30%, #f2f5f9 100%)",
+        padding: 16,
       }}
     >
-      <h1 style={{ marginBottom: 6 }}>
-        {mode === "signin" ? "Sign in to Mourne-oids Hub" : "Create your Mourne-oids account"}
-      </h1>
-      <p style={{ marginBottom: 16, color: "#64748b" }}>
-        Use your Domino’s / Mourne-oids email.
-      </p>
-
-      <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
-        <label style={{ display: "grid", gap: 4 }}>
-          <span>Email</span>
-          <input
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+      <div
+        style={{
+          width: "min(420px, 100%)",
+          background: "#fff",
+          borderRadius: 18,
+          boxShadow: "0 15px 35px rgba(15,23,42,.08)",
+          overflow: "hidden",
+          border: "1px solid rgba(0,100,145,.1)",
+        }}
+      >
+        <div style={{ padding: "14px 16px 0" }}>
+          <img
+            src="/mourneoids_forms_header_1600x400.png"
+            alt="Mourne-oids"
+            style={{ width: "100%", borderRadius: 14, objectFit: "cover" }}
           />
-        </label>
+        </div>
 
-        <label style={{ display: "grid", gap: 4 }}>
-          <span>Password</span>
-          <input
-            type="password"
-            required
-            minLength={6}
-            autoComplete={mode === "signin" ? "current-password" : "new-password"}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
-          />
-        </label>
+        <div style={{ padding: 18 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+            <button
+              onClick={() => {
+                setMode("signin");
+                setError(null);
+              }}
+              style={{
+                flex: 1,
+                padding: "8px 0",
+                borderRadius: 999,
+                border: "1px solid transparent",
+                background: mode === "signin" ? "#006491" : "#e2e8f0",
+                color: mode === "signin" ? "#fff" : "#0f172a",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Sign in
+            </button>
+            <button
+              onClick={() => {
+                setMode("signup");
+                setError(null);
+              }}
+              style={{
+                flex: 1,
+                padding: "8px 0",
+                borderRadius: 999,
+                border: "1px solid transparent",
+                background: mode === "signup" ? "#006491" : "#e2e8f0",
+                color: mode === "signup" ? "#fff" : "#0f172a",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Sign up
+            </button>
+          </div>
 
-        {error && <p style={{ color: "#b91c1c", margin: 0 }}>{error}</p>}
+          <label style={{ display: "grid", gap: 4, marginBottom: 12 }}>
+            <span style={{ fontSize: 13, color: "#475569" }}>Email</span>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={{
+                border: "1px solid #cbd5e1",
+                borderRadius: 10,
+                padding: "8px 10px",
+              }}
+            />
+          </label>
 
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            background: "#006491",
-            color: "white",
-            padding: "10px 14px",
-            borderRadius: 8,
-            border: "none",
-            fontWeight: 700,
-            cursor: loading ? "not-allowed" : "pointer",
-          }}
-        >
-          {loading ? "Working..." : mode === "signin" ? "Sign in" : "Sign up"}
-        </button>
-      </form>
+          <label style={{ display: "grid", gap: 4, marginBottom: 12 }}>
+            <span style={{ fontSize: 13, color: "#475569" }}>Password</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              style={{
+                border: "1px solid #cbd5e1",
+                borderRadius: 10,
+                padding: "8px 10px",
+              }}
+            />
+          </label>
 
-      <div style={{ marginTop: 16 }}>
-        {mode === "signin" ? (
+          {error ? (
+            <p style={{ background: "#fee2e2", color: "#991b1b", padding: 8, borderRadius: 10, fontSize: 13 }}>
+              {error}
+            </p>
+          ) : null}
+
           <button
-            onClick={() => setMode("signup")}
-            style={{ background: "transparent", border: "none", color: "#0ea5e9", cursor: "pointer" }}
+            onClick={mode === "signin" ? handleSignIn : handleSignUp}
+            disabled={loading}
+            style={{
+              width: "100%",
+              background: "#006491",
+              color: "#fff",
+              border: "none",
+              borderRadius: 999,
+              padding: "10px 0",
+              fontWeight: 700,
+              marginTop: 4,
+              cursor: "pointer",
+              opacity: loading ? 0.7 : 1,
+            }}
           >
-            Need an account? Create one
+            {loading ? "Working…" : mode === "signin" ? "Sign in" : "Sign up"}
           </button>
-        ) : (
-          <button
-            onClick={() => setMode("signin")}
-            style={{ background: "transparent", border: "none", color: "#0ea5e9", cursor: "pointer" }}
-          >
-            Already have an account? Sign in
-          </button>
-        )}
+
+          <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 14, textAlign: "center" }}>
+            Trouble logging in? Ask Damien to check your profile role.
+          </p>
+        </div>
       </div>
-
-      <p style={{ marginTop: 20, fontSize: 12, color: "#94a3b8" }}>
-        Still seeing a browser popup for username/password? That’s the old Basic Auth — you’ll need added to
-        <code style={{ background: "#e2e8f0", padding: "1px 4px", marginLeft: 4, borderRadius: 4 }}>BASIC_AUTH_JSON</code>.
-      </p>
     </main>
   );
 }
