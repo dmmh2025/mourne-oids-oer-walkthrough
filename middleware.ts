@@ -2,16 +2,14 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-// this is what you said you're using on Vercel
-// e.g. BASIC_AUTH_JSON='{"damien":"supersecret","leona":"another"}'
+// Basic Auth config from Vercel env
 const raw = process.env.BASIC_AUTH_JSON || "";
 let USERS: Record<string, string> = {};
 try {
   if (raw) {
     USERS = JSON.parse(raw);
   }
-} catch (e) {
-  // ignore bad JSON
+} catch {
   USERS = {};
 }
 
@@ -20,6 +18,7 @@ export function middleware(req: NextRequest) {
 
   // 1) always allow these paths
   if (
+    pathname === "/" ||                     // 👈 let the hub / signup screen load
     pathname.startsWith("/login") ||
     pathname.startsWith("/auth/callback") ||
     pathname.startsWith("/_next") ||
@@ -29,23 +28,20 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2) 👉 IMPORTANT: allow /admin to render, so the page can do its own Supabase
-  //    "is this email in ADMIN_EMAILS?" check
+  // 2) also allow /admin through so the page itself can decide using Supabase
   if (pathname.startsWith("/admin")) {
     return NextResponse.next();
   }
 
-  // 3) everything else = check basic auth
+  // 3) everything else still uses your Basic Auth
   const auth = req.headers.get("authorization");
 
   if (!auth || !auth.startsWith("Basic ")) {
     const res = NextResponse.redirect(new URL("/login", req.url));
-    // ask browser for basic auth creds
     res.headers.set("WWW-Authenticate", 'Basic realm="Mourne-oids Hub"');
     return res;
   }
 
-  // parse basic auth header
   const base64 = auth.split(" ")[1] || "";
   const [user, pass] = Buffer.from(base64, "base64").toString().split(":");
 
@@ -56,18 +52,15 @@ export function middleware(req: NextRequest) {
   }
 
   const expected = USERS[user];
-
   if (!expected || expected !== pass) {
     const res = NextResponse.redirect(new URL("/login", req.url));
     res.headers.set("WWW-Authenticate", 'Basic realm="Mourne-oids Hub"');
     return res;
   }
 
-  // 4) authenticated → carry on
   return NextResponse.next();
 }
 
-// match everything except the obvious static bits
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
