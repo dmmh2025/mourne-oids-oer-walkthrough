@@ -41,11 +41,6 @@ const STORES = ["Downpatrick", "Kilkeel", "Newcastle", "Ballynahinch"] as const;
 type Store = (typeof STORES)[number];
 const STORE_OPTIONS: Array<"All" | Store> = ["All", ...STORES];
 
-// ---------- Supabase ----------
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const supabase = createClient(supabaseUrl, supabaseAnon);
-
 // ---------- Helpers ----------
 const fmt = (n: number | null | undefined) =>
   typeof n === "number" && !Number.isNaN(n)
@@ -249,6 +244,7 @@ export default function AdminPage() {
     secLabels: string[];
     secAvgPoints: number[];
     secMax: number[];
+    secTrendPred: number[];
     trendPred: number[];
     trendDelta: number; // last - prev
   };
