@@ -1,21 +1,32 @@
 "use client";
 
 import * as React from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/utils/supabase/client";
 
 const supabase = getSupabaseClient();
 
 export default function LoginPage() {
   const router = useRouter();
-  const search = useSearchParams();
-  const redirectedFrom = search.get("redirectedFrom") || "/admin";
+
+  // we'll fill this after mount
+  const [redirectedFrom, setRedirectedFrom] = React.useState("/admin");
 
   const [mode, setMode] = React.useState<"signin" | "signup">("signin");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
+
+  // read ?redirectedFrom=... from the URL on the client
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const from = params.get("redirectedFrom");
+    if (from) {
+      setRedirectedFrom(from);
+    }
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -29,7 +40,6 @@ export default function LoginPage() {
           password,
         });
         if (error) throw error;
-        // after signup, just send to home or admin
         router.replace(redirectedFrom);
       } else {
         const { error } = await supabase.auth.signInWithPassword({
@@ -128,7 +138,7 @@ export default function LoginPage() {
       </div>
 
       <p style={{ marginTop: 20, fontSize: 12, color: "#94a3b8" }}>
-        Still seeing a browser popup for username/password? That’s the old Basic Auth — ask Damien to add you to
+        Still seeing a browser popup for username/password? That’s the old Basic Auth — you’ll need added to
         <code style={{ background: "#e2e8f0", padding: "1px 4px", marginLeft: 4, borderRadius: 4 }}>BASIC_AUTH_JSON</code>.
       </p>
     </main>
