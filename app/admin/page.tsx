@@ -3,9 +3,7 @@
 import * as React from "react";
 import { getSupabaseClient } from "@/utils/supabase/client";
 
-
 const supabase = getSupabaseClient();
-
 
 // ---------- Types ----------
 type Item = {
@@ -245,7 +243,6 @@ export default function AdminPage() {
     secLabels: string[];
     secAvgPoints: number[];
     secMax: number[];
-    secTrendPred: number[];
     trendPred: number[];
     trendDelta: number; // last - prev
   };
