@@ -136,7 +136,7 @@ export default function LoginLandingPage() {
       </div>
 
       <p style={{ marginTop: 20, fontSize: 12, color: "#94a3b8" }}>
-        If your browser still asks for username/password, that’s the outer Basic Auth on Vercel.
+       
       </p>
     </main>
   );
