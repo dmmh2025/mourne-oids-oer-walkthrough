@@ -16,7 +16,6 @@ export default function ProfilePage() {
   const [pwdMsg, setPwdMsg] = useState<string | null>(null);
 
   const [email, setEmail] = useState("");
-  const [fullName, setFullName] = useState("");
   const [jobRole, setJobRole] = useState("");
   const [store, setStore] = useState<"" | string>("");
 
@@ -30,7 +29,7 @@ export default function ProfilePage() {
       setErrorMsg(null);
       setSuccessMsg(null);
 
-      // get current user (try both getUser and getSession)
+      // get current user
       let { data: userData } = await supabase.auth.getUser();
       let user = userData?.user ?? null;
 
@@ -49,7 +48,7 @@ export default function ProfilePage() {
       const userEmail = user.email || "";
       setEmail(userEmail);
 
-      // profiles table uses "id" as PK
+      // your profiles table uses "id" as PK
       const { data: prof, error: profErr } = await supabase
         .from("profiles")
         .select("*")
@@ -59,9 +58,8 @@ export default function ProfilePage() {
       if (profErr) {
         setErrorMsg(profErr.message);
       } else if (prof) {
-        setFullName(prof.full_name || "");
-        setJobRole(prof.job_role || "");
-        setStore(prof.store || "");
+        setJobRole((prof as any).job_role || "");
+        setStore((prof as any).store || "");
       } else {
         // no profile yet
         setStore("");
@@ -90,16 +88,16 @@ export default function ProfilePage() {
       return;
     }
 
+    // only send columns that exist in your table: id, email, job_role, store
     const payload = {
-      id: user.id, // 👈 use id, not user_id
+      id: user.id,
       email: user.email,
-      full_name: fullName,
       job_role: jobRole,
       store: store || null,
     };
 
     const { error } = await supabase.from("profiles").upsert(payload, {
-      onConflict: "id", // 👈 conflict on id
+      onConflict: "id",
     });
 
     if (error) {
@@ -163,7 +161,7 @@ export default function ProfilePage() {
       <header className="header">
         <h1>My Mourne-oids Profile</h1>
         <p className="subtitle">
-          Update your details so Damien knows who’s in the hub 👋
+          Add your job role & store so the hub knows who you are.
         </p>
       </header>
 
@@ -179,23 +177,13 @@ export default function ProfilePage() {
             {/* PROFILE CARD */}
             <div className="card profile-card">
               <h2>Profile details</h2>
-              <p className="section-sub">Who are you and where do you work?</p>
+              <p className="section-sub">Your hub info</p>
 
               <div className="form-grid">
                 <div className="field">
                   <label>Email (login)</label>
                   <input type="text" value={email} disabled />
-                  <p className="hint">This is your Supabase / hub login.</p>
-                </div>
-
-                <div className="field">
-                  <label>Full name</label>
-                  <input
-                    type="text"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="e.g. Chrissy Graham"
-                  />
+                  <p className="hint">This is your hub / Supabase login.</p>
                 </div>
 
                 <div className="field">
@@ -237,7 +225,7 @@ export default function ProfilePage() {
             {/* PASSWORD CARD */}
             <div className="card profile-card">
               <h2>Change password</h2>
-              <p className="section-sub">Keep your hub secure.</p>
+              <p className="section-sub">Keep your account secure.</p>
 
               <div className="form-grid small">
                 <div className="field">
@@ -280,7 +268,7 @@ export default function ProfilePage() {
         <p>© 2025 Mourne-oids | Domino’s Pizza | Racz Group</p>
       </footer>
 
-      {/* styles (same family as your dashboard) */}
+      {/* styles */}
       <style jsx>{`
         :root {
           --bg: #f2f5f9;
