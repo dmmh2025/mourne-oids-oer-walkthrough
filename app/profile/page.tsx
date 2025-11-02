@@ -1,12 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseClient } from "@/utils/supabase/client";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = getSupabaseClient();
 
 const STORES = ["Downpatrick", "Kilkeel", "Newcastle", "Ballynahinch"];
 
@@ -41,17 +38,25 @@ export default function ProfilePage() {
       setLoading(true);
       setErrorMsg(null);
       setSuccessMsg(null);
-      const { data: authData, error: authErr } = await supabase.auth.getUser();
-      if (authErr || !authData.user) {
+
+      // 1) try getUser first
+      let { data: userData } = await supabase.auth.getUser();
+      let user = userData?.user ?? null;
+
+      // 2) if for some reason user is null, try session (sometimes on first load)
+      if (!user) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        user = sessionData?.session?.user ?? null;
+      }
+
+      if (!user) {
         setErrorMsg("Not signed in.");
         setLoading(false);
         return;
       }
 
-      const user = authData.user;
       const userId = user.id;
       const userEmail = user.email || "";
-
       setEmail(userEmail);
 
       // try to load profile
@@ -62,14 +67,13 @@ export default function ProfilePage() {
         .maybeSingle();
 
       if (profErr) {
-        // could not load profile, but we still have the user
         setErrorMsg(profErr.message);
       } else if (prof) {
         setFullName(prof.full_name || "");
         setJobRole(prof.job_role || "");
         setStore(prof.store || "");
       } else {
-        // no profile yet — that’s ok, we’ll create on save
+        // no profile yet — user can save to create
         setStore("");
       }
 
@@ -88,8 +92,8 @@ export default function ProfilePage() {
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    const { data: authData } = await supabase.auth.getUser();
-    const user = authData.user;
+    const { data: userData } = await supabase.auth.getUser();
+    const user = userData.user;
     if (!user) {
       setErrorMsg("Not signed in.");
       setSaving(false);
@@ -104,7 +108,6 @@ export default function ProfilePage() {
       store: store || null,
     };
 
-    // upsert by user_id
     const { error } = await supabase.from("profiles").upsert(payload, {
       onConflict: "user_id",
     });
@@ -193,7 +196,7 @@ export default function ProfilePage() {
                   <label>Email (login)</label>
                   <input type="text" value={email} disabled />
                   <p className="hint">
-                    This is your Supabase / hub login. Ask Damien if it’s wrong.
+                    This is your Supabase / hub login.
                   </p>
                 </div>
 
@@ -289,7 +292,7 @@ export default function ProfilePage() {
         <p>© 2025 Mourne-oids | Domino’s Pizza | Racz Group</p>
       </footer>
 
-      {/* styles (copied from dashboard style + a few profile tweaks) */}
+      {/* styles (same family as your dashboard) */}
       <style jsx>{`
         :root {
           --bg: #f2f5f9;
