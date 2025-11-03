@@ -60,6 +60,18 @@ export default function HubPage() {
     return "#ffffff";
   };
 
+  // NEW: logout
+  const handleLogout = async () => {
+    try {
+      if (!supabase) return;
+      await supabase.auth.signOut();
+      window.location.href = "/login";
+    } catch (e) {
+      // Optional: you could toast an error here if you add a toast system
+      console.error(e);
+    }
+  };
+
   return (
     <main className="wrap">
       {/* Banner */}
@@ -113,6 +125,13 @@ export default function HubPage() {
             “Climbing New Peaks, One Shift at a Time.” ⛰️🍕
           </p>
         </header>
+
+        {/* NEW: top actions (logout) */}
+        <div className="top-actions">
+          <button onClick={handleLogout} className="btn-logout">
+            🚪 Log out
+          </button>
+        </div>
 
         {/* Buttons */}
         <section className="grid">
@@ -309,7 +328,7 @@ export default function HubPage() {
 
         .header {
           text-align: center;
-          margin-bottom: 20px;
+          margin-bottom: 12px;
         }
 
         .header h1 {
@@ -322,6 +341,32 @@ export default function HubPage() {
           color: #64748b;
           font-size: 0.95rem;
           margin-top: 6px;
+        }
+
+        /* NEW: top actions row */
+        .top-actions {
+          display: flex;
+          justify-content: flex-end;
+          margin: 6px 0 16px;
+        }
+
+        .btn-logout {
+          background: #fff;
+          color: var(--brand);
+          border: 2px solid var(--brand);
+          border-radius: 14px;
+          font-weight: 800;
+          font-size: 14px;
+          padding: 8px 14px;
+          cursor: pointer;
+          box-shadow: 0 6px 14px rgba(0, 100, 145, 0.12);
+          transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+        }
+
+        .btn-logout:hover {
+          background: var(--brand);
+          color: #fff;
+          transform: translateY(-1px);
         }
 
         .grid {
