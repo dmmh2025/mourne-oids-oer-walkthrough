@@ -157,50 +157,6 @@ function BarChart({
 
 // ---------- Page ----------
 export default function AdminPage() {
-  // NEW: admin/auth guard (now using profiles, not hardcoded emails)
-  const [authLoading, setAuthLoading] = React.useState(true);
-  const [isAdmin, setIsAdmin] = React.useState(false);
-  const [who, setWho] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    (async () => {
-      // get current session/user
-      const { data: sessionData } = await supabase.auth.getSession();
-      const session = sessionData.session;
-      if (!session) {
-        setWho(null);
-        setIsAdmin(false);
-        setAuthLoading(false);
-        return;
-      }
-
-      const user = session.user;
-      const email = user.email ?? null;
-      setWho(email);
-
-      // look up their profile + role
-      const { data: profile, error } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (error || !profile) {
-        setIsAdmin(false);
-        setAuthLoading(false);
-        return;
-      }
-
-      if (profile.role === "admin") {
-        setIsAdmin(true);
-      } else {
-        setIsAdmin(false);
-      }
-
-      setAuthLoading(false);
-    })();
-  }, []);
-
   const [rows, setRows] = React.useState<Submission[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState<string | null>(null);
@@ -219,7 +175,6 @@ export default function AdminPage() {
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc");
 
   React.useEffect(() => {
-    if (!isAdmin) return; // don't fetch if not admin
     (async () => {
       setLoading(true);
       setErr(null);
@@ -268,7 +223,7 @@ export default function AdminPage() {
         setLoading(false);
       }
     })();
-  }, [fromDate, toDate, storeFilter, isAdmin]);
+  }, [fromDate, toDate, storeFilter]);
 
   // Summary stats (top strip)
   const summary = React.useMemo(() => {
@@ -393,29 +348,6 @@ export default function AdminPage() {
     }
   };
   const arrow = (key: typeof sortKey) => (sortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : "");
-
-  // ---- RENDER GUARDS ----
-  if (authLoading) {
-    return (
-      <main style={{ maxWidth: 480, margin: "50px auto", textAlign: "center" }}>
-        <p>Checking your access…</p>
-      </main>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <main style={{ maxWidth: 520, margin: "50px auto", textAlign: "center" }}>
-        <h1 style={{ marginBottom: 8 }}>Access denied</h1>
-        <p style={{ color: "#64748b" }}>This page is restricted to Mourne-oids admins.</p>
-        {who ? (
-          <p style={{ marginTop: 10 }}>
-            You are signed in as: <strong>{who}</strong>
-          </p>
-        ) : null}
-      </main>
-    );
-  }
 
   return (
     <>
