@@ -16,9 +16,6 @@ const STORES = ["Downpatrick", "Kilkeel", "Newcastle", "Ballynahinch"] as const;
 type DateRange = "yesterday" | "wtd" | "mtd" | "ytd" | "custom";
 type SortMode = "points" | "stars" | "recent";
 
-/**
- * ✅ Adjust these field names if your Supabase columns differ.
- */
 type OsaRow = {
   id: string;
   shift_date: string; // YYYY-MM-DD
@@ -30,10 +27,6 @@ type OsaRow = {
   star_rating: number | null; // 1-5, >5 = Elite
   created_at?: string | null;
 };
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
 
 function asNumber(v: any): number | null {
   if (v === null || v === undefined) return null;
@@ -75,6 +68,11 @@ function medalForRank(rank: number) {
   return null;
 }
 
+function clampName(raw: string) {
+  const t = (raw || "").trim();
+  return t.length ? t : "Unknown";
+}
+
 export default function OsaLeaderboardPage() {
   const [rows, setRows] = useState<OsaRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,7 +86,17 @@ export default function OsaLeaderboardPage() {
 
   const [sortMode, setSortMode] = useState<SortMode>("points");
 
-  // Load
+  // ✅ modal state
+  const [activePerson, setActivePerson] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setActivePerson(null);
+    };
+    if (activePerson) window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activePerson]);
+
   useEffect(() => {
     const load = async () => {
       if (!supabase) {
@@ -97,7 +105,6 @@ export default function OsaLeaderboardPage() {
         return;
       }
 
-      // pull last ~120 days for speed; filters do the rest client-side
       const since = new Date();
       since.setDate(since.getDate() - 120);
       const sinceStr = since.toISOString().slice(0, 10);
@@ -110,18 +117,15 @@ export default function OsaLeaderboardPage() {
         .gte("shift_date", sinceStr)
         .order("shift_date", { ascending: false });
 
-      if (error) {
-        setErrorMsg(error.message);
-      } else {
-        setRows((data || []) as OsaRow[]);
-      }
+      if (error) setErrorMsg(error.message);
+      else setRows((data || []) as OsaRow[]);
+
       setLoading(false);
     };
 
     load();
   }, []);
 
-  // Date filter
   const dateFilteredRows = useMemo(() => {
     const now = new Date();
 
@@ -156,8 +160,8 @@ export default function OsaLeaderboardPage() {
       });
     }
 
-    // custom
     if (!customFrom && !customTo) return rows;
+
     return rows.filter((r) => {
       const d = new Date(r.shift_date);
       if (customFrom) {
@@ -174,17 +178,15 @@ export default function OsaLeaderboardPage() {
     });
   }, [rows, dateRange, customFrom, customTo]);
 
-  // Store filter
   const filteredRows = useMemo(() => {
     if (selectedStore === "all") return dateFilteredRows;
     return dateFilteredRows.filter((r) => r.store === selectedStore);
   }, [dateFilteredRows, selectedStore]);
 
-  // Normalise rows + sorting
-  const rankedRows = useMemo(() => {
-    const normalised = filteredRows
+  // normalise row calc (overall_points + stars)
+  const normalisedRows = useMemo(() => {
+    return filteredRows
       .map((r) => {
-        // if overall_points not stored, derive it
         const start = asNumber(r.starting_points);
         const lost = asNumber(r.points_lost);
         const overall =
@@ -195,15 +197,20 @@ export default function OsaLeaderboardPage() {
 
         return {
           ...r,
+          team_member_name: clampName(r.team_member_name),
           overall_points: overall,
           star_rating: stars,
         };
       })
       .filter((r) => (r.team_member_name || "").trim().length > 0);
+  }, [filteredRows]);
 
-    normalised.sort((a, b) => {
+  // ✅ ranked leaderboard list
+  const rankedRows = useMemo(() => {
+    const list = [...normalisedRows];
+
+    list.sort((a, b) => {
       if (sortMode === "recent") {
-        // recent by shift_date then created_at
         if (a.shift_date !== b.shift_date)
           return a.shift_date < b.shift_date ? 1 : -1;
         const ac = a.created_at ? new Date(a.created_at).getTime() : 0;
@@ -220,12 +227,10 @@ export default function OsaLeaderboardPage() {
         return bPts - aPts;
       }
 
-      // points (default)
       const aPts = a.overall_points ?? -999999;
       const bPts = b.overall_points ?? -999999;
       if (bPts !== aPts) return bPts - aPts;
 
-      // tie-breaker: stars then most recent
       const aStars = a.star_rating ?? -1;
       const bStars = b.star_rating ?? -1;
       if (bStars !== aStars) return bStars - aStars;
@@ -234,11 +239,113 @@ export default function OsaLeaderboardPage() {
       return 0;
     });
 
-    // add rank (1-based)
-    return normalised.map((r, idx) => ({ ...r, rank: idx + 1 }));
-  }, [filteredRows, sortMode]);
+    return list.map((r, idx) => ({ ...r, rank: idx + 1 }));
+  }, [normalisedRows, sortMode]);
 
   const podium = useMemo(() => rankedRows.slice(0, 3), [rankedRows]);
+
+  // ✅ store leaderboard (avg points, tie: elite count, tie: avg stars)
+  const storeLeaderboard = useMemo(() => {
+    const bucket: Record<
+      string,
+      { entries: number; points: number[]; stars: number[]; eliteCount: number }
+    > = {};
+
+    for (const r of normalisedRows) {
+      const store = (r.store || "Unknown").trim() || "Unknown";
+      if (!bucket[store]) bucket[store] = { entries: 0, points: [], stars: [], eliteCount: 0 };
+
+      bucket[store].entries += 1;
+      if (r.overall_points != null) bucket[store].points.push(r.overall_points);
+      if (r.star_rating != null) {
+        bucket[store].stars.push(r.star_rating);
+        if (r.star_rating > 5) bucket[store].eliteCount += 1;
+      }
+    }
+
+    const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
+
+    const arr = Object.entries(bucket).map(([store, v]) => ({
+      store,
+      entries: v.entries,
+      avgPoints: avg(v.points),
+      avgStars: avg(v.stars),
+      eliteCount: v.eliteCount,
+    }));
+
+    arr.sort((a, b) => {
+      if (b.avgPoints !== a.avgPoints) return b.avgPoints - a.avgPoints;
+      if (b.eliteCount !== a.eliteCount) return b.eliteCount - a.eliteCount;
+      return b.avgStars - a.avgStars;
+    });
+
+    return arr.map((s, idx) => ({ ...s, rank: idx + 1 }));
+  }, [normalisedRows]);
+
+  // ✅ modal: person history (within current filters)
+  const activePersonHistory = useMemo(() => {
+    if (!activePerson) return [];
+
+    const list = normalisedRows
+      .filter((r) => r.team_member_name === activePerson)
+      .sort((a, b) => {
+        if (a.shift_date !== b.shift_date) return a.shift_date < b.shift_date ? 1 : -1;
+        const ac = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const bc = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return bc - ac;
+      });
+
+    return list;
+  }, [activePerson, normalisedRows]);
+
+  const activePersonSummary = useMemo(() => {
+    if (!activePerson) return null;
+    const list = activePersonHistory;
+    if (list.length === 0) {
+      return {
+        checks: 0,
+        avgPoints: null as number | null,
+        avgStars: null as number | null,
+        eliteCount: 0,
+        lastOverall: null as number | null,
+        prevOverall: null as number | null,
+      };
+    }
+
+    const pts = list.map((r) => r.overall_points).filter((v): v is number => v != null);
+    const stars = list.map((r) => r.star_rating).filter((v): v is number => v != null);
+    const eliteCount = list.filter((r) => (r.star_rating ?? 0) > 5).length;
+
+    const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
+
+    const lastOverall = list[0]?.overall_points ?? null;
+    const prevOverall = list[1]?.overall_points ?? null;
+
+    return {
+      checks: list.length,
+      avgPoints: avg(pts),
+      avgStars: avg(stars),
+      eliteCount,
+      lastOverall,
+      prevOverall,
+    };
+  }, [activePerson, activePersonHistory]);
+
+  const trendDelta = useMemo(() => {
+    const s = activePersonSummary;
+    if (!s) return null;
+    if (s.lastOverall == null || s.prevOverall == null) return null;
+    return s.lastOverall - s.prevOverall;
+  }, [activePersonSummary]);
+
+  const trendBadge = useMemo(() => {
+    if (trendDelta == null) return { text: "No trend yet", tone: "neutral" as const };
+    if (trendDelta > 0) return { text: `Up +${trendDelta}`, tone: "pos" as const };
+    if (trendDelta < 0) return { text: `Down ${trendDelta}`, tone: "neg" as const };
+    return { text: "Flat 0", tone: "neutral" as const };
+  }, [trendDelta]);
+
+  const last10 = useMemo(() => activePersonHistory.slice(0, 10), [activePersonHistory]);
 
   const periodLabel =
     dateRange === "yesterday"
@@ -257,15 +364,10 @@ export default function OsaLeaderboardPage() {
 
   return (
     <main className="wrap">
-      {/* banner */}
       <div className="banner">
-        <img
-          src="/mourneoids_forms_header_1600x400.png"
-          alt="Mourne-oids Header Banner"
-        />
+        <img src="/mourneoids_forms_header_1600x400.png" alt="Mourne-oids Header Banner" />
       </div>
 
-      {/* nav */}
       <div className="nav-row">
         <button onClick={handleBack} className="btn btn--ghost">
           ← Back
@@ -275,7 +377,6 @@ export default function OsaLeaderboardPage() {
         </a>
       </div>
 
-      {/* header */}
       <header className="header">
         <h1>Internal OSA Leaderboard</h1>
         <p className="subtitle">
@@ -371,33 +472,68 @@ export default function OsaLeaderboardPage() {
             <div className="custom-row">
               <div className="date-field">
                 <label>From</label>
-                <input
-                  type="date"
-                  value={customFrom}
-                  onChange={(e) => setCustomFrom(e.target.value)}
-                />
+                <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
               </div>
               <div className="date-field">
                 <label>To</label>
-                <input
-                  type="date"
-                  value={customTo}
-                  onChange={(e) => setCustomTo(e.target.value)}
-                />
+                <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
               </div>
             </div>
           )}
         </div>
       </section>
 
-      {/* content */}
       <section className="container wide content">
         {loading && <div className="card pad">Loading Internal OSA…</div>}
         {errorMsg && <div className="card pad error">Error: {errorMsg}</div>}
 
         {!loading && !errorMsg && (
           <>
+            {/* STORE MINI-LEADERBOARD */}
             <div className="section-head">
+              <h2>Store leaderboard</h2>
+              <p className="section-sub">{periodLabel}</p>
+            </div>
+
+            {storeLeaderboard.length === 0 ? (
+              <div className="card pad">
+                <p className="muted">No store results for this filter.</p>
+              </div>
+            ) : (
+              <div className="store-mini-grid">
+                {storeLeaderboard.map((s) => (
+                  <div key={s.store} className="card store-mini-card">
+                    <div className="store-mini-top">
+                      <div className="store-mini-left">
+                        <span className="rank-badge">#{s.rank}</span>
+                        <div className="store-mini-title">
+                          <h3 title={s.store}>{s.store}</h3>
+                          <p className="muted-sm">{s.entries} checks</p>
+                        </div>
+                      </div>
+
+                      <span className={`pill ${s.eliteCount > 0 ? "pill--elite" : "pill--brand"}`}>
+                        {s.eliteCount > 0 ? `ELITE x${s.eliteCount}` : "No Elite"}
+                      </span>
+                    </div>
+
+                    <div className="rows">
+                      <p className="metric">
+                        <span>Avg overall</span>
+                        <strong>{s.avgPoints ? s.avgPoints.toFixed(1) : "—"}</strong>
+                      </p>
+                      <p className="metric">
+                        <span>Avg stars</span>
+                        <strong>{s.avgStars ? s.avgStars.toFixed(2) : "—"}</strong>
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* PODIUM */}
+            <div className="section-head mt">
               <h2>Podium</h2>
               <p className="section-sub">{periodLabel}</p>
             </div>
@@ -458,6 +594,7 @@ export default function OsaLeaderboardPage() {
               </div>
             )}
 
+            {/* LEADERBOARD TABLE */}
             <div className="section-head mt">
               <h2>Leaderboard</h2>
               <p className="section-sub">
@@ -495,7 +632,6 @@ export default function OsaLeaderboardPage() {
                       const elite = stars != null && stars > 5;
                       const overall = r.overall_points ?? 0;
 
-                      // subtle row tone based on rank & score
                       const tone =
                         r.rank <= 3
                           ? "row--podium"
@@ -510,7 +646,18 @@ export default function OsaLeaderboardPage() {
                           <td>
                             <span className="rank-badge">#{r.rank}</span>
                           </td>
-                          <td className="name-cell">{r.team_member_name}</td>
+
+                          {/* ✅ clickable name → opens modal */}
+                          <td className="name-cell">
+                            <button
+                              className="name-link"
+                              onClick={() => setActivePerson(r.team_member_name)}
+                              title="View profile"
+                            >
+                              {r.team_member_name}
+                            </button>
+                          </td>
+
                           <td>{r.store}</td>
                           <td>{formatDateGB(r.shift_date)}</td>
                           <td>
@@ -534,7 +681,107 @@ export default function OsaLeaderboardPage() {
         )}
       </section>
 
-      {/* footer */}
+      {/* ✅ PROFILE MODAL */}
+      {activePerson && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" onMouseDown={() => setActivePerson(null)}>
+          <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <div className="modal-title">
+                <h3 title={activePerson}>{activePerson}</h3>
+                <p className="muted-sm">
+                  {periodLabel} • {selectedStore === "all" ? "All stores" : selectedStore}
+                </p>
+              </div>
+
+              <button className="modal-close" onClick={() => setActivePerson(null)} aria-label="Close">
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-kpis">
+              <div className="kpi-card">
+                <p className="kpi-label">Checks</p>
+                <p className="kpi-value">{activePersonSummary?.checks ?? 0}</p>
+              </div>
+              <div className="kpi-card">
+                <p className="kpi-label">Avg overall</p>
+                <p className="kpi-value">
+                  {activePersonSummary?.avgPoints != null ? activePersonSummary.avgPoints.toFixed(1) : "—"}
+                </p>
+              </div>
+              <div className="kpi-card">
+                <p className="kpi-label">Avg stars</p>
+                <p className="kpi-value">
+                  {activePersonSummary?.avgStars != null ? activePersonSummary.avgStars.toFixed(2) : "—"}
+                </p>
+              </div>
+              <div className="kpi-card">
+                <p className="kpi-label">Elite</p>
+                <p className="kpi-value">{activePersonSummary?.eliteCount ?? 0}</p>
+              </div>
+            </div>
+
+            <div className="trend-row">
+              <span className="trend-label">Trend (latest vs previous)</span>
+              <span className={`trend-pill ${trendBadge.tone}`}>
+                {trendBadge.tone === "pos" ? "📈 " : trendBadge.tone === "neg" ? "📉 " : "➖ "}
+                {trendBadge.text}
+              </span>
+            </div>
+
+            <div className="modal-section">
+              <h4>Last 10 checks</h4>
+              {last10.length === 0 ? (
+                <p className="muted">No checks for this person in the current filter.</p>
+              ) : (
+                <div className="modal-table-wrap">
+                  <table className="modal-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Store</th>
+                        <th>Overall</th>
+                        <th>Start</th>
+                        <th>Lost</th>
+                        <th>Stars</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {last10.map((r) => {
+                        const stars = r.star_rating ?? null;
+                        const elite = stars != null && stars > 5;
+                        return (
+                          <tr key={r.id}>
+                            <td>{formatDateGB(r.shift_date)}</td>
+                            <td>{r.store}</td>
+                            <td>
+                              <b>{r.overall_points ?? "—"}</b>
+                            </td>
+                            <td>{r.starting_points ?? "—"}</td>
+                            <td>{r.points_lost ?? "—"}</td>
+                            <td>
+                              <span className={`star-pill ${elite ? "star-pill--elite" : ""}`}>
+                                {getStarLabel(stars)}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-actions">
+              <button className="btn btn--ghost" onClick={() => setActivePerson(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <footer className="footer">
         <p>© 2025 Mourne-oids | Domino’s Pizza | Racz Group</p>
       </footer>
@@ -542,7 +789,6 @@ export default function OsaLeaderboardPage() {
       <style jsx>{`
         :root {
           --bg: #f2f5f9;
-          --paper: #ffffff;
           --text: #0f172a;
           --muted: #475569;
           --brand: #006491;
@@ -739,7 +985,46 @@ export default function OsaLeaderboardPage() {
           color: var(--muted);
         }
 
-        /* PODIUM */
+        .store-mini-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 14px;
+        }
+
+        .store-mini-card {
+          padding: 12px 14px;
+        }
+
+        .store-mini-top {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 10px;
+          margin-bottom: 8px;
+        }
+
+        .store-mini-left {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          min-width: 0;
+        }
+
+        .store-mini-title h3 {
+          margin: 0;
+          font-size: 14px;
+          font-weight: 900;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .muted-sm {
+          margin: 2px 0 0;
+          font-size: 12px;
+          color: var(--muted);
+        }
+
         .podium-grid {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -799,12 +1084,6 @@ export default function OsaLeaderboardPage() {
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-        }
-
-        .muted-sm {
-          margin: 2px 0 0;
-          font-size: 12px;
-          color: var(--muted);
         }
 
         .rows {
@@ -918,18 +1197,27 @@ export default function OsaLeaderboardPage() {
           font-weight: 700;
         }
 
-        /* subtle performance tone (optional) */
+        .name-link {
+          appearance: none;
+          border: none;
+          background: transparent;
+          padding: 0;
+          margin: 0;
+          font: inherit;
+          font-weight: 800;
+          color: var(--brand-dark);
+          cursor: pointer;
+          text-decoration: underline;
+          text-decoration-color: rgba(0, 100, 145, 0.35);
+          text-underline-offset: 3px;
+        }
+
+        .name-link:hover {
+          text-decoration-color: rgba(0, 100, 145, 0.9);
+        }
+
         .row--podium {
           background: rgba(245, 158, 11, 0.08) !important;
-        }
-        .row--good {
-          /* leave default */
-        }
-        .row--mid {
-          /* leave default */
-        }
-        .row--low {
-          /* leave default */
         }
 
         .btn {
@@ -963,6 +1251,163 @@ export default function OsaLeaderboardPage() {
           color: var(--muted);
         }
 
+        /* ✅ MODAL */
+        .modal-backdrop {
+          position: fixed;
+          inset: 0;
+          background: rgba(2, 6, 23, 0.55);
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          padding: 18px;
+          z-index: 9999;
+        }
+
+        .modal {
+          width: min(900px, 96vw);
+          background: #fff;
+          border-radius: 18px;
+          box-shadow: 0 20px 60px rgba(2, 6, 23, 0.3);
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          overflow: hidden;
+        }
+
+        .modal-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
+          padding: 14px 16px;
+          border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+          background: linear-gradient(180deg, rgba(0, 100, 145, 0.06), rgba(255, 255, 255, 0));
+        }
+
+        .modal-title h3 {
+          margin: 0;
+          font-size: 16px;
+          font-weight: 900;
+          color: var(--text);
+        }
+
+        .modal-close {
+          border: 1px solid rgba(15, 23, 42, 0.12);
+          background: #fff;
+          border-radius: 12px;
+          padding: 6px 10px;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .modal-kpis {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+          padding: 12px 16px 6px;
+        }
+
+        .kpi-card {
+          border: 1px solid rgba(15, 23, 42, 0.06);
+          border-radius: 14px;
+          padding: 10px 12px;
+          background: rgba(255, 255, 255, 0.9);
+        }
+
+        .kpi-label {
+          margin: 0;
+          font-size: 11px;
+          color: var(--muted);
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+
+        .kpi-value {
+          margin: 6px 0 0;
+          font-size: 18px;
+          font-weight: 900;
+        }
+
+        .trend-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+          padding: 8px 16px 10px;
+        }
+
+        .trend-label {
+          font-size: 12px;
+          color: var(--muted);
+          font-weight: 700;
+        }
+
+        .trend-pill {
+          font-size: 12px;
+          font-weight: 900;
+          padding: 6px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+        }
+
+        .trend-pill.pos {
+          background: rgba(34, 197, 94, 0.14);
+          color: #166534;
+          border-color: rgba(34, 197, 94, 0.25);
+        }
+
+        .trend-pill.neg {
+          background: rgba(239, 68, 68, 0.14);
+          color: #991b1b;
+          border-color: rgba(239, 68, 68, 0.25);
+        }
+
+        .trend-pill.neutral {
+          background: rgba(100, 116, 139, 0.12);
+          color: #334155;
+          border-color: rgba(100, 116, 139, 0.22);
+        }
+
+        .modal-section {
+          padding: 8px 16px 14px;
+        }
+
+        .modal-section h4 {
+          margin: 6px 0 10px;
+          font-size: 14px;
+          font-weight: 900;
+        }
+
+        .modal-table-wrap {
+          border: 1px solid rgba(15, 23, 42, 0.06);
+          border-radius: 14px;
+          overflow-x: auto;
+        }
+
+        .modal-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 13px;
+        }
+
+        .modal-table thead {
+          background: #f0f4f8;
+        }
+
+        .modal-table th,
+        .modal-table td {
+          padding: 9px 10px;
+          text-align: left;
+        }
+
+        .modal-actions {
+          padding: 12px 16px 16px;
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+          border-top: 1px solid rgba(15, 23, 42, 0.06);
+          background: rgba(248, 250, 252, 0.6);
+        }
+
         .footer {
           text-align: center;
           margin-top: 36px;
@@ -975,12 +1420,21 @@ export default function OsaLeaderboardPage() {
             flex-direction: column;
             align-items: flex-start;
           }
+          .store-mini-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
           .podium-grid {
             grid-template-columns: 1fr;
+          }
+          .modal-kpis {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
           }
         }
 
         @media (max-width: 700px) {
+          .store-mini-grid {
+            grid-template-columns: 1fr;
+          }
           .container.wide {
             max-width: 94%;
           }
