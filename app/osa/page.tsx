@@ -110,7 +110,8 @@ export default function OsaLeaderboardPage() {
       const sinceStr = since.toISOString().slice(0, 10);
 
       const { data, error } = await supabase
-        .from("internal_osa_results")
+       .from("osa_internal_results")
+
         .select(
           "id, shift_date, team_member_name, store, starting_points, points_lost, overall_points, star_rating, created_at"
         )
