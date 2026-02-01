@@ -27,9 +27,9 @@ type ServiceRowMini = {
   store: string;
   dot_pct: number | null;
   labour_pct: number | null;
-  manager?: string | null; // your admin payload uses `manager`
-  closing_manager?: string | null; // older schema
+  manager: string | null; // ✅ current schema
   created_at?: string | null;
+  shift_date?: string | null;
 };
 
 type RankedItem = {
@@ -59,7 +59,7 @@ export default function HubPage() {
     error: null,
   });
 
-  // NEW: highlights
+  // Highlights
   const [svcRows, setSvcRows] = useState<ServiceRowMini[]>([]);
   const [highlightsError, setHighlightsError] = useState<string | null>(null);
 
@@ -161,7 +161,7 @@ export default function HubPage() {
     loadStatus();
   }, []);
 
-  // STEP 2: load service rows for highlights (last 14 days)
+  // Load service rows for highlights (last 14 days)
   useEffect(() => {
     const loadHighlights = async () => {
       if (!supabase) {
@@ -179,7 +179,8 @@ export default function HubPage() {
 
         const { data, error } = await supabase
           .from("service_shifts")
-          .select("store, dot_pct, labour_pct, manager, closing_manager, created_at, shift_date")
+          // ✅ removed closing_manager (doesn't exist)
+          .select("store, dot_pct, labour_pct, manager, created_at, shift_date")
           .gte("shift_date", fromStr)
           .order("shift_date", { ascending: false });
 
@@ -226,16 +227,14 @@ export default function HubPage() {
   }, [svcRows]);
 
   const computeRanked = (rows: ServiceRowMini[], key: "store" | "manager") => {
-    const bucket: Record<
-      string,
-      { dot: number[]; labour: number[]; shifts: number }
-    > = {};
+    const bucket: Record<string, { dot: number[]; labour: number[]; shifts: number }> =
+      {};
 
     for (const r of rows) {
       const name =
         key === "store"
           ? (r.store || "").trim()
-          : ((r.manager || r.closing_manager || "Unknown").trim() || "Unknown");
+          : ((r.manager || "Unknown").trim() || "Unknown"); // ✅ removed closing_manager fallback
 
       if (!name) continue;
 
@@ -268,9 +267,11 @@ export default function HubPage() {
   };
 
   const computeImproved = (recent: ServiceRowMini[], prev: ServiceRowMini[]) => {
-    // store improvement by DOT uplift (recent avg DOT - prev avg DOT)
     const makeBucket = (rows: ServiceRowMini[]) => {
-      const bucket: Record<string, { dot: number[]; labour: number[]; shifts: number }> = {};
+      const bucket: Record<
+        string,
+        { dot: number[]; labour: number[]; shifts: number }
+      > = {};
       for (const r of rows) {
         const name = (r.store || "").trim();
         if (!name) continue;
@@ -330,7 +331,6 @@ export default function HubPage() {
 
   const mostImprovedStore = useMemo(() => {
     const improved = computeImproved(splitSvcRows.last7, splitSvcRows.prev7);
-    // ignore negative improvements if you want: keep it realistic but still show someone
     return improved[0] || null;
   }, [splitSvcRows]);
 
@@ -396,12 +396,10 @@ export default function HubPage() {
           <h1>Mourne-oids Hub</h1>
           <p className="subtitle">“Climbing New Peaks, One Shift at a Time.” ⛰️🍕</p>
 
-          {/* Step 1: Purpose */}
           <div className="purpose-bar" role="note">
             One source of truth for service, standards, and leadership.
           </div>
 
-          {/* Step 1: Status */}
           <div className="status-strip" aria-label="Data status">
             <div className="status-item">
               <span className="status-dot ok" />
@@ -424,7 +422,6 @@ export default function HubPage() {
             )}
           </div>
 
-          {/* Step 2: Performance hierarchy */}
           <div className="highlights">
             <div className="highlights-head">
               <h2>Highlights</h2>
@@ -508,12 +505,18 @@ export default function HubPage() {
                       </span>
                       <span>
                         Recent DOT:{" "}
-                        <b>{mostImprovedStore ? formatPct(mostImprovedStore.recentDOT, 0) : "—"}</b>
+                        <b>
+                          {mostImprovedStore
+                            ? formatPct(mostImprovedStore.recentDOT, 0)
+                            : "—"}
+                        </b>
                       </span>
                       <span>
                         Labour:{" "}
                         <b>
-                          {mostImprovedStore ? formatPct(mostImprovedStore.recentLabour, 1) : "—"}
+                          {mostImprovedStore
+                            ? formatPct(mostImprovedStore.recentLabour, 1)
+                            : "—"}
                         </b>
                       </span>
                     </div>
@@ -703,8 +706,12 @@ export default function HubPage() {
         }
 
         @keyframes scroll {
-          0% { transform: translateX(100%); }
-          100% { transform: translateX(-100%); }
+          0% {
+            transform: translateX(100%);
+          }
+          100% {
+            transform: translateX(-100%);
+          }
         }
 
         .shell {
@@ -735,7 +742,6 @@ export default function HubPage() {
           margin-top: 6px;
         }
 
-        /* Step 1: Purpose bar */
         .purpose-bar {
           display: inline-flex;
           margin: 12px auto 0;
@@ -749,7 +755,6 @@ export default function HubPage() {
           letter-spacing: 0.01em;
         }
 
-        /* Step 1: Status strip */
         .status-strip {
           margin: 12px auto 0;
           width: min(900px, 100%);
@@ -783,8 +788,12 @@ export default function HubPage() {
           display: inline-block;
         }
 
-        .status-dot.ok { background: #22c55e; }
-        .status-dot.bad { background: #ef4444; }
+        .status-dot.ok {
+          background: #22c55e;
+        }
+        .status-dot.bad {
+          background: #ef4444;
+        }
 
         .status-label {
           color: #475569;
@@ -796,7 +805,6 @@ export default function HubPage() {
           font-weight: 800;
         }
 
-        /* Step 2: Highlights */
         .highlights {
           margin: 18px auto 0;
           width: min(980px, 100%);
@@ -912,7 +920,8 @@ export default function HubPage() {
           padding: 8px 14px;
           cursor: pointer;
           box-shadow: 0 6px 14px rgba(0, 100, 145, 0.12);
-          transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+          transition: background 0.15s ease, color 0.15s ease,
+            transform 0.1s ease;
         }
 
         .btn-logout:hover {
