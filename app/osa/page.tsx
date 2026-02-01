@@ -3,86 +3,139 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase =
+  typeof window !== "undefined"
+    ? createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
+      )
+    : null;
 
-const STORES = ["Downpatrick", "Kilkeel", "Newcastle", "Ballynahinch"];
-
-type OsaRow = {
-  id: string;
-  osa_date: string; // yyyy-mm-dd
-  team_member_name: string;
-  store: string;
-  starting_points: number;
-  points_lost: number;
-  overall_points: number;
-  stars: number; // 1-5
-  is_elite: boolean;
-  created_at?: string;
-};
+const STORES = ["Downpatrick", "Kilkeel", "Newcastle", "Ballynahinch"] as const;
 
 type DateRange = "yesterday" | "wtd" | "mtd" | "ytd" | "custom";
+type SortMode = "points" | "stars" | "recent";
 
-function formatDateGB(yyyyMmDd: string) {
-  // safe-ish formatter (avoids timezone surprises in Date parsing)
-  const [y, m, d] = yyyyMmDd.split("-").map((x) => Number(x));
-  if (!y || !m || !d) return yyyyMmDd;
-  return `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${y}`;
+/**
+ * ✅ Adjust these field names if your Supabase columns differ.
+ */
+type OsaRow = {
+  id: string;
+  shift_date: string; // YYYY-MM-DD
+  team_member_name: string;
+  store: string;
+  starting_points: number | null;
+  points_lost: number | null;
+  overall_points: number | null;
+  star_rating: number | null; // 1-5, >5 = Elite
+  created_at?: string | null;
+};
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
 }
 
-export default function OsaLeaguePage() {
+function asNumber(v: any): number | null {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function formatDateGB(iso: string) {
+  try {
+    return new Date(iso).toLocaleDateString("en-GB", {
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function getMonday(d: Date) {
+  const x = new Date(d);
+  const day = (x.getDay() + 6) % 7; // Mon=0
+  x.setDate(x.getDate() - day);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function getStarLabel(stars: number | null) {
+  if (stars == null) return "—";
+  if (stars > 5) return "ELITE";
+  return `${stars}⭐`;
+}
+
+function medalForRank(rank: number) {
+  if (rank === 1) return "🥇";
+  if (rank === 2) return "🥈";
+  if (rank === 3) return "🥉";
+  return null;
+}
+
+export default function OsaLeaderboardPage() {
   const [rows, setRows] = useState<OsaRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const [selectedStore, setSelectedStore] = useState<"all" | string>("all");
-  const [dateRange, setDateRange] = useState<DateRange>("mtd");
+
+  const [dateRange, setDateRange] = useState<DateRange>("wtd");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
-  const [search, setSearch] = useState("");
 
+  const [sortMode, setSortMode] = useState<SortMode>("points");
+
+  // Load
   useEffect(() => {
     const load = async () => {
-      // pull enough history for filters; keep it sensible
-      const oneYearAgo = new Date();
-      oneYearAgo.setDate(oneYearAgo.getDate() - 365);
-      const dateStr = oneYearAgo.toISOString().slice(0, 10);
+      if (!supabase) {
+        setErrorMsg("Supabase client not available");
+        setLoading(false);
+        return;
+      }
+
+      // pull last ~120 days for speed; filters do the rest client-side
+      const since = new Date();
+      since.setDate(since.getDate() - 120);
+      const sinceStr = since.toISOString().slice(0, 10);
 
       const { data, error } = await supabase
-        .from("osa_internal_results")
-        .select("*")
-        .gte("osa_date", dateStr)
-        .order("osa_date", { ascending: false });
+        .from("internal_osa_results")
+        .select(
+          "id, shift_date, team_member_name, store, starting_points, points_lost, overall_points, star_rating, created_at"
+        )
+        .gte("shift_date", sinceStr)
+        .order("shift_date", { ascending: false });
 
-      if (error) setErrorMsg(error.message);
-      else setRows((data || []) as OsaRow[]);
-
+      if (error) {
+        setErrorMsg(error.message);
+      } else {
+        setRows((data || []) as OsaRow[]);
+      }
       setLoading(false);
     };
 
     load();
   }, []);
 
-  // date filter
-  const dateFiltered = useMemo(() => {
+  // Date filter
+  const dateFilteredRows = useMemo(() => {
     const now = new Date();
 
     if (dateRange === "yesterday") {
       const y = new Date(now);
       y.setDate(now.getDate() - 1);
       const yStr = y.toISOString().slice(0, 10);
-      return rows.filter((r) => r.osa_date === yStr);
+      return rows.filter((r) => r.shift_date === yStr);
     }
 
     if (dateRange === "wtd") {
-      const monday = new Date(now);
-      monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-      monday.setHours(0, 0, 0, 0);
-
+      const monday = getMonday(now);
       return rows.filter((r) => {
-        const d = new Date(r.osa_date);
+        const d = new Date(r.shift_date);
         return d >= monday && d <= now;
       });
     }
@@ -90,7 +143,7 @@ export default function OsaLeaguePage() {
     if (dateRange === "mtd") {
       const first = new Date(now.getFullYear(), now.getMonth(), 1);
       return rows.filter((r) => {
-        const d = new Date(r.osa_date);
+        const d = new Date(r.shift_date);
         return d >= first && d <= now;
       });
     }
@@ -98,163 +151,94 @@ export default function OsaLeaguePage() {
     if (dateRange === "ytd") {
       const first = new Date(now.getFullYear(), 0, 1);
       return rows.filter((r) => {
-        const d = new Date(r.osa_date);
+        const d = new Date(r.shift_date);
         return d >= first && d <= now;
       });
     }
 
-    if (dateRange === "custom") {
-      if (!customFrom && !customTo) return rows;
-      return rows.filter((r) => {
-        const d = new Date(r.osa_date);
-        if (customFrom) {
-          const f = new Date(customFrom);
-          f.setHours(0, 0, 0, 0);
-          if (d < f) return false;
-        }
-        if (customTo) {
-          const t = new Date(customTo);
-          t.setHours(23, 59, 59, 999);
-          if (d > t) return false;
-        }
-        return true;
-      });
-    }
-
-    return rows;
+    // custom
+    if (!customFrom && !customTo) return rows;
+    return rows.filter((r) => {
+      const d = new Date(r.shift_date);
+      if (customFrom) {
+        const f = new Date(customFrom);
+        f.setHours(0, 0, 0, 0);
+        if (d < f) return false;
+      }
+      if (customTo) {
+        const t = new Date(customTo);
+        t.setHours(23, 59, 59, 999);
+        if (d > t) return false;
+      }
+      return true;
+    });
   }, [rows, dateRange, customFrom, customTo]);
 
-  // store filter
-  const filtered = useMemo(() => {
-    const byStore =
-      selectedStore === "all"
-        ? dateFiltered
-        : dateFiltered.filter((r) => r.store === selectedStore);
+  // Store filter
+  const filteredRows = useMemo(() => {
+    if (selectedStore === "all") return dateFilteredRows;
+    return dateFilteredRows.filter((r) => r.store === selectedStore);
+  }, [dateFilteredRows, selectedStore]);
 
-    const q = search.trim().toLowerCase();
-    if (!q) return byStore;
-    return byStore.filter((r) =>
-      (r.team_member_name || "").toLowerCase().includes(q)
-    );
-  }, [dateFiltered, selectedStore, search]);
+  // Normalise rows + sorting
+  const rankedRows = useMemo(() => {
+    const normalised = filteredRows
+      .map((r) => {
+        // if overall_points not stored, derive it
+        const start = asNumber(r.starting_points);
+        const lost = asNumber(r.points_lost);
+        const overall =
+          asNumber(r.overall_points) ??
+          (start != null && lost != null ? start - lost : null);
 
-  // area/period overview KPIs (simple)
-  const overview = useMemo(() => {
-    if (!filtered.length) {
-      return {
-        checks: 0,
-        avgOverall: 0,
-        avgLost: 0,
-        eliteCount: 0,
-        topScore: 0,
-      };
-    }
-    let sumOverall = 0;
-    let sumLost = 0;
-    let eliteCount = 0;
-    let topScore = 0;
+        const stars = asNumber(r.star_rating);
 
-    for (const r of filtered) {
-      sumOverall += r.overall_points ?? 0;
-      sumLost += r.points_lost ?? 0;
-      if (r.is_elite) eliteCount += 1;
-      if ((r.overall_points ?? 0) > topScore) topScore = r.overall_points ?? 0;
-    }
-
-    return {
-      checks: filtered.length,
-      avgOverall: sumOverall / filtered.length,
-      avgLost: sumLost / filtered.length,
-      eliteCount,
-      topScore,
-    };
-  }, [filtered]);
-
-  // ranking aggregation (by team member)
-  const leaderboard = useMemo(() => {
-    const bucket: Record<
-      string,
-      {
-        name: string;
-        checks: number;
-        overall: number[];
-        lost: number[];
-        stars: number[];
-        elite: boolean;
-        stores: Set<string>;
-        latestDate: string; // yyyy-mm-dd
-        bestScore: number;
-      }
-    > = {};
-
-    for (const r of filtered) {
-      const name = (r.team_member_name || "Unknown").trim() || "Unknown";
-      if (!bucket[name]) {
-        bucket[name] = {
-          name,
-          checks: 0,
-          overall: [],
-          lost: [],
-          stars: [],
-          elite: false,
-          stores: new Set<string>(),
-          latestDate: r.osa_date,
-          bestScore: r.overall_points ?? 0,
+        return {
+          ...r,
+          overall_points: overall,
+          star_rating: stars,
         };
+      })
+      .filter((r) => (r.team_member_name || "").trim().length > 0);
+
+    normalised.sort((a, b) => {
+      if (sortMode === "recent") {
+        // recent by shift_date then created_at
+        if (a.shift_date !== b.shift_date)
+          return a.shift_date < b.shift_date ? 1 : -1;
+        const ac = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const bc = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return bc - ac;
       }
 
-      const b = bucket[name];
-      b.checks += 1;
+      if (sortMode === "stars") {
+        const aStars = a.star_rating ?? -1;
+        const bStars = b.star_rating ?? -1;
+        if (bStars !== aStars) return bStars - aStars;
+        const aPts = a.overall_points ?? -999999;
+        const bPts = b.overall_points ?? -999999;
+        return bPts - aPts;
+      }
 
-      if (typeof r.overall_points === "number") b.overall.push(r.overall_points);
-      if (typeof r.points_lost === "number") b.lost.push(r.points_lost);
-      if (typeof r.stars === "number") b.stars.push(r.stars);
+      // points (default)
+      const aPts = a.overall_points ?? -999999;
+      const bPts = b.overall_points ?? -999999;
+      if (bPts !== aPts) return bPts - aPts;
 
-      if (r.is_elite) b.elite = true;
-      if (r.store) b.stores.add(r.store);
+      // tie-breaker: stars then most recent
+      const aStars = a.star_rating ?? -1;
+      const bStars = b.star_rating ?? -1;
+      if (bStars !== aStars) return bStars - aStars;
 
-      if (r.osa_date > b.latestDate) b.latestDate = r.osa_date;
-      if ((r.overall_points ?? 0) > b.bestScore) b.bestScore = r.overall_points ?? 0;
-    }
-
-    const avg = (arr: number[]) =>
-      arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-
-    const arr = Object.values(bucket).map((b) => {
-      const avgOverall = avg(b.overall);
-      const avgLost = avg(b.lost);
-      const avgStars = avg(b.stars);
-
-      // "badge stars": elite beats stars, otherwise show rounded avg (min 1)
-      const starBadge = b.elite ? "Elite" : `${Math.max(1, Math.round(avgStars))}⭐`;
-
-      return {
-        name: b.name,
-        checks: b.checks,
-        avgOverall,
-        avgLost,
-        avgStars,
-        elite: b.elite,
-        stores: Array.from(b.stores),
-        latestDate: b.latestDate,
-        bestScore: b.bestScore,
-        starBadge,
-      };
+      if (a.shift_date !== b.shift_date) return a.shift_date < b.shift_date ? 1 : -1;
+      return 0;
     });
 
-    // rank rules: higher avg overall first; tie -> more checks; then latest date
-    arr.sort((a, b) => {
-      if (b.avgOverall !== a.avgOverall) return b.avgOverall - a.avgOverall;
-      if (b.checks !== a.checks) return b.checks - a.checks;
-      return b.latestDate.localeCompare(a.latestDate);
-    });
+    // add rank (1-based)
+    return normalised.map((r, idx) => ({ ...r, rank: idx + 1 }));
+  }, [filteredRows, sortMode]);
 
-    return arr;
-  }, [filtered]);
-
-  const handleBack = () => {
-    if (typeof window !== "undefined") window.history.back();
-  };
+  const podium = useMemo(() => rankedRows.slice(0, 3), [rankedRows]);
 
   const periodLabel =
     dateRange === "yesterday"
@@ -267,11 +251,8 @@ export default function OsaLeaguePage() {
       ? "Year to date"
       : "Custom";
 
-  const pillClassForScore = (score: number) => {
-    // tweak these if your scoring bands are different
-    if (score >= 110) return "pill--green";
-    if (score >= 95) return "pill--amber";
-    return "pill--red";
+  const handleBack = () => {
+    if (typeof window !== "undefined") window.history.back();
   };
 
   return (
@@ -296,9 +277,9 @@ export default function OsaLeaguePage() {
 
       {/* header */}
       <header className="header">
-        <h1>Internal OSA League</h1>
+        <h1>Internal OSA Leaderboard</h1>
         <p className="subtitle">
-          Rank team members by <b>highest average overall points</b> for the selected period.
+          Ranked by <b>overall points</b> (higher is better). Stars show 1–5⭐, and <b>Elite</b> above 5⭐.
         </p>
       </header>
 
@@ -306,7 +287,7 @@ export default function OsaLeaguePage() {
       <section className="container wide">
         <div className="filters-panel card soft">
           <div className="filters-block">
-            <p className="filters-title">Stores</p>
+            <p className="filters-title">Store</p>
             <div className="filters">
               <button
                 onClick={() => setSelectedStore("all")}
@@ -363,13 +344,27 @@ export default function OsaLeaguePage() {
           </div>
 
           <div className="filters-block">
-            <p className="filters-title">Search</p>
-            <input
-              className="search"
-              placeholder="Search team member…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+            <p className="filters-title">Sort</p>
+            <div className="filters">
+              <button
+                onClick={() => setSortMode("points")}
+                className={`chip small ${sortMode === "points" ? "chip--active" : ""}`}
+              >
+                Overall points
+              </button>
+              <button
+                onClick={() => setSortMode("stars")}
+                className={`chip small ${sortMode === "stars" ? "chip--active" : ""}`}
+              >
+                Stars
+              </button>
+              <button
+                onClick={() => setSortMode("recent")}
+                className={`chip small ${sortMode === "recent" ? "chip--active" : ""}`}
+              >
+                Most recent
+              </button>
+            </div>
           </div>
 
           {dateRange === "custom" && (
@@ -397,119 +392,143 @@ export default function OsaLeaguePage() {
 
       {/* content */}
       <section className="container wide content">
-        {loading && <div className="card">Loading OSA results…</div>}
-        {errorMsg && <div className="card error">Error: {errorMsg}</div>}
+        {loading && <div className="card pad">Loading Internal OSA…</div>}
+        {errorMsg && <div className="card pad error">Error: {errorMsg}</div>}
 
         {!loading && !errorMsg && (
           <>
-            {/* Overview KPIs */}
             <div className="section-head">
-              <h2>Overview</h2>
+              <h2>Podium</h2>
               <p className="section-sub">{periodLabel}</p>
             </div>
 
-            <div className="kpi-grid kpi-grid--5">
-              <div className="card kpi">
-                <p className="kpi-title">Checks</p>
-                <p className="kpi-value">{overview.checks}</p>
-                <p className="kpi-sub">Submitted in this period</p>
+            {podium.length === 0 ? (
+              <div className="card pad">
+                <p className="muted">No results for this filter.</p>
               </div>
+            ) : (
+              <div className="podium-grid">
+                {podium.map((p) => {
+                  const medal = medalForRank(p.rank);
+                  const stars = p.star_rating ?? null;
+                  const elite = stars != null && stars > 5;
 
-              <div className="card kpi">
-                <p className="kpi-title">Avg Overall</p>
-                <p className="kpi-value">{overview.avgOverall.toFixed(1)}</p>
-                <p className="kpi-sub">Higher is better</p>
+                  const overall = p.overall_points ?? 0;
+                  const start = p.starting_points ?? 0;
+                  const lost = p.points_lost ?? 0;
+
+                  return (
+                    <div key={p.id} className="card podium-card">
+                      <div className="podium-top">
+                        <div className="podium-left">
+                          <div className="rank-big">
+                            <span className="medal">{medal}</span>
+                            <span className="rank-num">#{p.rank}</span>
+                          </div>
+                          <div className="podium-name">
+                            <h3 title={p.team_member_name}>{p.team_member_name}</h3>
+                            <p className="muted-sm">
+                              {p.store} • {formatDateGB(p.shift_date)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <span className={`pill ${elite ? "pill--elite" : "pill--brand"}`}>
+                          {getStarLabel(stars)}
+                        </span>
+                      </div>
+
+                      <div className="rows">
+                        <p className="metric">
+                          <span>Overall points</span>
+                          <strong>{overall}</strong>
+                        </p>
+                        <p className="metric">
+                          <span>Starting</span>
+                          <strong>{start}</strong>
+                        </p>
+                        <p className="metric">
+                          <span>Lost</span>
+                          <strong>{lost}</strong>
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
+            )}
 
-              <div className="card kpi">
-                <p className="kpi-title">Avg Points Lost</p>
-                <p className="kpi-value">{overview.avgLost.toFixed(1)}</p>
-                <p className="kpi-sub">Lower is better</p>
-              </div>
-
-              <div className="card kpi">
-                <p className="kpi-title">Elite checks</p>
-                <p className="kpi-value">{overview.eliteCount}</p>
-                <p className="kpi-sub">Marked Elite</p>
-              </div>
-
-              <div className="card kpi">
-                <p className="kpi-title">Top Score</p>
-                <p className="kpi-value">{overview.topScore}</p>
-                <p className="kpi-sub">Best overall points</p>
-              </div>
-            </div>
-
-            {/* Leaderboard */}
             <div className="section-head mt">
               <h2>Leaderboard</h2>
               <p className="section-sub">
-                Ranked by avg overall points (tie: more checks, then latest date)
+                {periodLabel} • {selectedStore === "all" ? "All stores" : selectedStore} • sorted by{" "}
+                {sortMode === "points" ? "overall points" : sortMode === "stars" ? "stars" : "most recent"}
               </p>
             </div>
 
-            <div className="grid">
-              {leaderboard.length === 0 ? (
-                <div className="card store-card">
-                  <div className="store-rows">
-                    <p className="metric">
-                      <span>No data for this period.</span>
-                      <strong>—</strong>
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                leaderboard.map((p, idx) => (
-                  <div key={p.name} className="card store-card">
-                    <div className="store-card__header">
-                      <div className="store-card__title">
-                        <span className="rank-badge" title="Rank">
-                          #{idx + 1}
-                        </span>
-                        <h3>{p.name}</h3>
-                      </div>
+            <div className="card table-card">
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th style={{ width: 92 }}>Rank</th>
+                      <th>Team member</th>
+                      <th>Store</th>
+                      <th>Date</th>
+                      <th>Overall</th>
+                      <th>Start</th>
+                      <th>Lost</th>
+                      <th>Stars</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rankedRows.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="empty">
+                          No results for this filter.
+                        </td>
+                      </tr>
+                    )}
 
-                      <div className="right-pills">
-                        <span className={`pill ${pillClassForScore(p.avgOverall)}`}>
-                          {p.avgOverall.toFixed(1)} pts
-                        </span>
-                        <span className={`pill ${p.elite ? "pill--elite" : "pill--neutral"}`}>
-                          {p.starBadge}
-                        </span>
-                      </div>
-                    </div>
+                    {rankedRows.map((r) => {
+                      const stars = r.star_rating ?? null;
+                      const elite = stars != null && stars > 5;
+                      const overall = r.overall_points ?? 0;
 
-                    <div className="store-rows">
-                      <p className="metric">
-                        <span>Checks</span>
-                        <strong>{p.checks}</strong>
-                      </p>
+                      // subtle row tone based on rank & score
+                      const tone =
+                        r.rank <= 3
+                          ? "row--podium"
+                          : overall >= 115
+                          ? "row--good"
+                          : overall >= 105
+                          ? "row--mid"
+                          : "row--low";
 
-                      <p className="metric">
-                        <span>Avg points lost</span>
-                        <strong>{p.avgLost.toFixed(1)}</strong>
-                      </p>
-
-                      <p className="metric">
-                        <span>Best score</span>
-                        <strong>{p.bestScore}</strong>
-                      </p>
-
-                      <p className="metric">
-                        <span>Latest check</span>
-                        <strong>{formatDateGB(p.latestDate)}</strong>
-                      </p>
-
-                      <p className="metric">
-                        <span>Store(s)</span>
-                        <strong className="nowrap">
-                          {selectedStore === "all" ? p.stores.join(", ") || "—" : selectedStore}
-                        </strong>
-                      </p>
-                    </div>
-                  </div>
-                ))
-              )}
+                      return (
+                        <tr key={r.id} className={tone}>
+                          <td>
+                            <span className="rank-badge">#{r.rank}</span>
+                          </td>
+                          <td className="name-cell">{r.team_member_name}</td>
+                          <td>{r.store}</td>
+                          <td>{formatDateGB(r.shift_date)}</td>
+                          <td>
+                            <b>{overall}</b>
+                          </td>
+                          <td>{r.starting_points ?? "—"}</td>
+                          <td>{r.points_lost ?? "—"}</td>
+                          <td>
+                            <span className={`star-pill ${elite ? "star-pill--elite" : ""}`}>
+                              {getStarLabel(stars)}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </>
         )}
@@ -520,7 +539,6 @@ export default function OsaLeaguePage() {
         <p>© 2025 Mourne-oids | Domino’s Pizza | Racz Group</p>
       </footer>
 
-      {/* styles (match your existing look/feel) */}
       <style jsx>{`
         :root {
           --bg: #f2f5f9;
@@ -598,12 +616,8 @@ export default function OsaLeaguePage() {
           gap: 16px;
         }
 
-        .filters-panel {
-          display: flex;
-          gap: 24px;
-          align-items: center;
-          justify-content: space-between;
-          flex-wrap: wrap;
+        .content {
+          gap: 18px;
         }
 
         .card {
@@ -619,11 +633,26 @@ export default function OsaLeaguePage() {
           backdrop-filter: blur(4px);
         }
 
+        .pad {
+          padding: 14px 16px;
+        }
+
+        .error {
+          color: #b91c1c;
+        }
+
+        .filters-panel {
+          display: flex;
+          gap: 24px;
+          align-items: center;
+          justify-content: space-between;
+          padding: 14px 16px;
+        }
+
         .filters-block {
           display: flex;
           flex-direction: column;
           gap: 6px;
-          min-width: 220px;
         }
 
         .filters-title {
@@ -651,22 +680,17 @@ export default function OsaLeaguePage() {
           cursor: pointer;
           transition: 0.15s ease;
         }
+
         .chip.small {
           padding: 5px 11px;
           font-size: 12px;
         }
+
         .chip--active {
           background: var(--brand);
           color: #fff;
           border-color: #004b75;
           box-shadow: 0 6px 10px rgba(0, 100, 145, 0.26);
-        }
-
-        .search {
-          border: 1px solid rgba(15, 23, 42, 0.12);
-          border-radius: 10px;
-          padding: 8px 10px;
-          font-size: 13px;
         }
 
         .custom-row {
@@ -694,10 +718,6 @@ export default function OsaLeaguePage() {
           font-size: 13px;
         }
 
-        .content {
-          gap: 20px;
-        }
-
         .section-head {
           display: flex;
           justify-content: space-between;
@@ -706,12 +726,12 @@ export default function OsaLeaguePage() {
         }
 
         .section-head.mt {
-          margin-top: 26px;
+          margin-top: 22px;
         }
 
         .section-head h2 {
           font-size: 16px;
-          font-weight: 700;
+          font-weight: 800;
         }
 
         .section-sub {
@@ -719,100 +739,78 @@ export default function OsaLeaguePage() {
           color: var(--muted);
         }
 
-        .kpi-grid {
+        /* PODIUM */
+        .podium-grid {
           display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
+          grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 14px;
         }
 
-        .kpi-grid--5 {
-          grid-template-columns: repeat(5, minmax(0, 1fr));
+        .podium-card {
+          padding: 12px 14px;
         }
 
-        .kpi {
-          padding: 14px 16px;
-        }
-
-        .kpi-title {
-          font-size: 12px;
-          text-transform: uppercase;
-          letter-spacing: 0.03em;
-          color: var(--muted);
-          margin-bottom: 2px;
-        }
-
-        .kpi-value {
-          font-size: 22px;
-          font-weight: 800;
-        }
-
-        .kpi-sub {
-          font-size: 12px;
-          color: var(--muted);
-          margin-top: 4px;
-        }
-
-        .grid {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 14px;
-        }
-
-        .store-card {
-          padding: 12px 14px 10px;
-        }
-
-        .store-card__header {
+        .podium-top {
           display: flex;
           justify-content: space-between;
-          align-items: center;
-          margin-bottom: 6px;
+          align-items: flex-start;
           gap: 10px;
+          margin-bottom: 8px;
         }
 
-        .store-card__title {
-          display: inline-flex;
-          align-items: center;
+        .podium-left {
+          display: flex;
           gap: 10px;
+          align-items: center;
           min-width: 0;
         }
 
-        .rank-badge {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          height: 26px;
-          min-width: 44px;
-          padding: 0 10px;
-          border-radius: 999px;
+        .rank-big {
+          display: grid;
+          place-items: center;
+          width: 52px;
+          height: 52px;
+          border-radius: 18px;
           background: rgba(0, 100, 145, 0.1);
-          color: var(--brand-dark);
           border: 1px solid rgba(0, 100, 145, 0.18);
-          font-weight: 800;
+          flex: 0 0 52px;
+        }
+
+        .medal {
+          font-size: 18px;
+          line-height: 1;
+        }
+
+        .rank-num {
+          font-weight: 900;
           font-size: 12px;
+          color: var(--brand-dark);
+          margin-top: 2px;
         }
 
-        .right-pills {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          flex: 0 0 auto;
+        .podium-name {
+          min-width: 0;
         }
 
-        h3 {
+        .podium-name h3 {
           margin: 0;
           font-size: 14px;
-          font-weight: 800;
-          color: var(--text);
+          font-weight: 900;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
         }
 
-        .store-rows {
+        .muted-sm {
+          margin: 2px 0 0;
+          font-size: 12px;
+          color: var(--muted);
+        }
+
+        .rows {
           display: flex;
           flex-direction: column;
-          gap: 3px;
+          gap: 4px;
         }
 
         .metric {
@@ -821,46 +819,117 @@ export default function OsaLeaguePage() {
           align-items: center;
           font-size: 13px;
         }
+
         .metric span {
           color: var(--muted);
         }
 
-        .nowrap {
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          max-width: 220px;
-          text-align: right;
-        }
-
         .pill {
           font-size: 11px;
-          font-weight: 700;
+          font-weight: 800;
           padding: 3px 10px;
           border-radius: 999px;
           white-space: nowrap;
         }
 
-        .pill--green {
-          background: rgba(34, 197, 94, 0.12);
-          color: #166534;
+        .pill--brand {
+          background: rgba(0, 100, 145, 0.12);
+          color: var(--brand-dark);
+          border: 1px solid rgba(0, 100, 145, 0.18);
         }
-        .pill--amber {
-          background: rgba(249, 115, 22, 0.12);
-          color: #9a3412;
-        }
-        .pill--red {
-          background: rgba(239, 68, 68, 0.12);
-          color: #991b1b;
-        }
-        .pill--neutral {
-          background: rgba(15, 23, 42, 0.06);
-          color: #0f172a;
-        }
+
         .pill--elite {
-          background: rgba(124, 58, 237, 0.12);
-          color: #5b21b6;
-          border: 1px solid rgba(124, 58, 237, 0.25);
+          background: rgba(245, 158, 11, 0.16);
+          color: #92400e;
+          border: 1px solid rgba(245, 158, 11, 0.28);
+        }
+
+        /* TABLE */
+        .table-card {
+          padding: 0;
+        }
+
+        .table-wrap {
+          overflow-x: auto;
+        }
+
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 13px;
+        }
+
+        thead {
+          background: #f0f4f8;
+        }
+
+        th,
+        td {
+          padding: 9px 10px;
+          text-align: left;
+        }
+
+        tbody tr:nth-child(even) {
+          background: #f8fafc;
+        }
+
+        .empty {
+          text-align: center;
+          padding: 16px 6px;
+          color: var(--muted);
+        }
+
+        .rank-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          height: 26px;
+          min-width: 62px;
+          padding: 0 10px;
+          border-radius: 999px;
+          background: rgba(0, 100, 145, 0.1);
+          color: var(--brand-dark);
+          border: 1px solid rgba(0, 100, 145, 0.18);
+          font-weight: 900;
+          font-size: 12px;
+        }
+
+        .star-pill {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 3px 10px;
+          border-radius: 999px;
+          font-weight: 800;
+          font-size: 12px;
+          background: rgba(0, 100, 145, 0.1);
+          color: var(--brand-dark);
+          border: 1px solid rgba(0, 100, 145, 0.18);
+          white-space: nowrap;
+        }
+
+        .star-pill--elite {
+          background: rgba(245, 158, 11, 0.16);
+          color: #92400e;
+          border: 1px solid rgba(245, 158, 11, 0.28);
+        }
+
+        .name-cell {
+          font-weight: 700;
+        }
+
+        /* subtle performance tone (optional) */
+        .row--podium {
+          background: rgba(245, 158, 11, 0.08) !important;
+        }
+        .row--good {
+          /* leave default */
+        }
+        .row--mid {
+          /* leave default */
+        }
+        .row--low {
+          /* leave default */
         }
 
         .btn {
@@ -890,6 +959,10 @@ export default function OsaLeaguePage() {
           color: #0f172a;
         }
 
+        .muted {
+          color: var(--muted);
+        }
+
         .footer {
           text-align: center;
           margin-top: 36px;
@@ -897,30 +970,19 @@ export default function OsaLeaguePage() {
           font-size: 13px;
         }
 
-        .error {
-          padding: 14px 16px;
-          border-left: 4px solid #ef4444;
-        }
-
         @media (max-width: 1100px) {
-          .kpi-grid,
-          .kpi-grid--5 {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+          .filters-panel {
+            flex-direction: column;
+            align-items: flex-start;
           }
-          .grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+          .podium-grid {
+            grid-template-columns: 1fr;
           }
         }
 
         @media (max-width: 700px) {
-          .grid {
-            grid-template-columns: 1fr;
-          }
           .container.wide {
             max-width: 94%;
-          }
-          .filters-block {
-            min-width: 100%;
           }
         }
       `}</style>
