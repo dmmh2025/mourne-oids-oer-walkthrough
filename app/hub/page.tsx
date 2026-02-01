@@ -17,9 +17,22 @@ type TickerItem = {
   category?: string | null;
 };
 
+type HubStatus = {
+  serviceLastUpdated: string | null;
+  osaLastUpdated: string | null;
+  error?: string | null;
+};
+
 export default function HubPage() {
   const [tickerMessages, setTickerMessages] = useState<TickerItem[]>([]);
   const [tickerError, setTickerError] = useState<string | null>(null);
+
+  // NEW: status strip
+  const [status, setStatus] = useState<HubStatus>({
+    serviceLastUpdated: null,
+    osaLastUpdated: null,
+    error: null,
+  });
 
   useEffect(() => {
     const load = async () => {
@@ -49,6 +62,51 @@ export default function HubPage() {
     load();
   }, []);
 
+  // NEW: load hub status (last updated timestamps)
+  useEffect(() => {
+    const loadStatus = async () => {
+      if (!supabase) {
+        setStatus((s) => ({ ...s, error: "Supabase client not available" }));
+        return;
+      }
+
+      try {
+        // service last updated
+        const { data: svcData, error: svcErr } = await supabase
+          .from("service_shifts")
+          .select("created_at")
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        // internal osa last updated
+        const { data: osaData, error: osaErr } = await supabase
+          .from("osa_internal_results")
+          .select("created_at")
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (svcErr) throw svcErr;
+        if (osaErr) throw osaErr;
+
+        const svc = svcData?.[0]?.created_at ?? null;
+        const osa = osaData?.[0]?.created_at ?? null;
+
+        setStatus({
+          serviceLastUpdated: svc,
+          osaLastUpdated: osa,
+          error: null,
+        });
+      } catch (e: any) {
+        setStatus((s) => ({
+          ...s,
+          error: e?.message || "Could not load status",
+        }));
+      }
+    };
+
+    loadStatus();
+  }, []);
+
   // category → colour bar
   const getCategoryColor = (cat?: string | null) => {
     const c = (cat || "").toLowerCase();
@@ -60,7 +118,19 @@ export default function HubPage() {
     return "#ffffff";
   };
 
-  // NEW: logout
+  const formatStamp = (iso: string | null) => {
+    if (!iso) return "No submissions yet";
+    const d = new Date(iso);
+    return d.toLocaleString("en-GB", {
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  // logout
   const handleLogout = async () => {
     try {
       if (!supabase) return;
@@ -120,12 +190,40 @@ export default function HubPage() {
         {/* Title */}
         <header className="header">
           <h1>Mourne-oids Hub</h1>
-          <p className="subtitle">
-            “Climbing New Peaks, One Shift at a Time.” ⛰️🍕
-          </p>
+          <p className="subtitle">“Climbing New Peaks, One Shift at a Time.” ⛰️🍕</p>
+
+          {/* STEP 1: Purpose Bar */}
+          <div className="purpose-bar" role="note">
+            One source of truth for service, standards, and leadership.
+          </div>
+
+          {/* STEP 1: Status Strip */}
+          <div className="status-strip" aria-label="Data status">
+            <div className="status-item">
+              <span className="status-dot ok" />
+              <span className="status-label">Service data:</span>
+              <span className="status-value">
+                {formatStamp(status.serviceLastUpdated)}
+              </span>
+            </div>
+            <div className="status-item">
+              <span className="status-dot ok" />
+              <span className="status-label">Internal OSA:</span>
+              <span className="status-value">
+                {formatStamp(status.osaLastUpdated)}
+              </span>
+            </div>
+            {status.error && (
+              <div className="status-item warn">
+                <span className="status-dot bad" />
+                <span className="status-label">Status:</span>
+                <span className="status-value">{status.error}</span>
+              </div>
+            )}
+          </div>
         </header>
 
-        {/* NEW: top actions (logout) */}
+        {/* top actions */}
         <div className="top-actions">
           <button onClick={handleLogout} className="btn-logout">
             🚪 Log out
@@ -139,16 +237,6 @@ export default function HubPage() {
             <div className="card-link__body">
               <h2>Service Dashboard</h2>
               <p>Live snapshots, sales, service metrics.</p>
-            </div>
-            <div className="card-link__chevron">›</div>
-          </a>
-
-          {/* ✅ NEW: INTERNAL OSA LEAGUE */}
-          <a href="/osa" className="card-link">
-            <div className="card-link__icon">⭐</div>
-            <div className="card-link__body">
-              <h2>Internal OSA League</h2>
-              <p>Rank team members by overall points and stars.</p>
             </div>
             <div className="card-link__chevron">›</div>
           </a>
@@ -171,7 +259,6 @@ export default function HubPage() {
             <div className="card-link__chevron">›</div>
           </a>
 
-          {/* NEW PROFILE LINK (same style) */}
           <a href="/profile" className="card-link">
             <div className="card-link__icon">👤</div>
             <div className="card-link__body">
@@ -316,12 +403,8 @@ export default function HubPage() {
         }
 
         @keyframes scroll {
-          0% {
-            transform: translateX(100%);
-          }
-          100% {
-            transform: translateX(-100%);
-          }
+          0% { transform: translateX(100%); }
+          100% { transform: translateX(-100%); }
         }
 
         .shell {
@@ -352,7 +435,67 @@ export default function HubPage() {
           margin-top: 6px;
         }
 
-        /* NEW: top actions row */
+        /* STEP 1: Purpose bar */
+        .purpose-bar {
+          display: inline-flex;
+          margin: 12px auto 0;
+          padding: 8px 14px;
+          border-radius: 999px;
+          background: rgba(0, 100, 145, 0.08);
+          border: 1px solid rgba(0, 100, 145, 0.14);
+          color: #0f172a;
+          font-weight: 800;
+          font-size: 13px;
+          letter-spacing: 0.01em;
+        }
+
+        /* STEP 1: Status strip */
+        .status-strip {
+          margin: 12px auto 0;
+          width: min(900px, 100%);
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          justify-content: center;
+        }
+
+        .status-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.85);
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          box-shadow: 0 8px 18px rgba(2, 6, 23, 0.04);
+          font-size: 13px;
+        }
+
+        .status-item.warn {
+          border-color: rgba(239, 68, 68, 0.25);
+          background: rgba(254, 242, 242, 0.75);
+        }
+
+        .status-dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 999px;
+          display: inline-block;
+        }
+
+        .status-dot.ok { background: #22c55e; }
+        .status-dot.bad { background: #ef4444; }
+
+        .status-label {
+          color: #475569;
+          font-weight: 800;
+        }
+
+        .status-value {
+          color: #0f172a;
+          font-weight: 800;
+        }
+
         .top-actions {
           display: flex;
           justify-content: flex-end;
@@ -451,6 +594,9 @@ export default function HubPage() {
           }
           .ticker-shell {
             border-radius: 1.2rem;
+          }
+          .purpose-bar {
+            border-radius: 14px;
           }
         }
       `}</style>
