@@ -46,10 +46,9 @@ export default function AdminPage() {
   const [isAuthed, setIsAuthed] = useState(false);
   const [authError, setAuthError] = useState("");
 
-  // 🚨 original had only "ticker" | "service"
-  // you added memomailer — now we add pizza too
+  // ✅ add "osa" tab
   const [activeTab, setActiveTab] = useState<
-    "ticker" | "service" | "memomailer" | "pizza"
+    "ticker" | "service" | "memomailer" | "pizza" | "osa"
   >("ticker");
 
   // ticker state
@@ -82,6 +81,20 @@ export default function AdminPage() {
 
   const [serviceMsg, setServiceMsg] = useState<string | null>(null);
   const [serviceSaving, setServiceSaving] = useState(false);
+
+  // =========================
+  // INTERNAL OSA FORM STATE (NEW)
+  // =========================
+  const [osaDate, setOsaDate] = useState<string>("");
+  const [osaStore, setOsaStore] = useState<string>("Downpatrick");
+  const [osaTeamMember, setOsaTeamMember] = useState<string>("");
+  const [osaStartingPoints, setOsaStartingPoints] = useState<string>("100");
+  const [osaPointsLost, setOsaPointsLost] = useState<string>("0");
+  const [osaStars, setOsaStars] = useState<string>("5");
+  const [osaElite, setOsaElite] = useState<boolean>(false);
+
+  const [osaMsg, setOsaMsg] = useState<string | null>(null);
+  const [osaSaving, setOsaSaving] = useState<boolean>(false);
 
   // ✅ MEMOMAILER: state
   const [memoFile, setMemoFile] = useState<File | null>(null);
@@ -275,6 +288,7 @@ export default function AdminPage() {
       dot_pct: dotPct ? Number(dotPct) : null,
       rnl_minutes: rnlMinutes,
 
+      // You confirmed "12 means 12%" so we store as 12 (dashboard can treat as percent)
       extreme_over_40: extremeOver40 ? Number(extremeOver40) : null,
       food_pct: foodPct ? Number(foodPct) : null,
 
@@ -292,6 +306,73 @@ export default function AdminPage() {
     setServiceMsg("✅ Shift saved to service_shifts.");
     resetServiceFields();
     setServiceSaving(false);
+  };
+
+  // INTERNAL OSA: reset
+  const resetOsaFields = () => {
+    setOsaDate("");
+    setOsaStore("Downpatrick");
+    setOsaTeamMember("");
+    setOsaStartingPoints("100");
+    setOsaPointsLost("0");
+    setOsaStars("5");
+    setOsaElite(false);
+  };
+
+  // INTERNAL OSA: submit (NEW)
+  const handleOsaSubmit = async () => {
+    if (!supabase) return;
+    setOsaMsg(null);
+
+    if (!osaDate || !osaStore || !osaTeamMember.trim()) {
+      setOsaMsg("Please enter Date, Store, and Team member name.");
+      return;
+    }
+
+    const starting = Number(osaStartingPoints);
+    const lost = Number(osaPointsLost);
+
+    if (!Number.isFinite(starting) || starting < 0) {
+      setOsaMsg("Starting points must be a valid number (0+).");
+      return;
+    }
+    if (!Number.isFinite(lost) || lost < 0) {
+      setOsaMsg("Points lost must be a valid number (0+).");
+      return;
+    }
+
+    const overall = Math.max(0, starting - lost);
+
+    const stars = Number(osaStars);
+    if (!Number.isFinite(stars) || stars < 1 || stars > 5) {
+      setOsaMsg("Stars must be 1–5. Use the Elite toggle for Elite.");
+      return;
+    }
+
+    setOsaSaving(true);
+
+    const payload = {
+      osa_date: osaDate,
+      team_member_name: osaTeamMember.trim(),
+      store: osaStore,
+      starting_points: starting,
+      points_lost: lost,
+      overall_points: overall,
+      stars,
+      is_elite: osaElite,
+    };
+
+    const { error } = await supabase.from("osa_internal_results").insert([payload]);
+
+    if (error) {
+      setOsaMsg("❌ Upload failed: " + error.message);
+      setOsaSaving(false);
+      return;
+    }
+
+    setOsaMsg("✅ Internal OSA result saved.");
+    resetOsaFields();
+    setOsaSaving(false);
   };
 
   // ✅ MEMOMAILER: upload to storage
@@ -370,6 +451,12 @@ export default function AdminPage() {
     }
   };
 
+  const computedOsaOverall =
+    Math.max(
+      0,
+      Number(osaStartingPoints || 0) - Number(osaPointsLost || 0)
+    ) || 0;
+
   return (
     <main className="wrap">
       {/* Banner */}
@@ -446,12 +533,18 @@ export default function AdminPage() {
             >
               📬 MemoMailer Upload
             </button>
-            {/* ✅ NEW PIZZA TAB */}
             <button
               className={activeTab === "pizza" ? "tab active" : "tab"}
               onClick={() => setActiveTab("pizza")}
             >
               🍕 Pizza of the Week
+            </button>
+            {/* ✅ NEW OSA TAB */}
+            <button
+              className={activeTab === "osa" ? "tab active" : "tab"}
+              onClick={() => setActiveTab("osa")}
+            >
+              ⭐ Internal OSA
             </button>
           </div>
 
@@ -644,12 +737,13 @@ export default function AdminPage() {
                   </div>
 
                   <div>
-                    <label>Extreme &gt;40 mins</label>
+                    <label>Extreme &gt;40 mins (%)</label>
                     <input
                       type="number"
+                      step="0.1"
                       value={extremeOver40}
                       onChange={(e) => setExtremeOver40(e.target.value)}
-                      placeholder="0"
+                      placeholder="12"
                     />
                   </div>
 
@@ -704,6 +798,112 @@ export default function AdminPage() {
               {memoMsg && (
                 <p className="muted" style={{ marginTop: 8 }}>
                   {memoMsg}
+                </p>
+              )}
+            </section>
+          ) : activeTab === "osa" ? (
+            // ⭐ INTERNAL OSA SECTION (NEW)
+            <section className="card">
+              <h2>Submit Internal OSA result</h2>
+              <p className="muted">
+                Writes into <code>osa_internal_results</code>. Overall points are
+                calculated as <b>starting points − points lost</b>. Use Elite
+                toggle for Elite.
+              </p>
+
+              <div className="form-2col">
+                <div>
+                  <label>Date</label>
+                  <input
+                    type="date"
+                    value={osaDate}
+                    onChange={(e) => setOsaDate(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label>Store</label>
+                  <select
+                    value={osaStore}
+                    onChange={(e) => setOsaStore(e.target.value)}
+                  >
+                    <option>Downpatrick</option>
+                    <option>Kilkeel</option>
+                    <option>Newcastle</option>
+                    <option>Ballynahinch</option>
+                  </select>
+                </div>
+
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label>Team member name</label>
+                  <input
+                    type="text"
+                    value={osaTeamMember}
+                    onChange={(e) => setOsaTeamMember(e.target.value)}
+                    placeholder="e.g. Megan Jennings"
+                  />
+                </div>
+
+                <div>
+                  <label>Starting points</label>
+                  <input
+                    type="number"
+                    value={osaStartingPoints}
+                    onChange={(e) => setOsaStartingPoints(e.target.value)}
+                    placeholder="100"
+                  />
+                </div>
+
+                <div>
+                  <label>Points lost</label>
+                  <input
+                    type="number"
+                    value={osaPointsLost}
+                    onChange={(e) => setOsaPointsLost(e.target.value)}
+                    placeholder="20"
+                  />
+                </div>
+
+                <div>
+                  <label>Overall points (auto)</label>
+                  <input type="number" value={computedOsaOverall} readOnly />
+                </div>
+
+                <div>
+                  <label>Stars (1–5)</label>
+                  <select
+                    value={osaStars}
+                    onChange={(e) => setOsaStars(e.target.value)}
+                  >
+                    <option value="1">1 star</option>
+                    <option value="2">2 stars</option>
+                    <option value="3">3 stars</option>
+                    <option value="4">4 stars</option>
+                    <option value="5">5 stars</option>
+                  </select>
+                </div>
+
+                <div className="toggle-row">
+                  <label>Elite</label>
+                  <input
+                    type="checkbox"
+                    checked={osaElite}
+                    onChange={(e) => setOsaElite(e.target.checked)}
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={handleOsaSubmit}
+                disabled={osaSaving}
+                className="upload-btn"
+              >
+                {osaSaving ? "Saving…" : "Save internal OSA"}
+              </button>
+
+              {osaMsg && (
+                <p className="muted" style={{ marginTop: 8 }}>
+                  {osaMsg}
                 </p>
               )}
             </section>
@@ -814,6 +1014,7 @@ export default function AdminPage() {
           display: flex;
           gap: 8px;
           margin-top: 10px;
+          flex-wrap: wrap;
         }
         .tab {
           background: #e2e8f0;
