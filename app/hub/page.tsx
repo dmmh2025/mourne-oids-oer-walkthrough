@@ -67,7 +67,6 @@ export default function HubPage() {
       await supabase.auth.signOut();
       window.location.href = "/login";
     } catch (e) {
-      // Optional: you could toast an error here if you add a toast system
       console.error(e);
     }
   };
@@ -140,6 +139,16 @@ export default function HubPage() {
             <div className="card-link__body">
               <h2>Service Dashboard</h2>
               <p>Live snapshots, sales, service metrics.</p>
+            </div>
+            <div className="card-link__chevron">›</div>
+          </a>
+
+          {/* ✅ NEW: INTERNAL OSA LEAGUE */}
+          <a href="/osa" className="card-link">
+            <div className="card-link__icon">⭐</div>
+            <div className="card-link__body">
+              <h2>Internal OSA League</h2>
+              <p>Rank team members by overall points and stars.</p>
             </div>
             <div className="card-link__chevron">›</div>
           </a>
