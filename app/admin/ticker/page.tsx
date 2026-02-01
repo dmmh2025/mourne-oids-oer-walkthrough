@@ -61,25 +61,24 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // service form state — EXACT column names
+  // =========================
+  // SERVICE FORM STATE (NEW)
+  // =========================
+  const [svcWeek, setSvcWeek] = useState<string>("");
   const [svcDate, setSvcDate] = useState<string>("");
   const [svcDayName, setSvcDayName] = useState<string>("");
   const [svcStore, setSvcStore] = useState<string>("Downpatrick");
-  const [forecastSales, setForecastSales] = useState<string>("");
-  const [actualSales, setActualSales] = useState<string>("");
+
   const [labourPct, setLabourPct] = useState<string>("");
   const [additionalHours, setAdditionalHours] = useState<string>("");
-  const [openingManager, setOpeningManager] = useState<string>("");
-  const [closingManager, setClosingManager] = useState<string>("");
-  const [instoresScheduled, setInstoresScheduled] = useState<string>("");
-  const [actualInstores, setActualInstores] = useState<string>("");
-  const [driversScheduled, setDriversScheduled] = useState<string>("");
-  const [actualDrivers, setActualDrivers] = useState<string>("");
+
+  const [manager, setManager] = useState<string>("");
+
   const [dotPct, setDotPct] = useState<string>("");
-  const [extremesPct, setExtremesPct] = useState<string>("");
-  const [sbrPct, setSbrPct] = useState<string>("");
   const [rnlText, setRnlText] = useState<string>("");
-  const [foodVariance, setFoodVariance] = useState<string>("");
+
+  const [extremeOver40, setExtremeOver40] = useState<string>("");
+  const [foodPct, setFoodPct] = useState<string>("");
 
   const [serviceMsg, setServiceMsg] = useState<string | null>(null);
   const [serviceSaving, setServiceSaving] = useState(false);
@@ -223,32 +222,38 @@ export default function AdminPage() {
     }
   };
 
-  // SERVICE: clear metric fields
+  // SERVICE: clear metric fields (NEW)
   const resetServiceFields = () => {
-    setForecastSales("");
-    setActualSales("");
+    setSvcWeek("");
+    setSvcDate("");
+    setSvcDayName("");
+    setSvcStore("Downpatrick");
     setLabourPct("");
     setAdditionalHours("");
-    setOpeningManager("");
-    setClosingManager("");
-    setInstoresScheduled("");
-    setActualInstores("");
-    setDriversScheduled("");
-    setActualDrivers("");
+    setManager("");
     setDotPct("");
-    setExtremesPct("");
-    setSbrPct("");
     setRnlText("");
-    setFoodVariance("");
+    setExtremeOver40("");
+    setFoodPct("");
   };
 
-  // SERVICE: submit — uses YOUR real column names
+  // SERVICE: submit (NEW FIELDS)
   const handleServiceSubmit = async () => {
     if (!supabase) return;
     setServiceMsg(null);
 
-    if (!svcDate || !svcStore) {
-      setServiceMsg("Please pick a date and store.");
+    if (!svcWeek || !svcDate || !svcStore) {
+      setServiceMsg("Please enter Week, Date, and Store.");
+      return;
+    }
+    if (!manager.trim()) {
+      setServiceMsg("Please enter Manager.");
+      return;
+    }
+
+    const weekNum = Number(svcWeek);
+    if (!Number.isFinite(weekNum) || weekNum <= 0) {
+      setServiceMsg("Week must be a valid number.");
       return;
     }
 
@@ -257,24 +262,22 @@ export default function AdminPage() {
     const rnlMinutes = timeTextToMinutes(rnlText);
 
     const payload = {
+      week: weekNum,
       shift_date: svcDate,
       day_name: svcDayName || null,
       store: svcStore,
-      forecast_sales: forecastSales ? Number(forecastSales) : null,
-      actual_sales: actualSales ? Number(actualSales) : null,
+
       labour_pct: labourPct ? Number(labourPct) : null,
       additional_hours: additionalHours ? Number(additionalHours) : null,
-      opening_manager: openingManager || null,
-      closing_manager: closingManager || null,
-      instores_scheduled: instoresScheduled ? Number(instoresScheduled) : null,
-      actual_instores: actualInstores ? Number(actualInstores) : null,
-      drivers_scheduled: driversScheduled ? Number(driversScheduled) : null,
-      actual_drivers: actualDrivers ? Number(actualDrivers) : null,
+
+      manager: manager.trim() || null,
+
       dot_pct: dotPct ? Number(dotPct) : null,
-      extremes_pct: extremesPct ? Number(extremesPct) : null,
-      sbr_pct: sbrPct ? Number(sbrPct) : null,
       rnl_minutes: rnlMinutes,
-      food_variance_pct: foodVariance ? Number(foodVariance) : null,
+
+      extreme_over_40: extremeOver40 ? Number(extremeOver40) : null,
+      food_pct: foodPct ? Number(foodPct) : null,
+
       source_file: null,
     };
 
@@ -536,15 +539,25 @@ export default function AdminPage() {
             </>
           ) : activeTab === "service" ? (
             <>
-              {/* SERVICE FORM */}
+              {/* SERVICE FORM (UPDATED ONLY) */}
               <section className="card">
                 <h2>Upload service shift</h2>
                 <p className="muted">
-                  Writes directly into <code>service_shifts</code> using your
-                  column names.
+                  Writes into <code>service_shifts</code> using the new service
+                  fields.
                 </p>
 
                 <div className="form-2col">
+                  <div>
+                    <label>Week</label>
+                    <input
+                      type="number"
+                      value={svcWeek}
+                      onChange={(e) => setSvcWeek(e.target.value)}
+                      placeholder="5"
+                    />
+                  </div>
+
                   <div>
                     <label>Date</label>
                     <input
@@ -553,8 +566,9 @@ export default function AdminPage() {
                       onChange={(e) => handleDateChange(e.target.value)}
                     />
                   </div>
+
                   <div>
-                    <label>Day name</label>
+                    <label>Day</label>
                     <input
                       type="text"
                       value={svcDayName}
@@ -562,6 +576,7 @@ export default function AdminPage() {
                       placeholder="Wednesday"
                     />
                   </div>
+
                   <div>
                     <label>Store</label>
                     <select
@@ -574,24 +589,7 @@ export default function AdminPage() {
                       <option>Ballynahinch</option>
                     </select>
                   </div>
-                  <div>
-                    <label>Forecast sales (£)</label>
-                    <input
-                      type="number"
-                      value={forecastSales}
-                      onChange={(e) => setForecastSales(e.target.value)}
-                      placeholder="2200"
-                    />
-                  </div>
-                  <div>
-                    <label>Actual sales (£)</label>
-                    <input
-                      type="number"
-                      value={actualSales}
-                      onChange={(e) => setActualSales(e.target.value)}
-                      placeholder="2315"
-                    />
-                  </div>
+
                   <div>
                     <label>Labour %</label>
                     <input
@@ -602,6 +600,7 @@ export default function AdminPage() {
                       placeholder="24.5"
                     />
                   </div>
+
                   <div>
                     <label>Additional hours</label>
                     <input
@@ -612,60 +611,17 @@ export default function AdminPage() {
                       placeholder="0"
                     />
                   </div>
+
                   <div>
-                    <label>Opening manager</label>
+                    <label>Manager</label>
                     <input
                       type="text"
-                      value={openingManager}
-                      onChange={(e) => setOpeningManager(e.target.value)}
+                      value={manager}
+                      onChange={(e) => setManager(e.target.value)}
                       placeholder="Stuart"
                     />
                   </div>
-                  <div>
-                    <label>Closing manager</label>
-                    <input
-                      type="text"
-                      value={closingManager}
-                      onChange={(e) => setClosingManager(e.target.value)}
-                      placeholder="Hannah"
-                    />
-                  </div>
-                  <div>
-                    <label>Instores – scheduled</label>
-                    <input
-                      type="number"
-                      value={instoresScheduled}
-                      onChange={(e) => setInstoresScheduled(e.target.value)}
-                      placeholder="5"
-                    />
-                  </div>
-                  <div>
-                    <label>Instores – actual</label>
-                    <input
-                      type="number"
-                      value={actualInstores}
-                      onChange={(e) => setActualInstores(e.target.value)}
-                      placeholder="5"
-                    />
-                  </div>
-                  <div>
-                    <label>Drivers – scheduled</label>
-                    <input
-                      type="number"
-                      value={driversScheduled}
-                      onChange={(e) => setDriversScheduled(e.target.value)}
-                      placeholder="4"
-                    />
-                  </div>
-                  <div>
-                    <label>Drivers – actual</label>
-                    <input
-                      type="number"
-                      value={actualDrivers}
-                      onChange={(e) => setActualDrivers(e.target.value)}
-                      placeholder="4"
-                    />
-                  </div>
+
                   <div>
                     <label>DOT %</label>
                     <input
@@ -676,28 +632,9 @@ export default function AdminPage() {
                       placeholder="78"
                     />
                   </div>
+
                   <div>
-                    <label>Extremes %</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={extremesPct}
-                      onChange={(e) => setExtremesPct(e.target.value)}
-                      placeholder="0"
-                    />
-                  </div>
-                  <div>
-                    <label>SBR %</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={sbrPct}
-                      onChange={(e) => setSbrPct(e.target.value)}
-                      placeholder="76"
-                    />
-                  </div>
-                  <div>
-                    <label>R & L (mm:ss)</label>
+                    <label>R &amp; L (mm:ss)</label>
                     <input
                       type="text"
                       value={rnlText}
@@ -705,14 +642,25 @@ export default function AdminPage() {
                       placeholder="05:19"
                     />
                   </div>
+
                   <div>
-                    <label>Food variance %</label>
+                    <label>Extreme &gt;40 mins</label>
+                    <input
+                      type="number"
+                      value={extremeOver40}
+                      onChange={(e) => setExtremeOver40(e.target.value)}
+                      placeholder="0"
+                    />
+                  </div>
+
+                  <div>
+                    <label>Food %</label>
                     <input
                       type="number"
                       step="0.01"
-                      value={foodVariance}
-                      onChange={(e) => setFoodVariance(e.target.value)}
-                      placeholder="0.12"
+                      value={foodPct}
+                      onChange={(e) => setFoodPct(e.target.value)}
+                      placeholder="25"
                     />
                   </div>
                 </div>
