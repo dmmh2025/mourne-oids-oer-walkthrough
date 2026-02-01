@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase =
@@ -27,21 +28,21 @@ type ServiceRowMini = {
   store: string;
   dot_pct: number | null;
   labour_pct: number | null;
-  manager: string | null; // ✅ current schema
+  manager: string | null;
   created_at?: string | null;
   shift_date?: string | null;
 };
 
 type RankedItem = {
   name: string;
-  avgDOT: number; // 0..1
-  avgLabour: number; // 0..1
+  avgDOT: number;
+  avgLabour: number;
   shifts: number;
 };
 
 type ImprovedItem = {
   name: string;
-  dotDelta: number; // -1..1
+  dotDelta: number;
   recentDOT: number;
   prevDOT: number;
   recentLabour: number;
@@ -52,14 +53,12 @@ export default function HubPage() {
   const [tickerMessages, setTickerMessages] = useState<TickerItem[]>([]);
   const [tickerError, setTickerError] = useState<string | null>(null);
 
-  // Status strip (timestamps)
   const [status, setStatus] = useState<HubStatus>({
     serviceLastUpdated: null,
     osaLastUpdated: null,
     error: null,
   });
 
-  // Highlights
   const [svcRows, setSvcRows] = useState<ServiceRowMini[]>([]);
   const [highlightsError, setHighlightsError] = useState<string | null>(null);
 
@@ -120,7 +119,7 @@ export default function HubPage() {
     load();
   }, []);
 
-  // Load hub status (last updated timestamps)
+  // Load hub status
   useEffect(() => {
     const loadStatus = async () => {
       if (!supabase) {
@@ -224,8 +223,7 @@ export default function HubPage() {
   }, [svcRows]);
 
   const computeRanked = (rows: ServiceRowMini[], key: "store" | "manager") => {
-    const bucket: Record<string, { dot: number[]; labour: number[]; shifts: number }> =
-      {};
+    const bucket: Record<string, { dot: number[]; labour: number[]; shifts: number }> = {};
 
     for (const r of rows) {
       const name =
@@ -264,8 +262,7 @@ export default function HubPage() {
 
   const computeImproved = (recent: ServiceRowMini[], prev: ServiceRowMini[]) => {
     const makeBucket = (rows: ServiceRowMini[]) => {
-      const bucket: Record<string, { dot: number[]; labour: number[]; shifts: number }> =
-        {};
+      const bucket: Record<string, { dot: number[]; labour: number[]; shifts: number }> = {};
       for (const r of rows) {
         const name = (r.store || "").trim();
         if (!name) continue;
@@ -294,7 +291,6 @@ export default function HubPage() {
 
       const recentDOT = r ? avg(r.dot) : 0;
       const prevDOT = p ? avg(p.dot) : 0;
-
       const recentLabour = r ? avg(r.labour) : 0;
 
       return {
@@ -356,8 +352,7 @@ export default function HubPage() {
             ) : tickerMessages.length === 0 ? (
               <span className="ticker-item muted">
                 <span className="cat-pill" style={{ background: "#ffffff" }} />
-                📰 No news items found in Supabase (table:{" "}
-                <code>news_ticker</code>)
+                📰 No news items found in Supabase (table: <code>news_ticker</code>)
               </span>
             ) : (
               tickerMessages.map((item, i) => (
@@ -387,7 +382,6 @@ export default function HubPage() {
             One source of truth for service, standards, and leadership.
           </div>
 
-          {/* Highlights stays at top */}
           <div className="highlights">
             <div className="highlights-head">
               <h2>Highlights</h2>
@@ -440,14 +434,11 @@ export default function HubPage() {
                     </div>
                     <div className="highlight-metrics">
                       <span>
-                        DOT:{" "}
-                        <b>{topManager ? formatPct(topManager.avgDOT, 0) : "—"}</b>
+                        DOT: <b>{topManager ? formatPct(topManager.avgDOT, 0) : "—"}</b>
                       </span>
                       <span>
                         Labour:{" "}
-                        <b>
-                          {topManager ? formatPct(topManager.avgLabour, 1) : "—"}
-                        </b>
+                        <b>{topManager ? formatPct(topManager.avgLabour, 1) : "—"}</b>
                       </span>
                       <span>
                         Shifts: <b>{topManager ? topManager.shifts : "—"}</b>
@@ -505,90 +496,90 @@ export default function HubPage() {
         </div>
 
         <section className="grid">
-          <a href="/dashboard/service" className="card-link">
+          <Link href="/dashboard/service" className="card-link">
             <div className="card-link__icon">📊</div>
             <div className="card-link__body">
               <h2>Service Dashboard</h2>
               <p>Live snapshots, sales, service metrics.</p>
             </div>
             <div className="card-link__chevron">›</div>
-          </a>
+          </Link>
 
-          <a href="/walkthrough" className="card-link">
+          <Link href="/walkthrough" className="card-link">
             <div className="card-link__icon">🧾</div>
             <div className="card-link__body">
               <h2>Standards Walkthrough</h2>
               <p>Store readiness + photos + automatic summary.</p>
             </div>
             <div className="card-link__chevron">›</div>
-          </a>
+          </Link>
 
-          <a href="/admin" className="card-link">
+          <Link href="/admin" className="card-link">
             <div className="card-link__icon">📈</div>
             <div className="card-link__body">
               <h2>Standards Completion report</h2>
               <p>Review store performance and submissions.</p>
             </div>
             <div className="card-link__chevron">›</div>
-          </a>
+          </Link>
 
-          {/* ✅ NEW: Internal OSA Scorecard link */}
-          <a href="/osa" className="card-link">
+          {/* ✅ Internal OSA Scorecard */}
+          <Link href="/osa" className="card-link">
             <div className="card-link__icon">⭐</div>
             <div className="card-link__body">
               <h2>Internal OSA Scorecard</h2>
               <p>Scorecards, results, and rankings.</p>
             </div>
             <div className="card-link__chevron">›</div>
-          </a>
+          </Link>
 
-          <a href="/profile" className="card-link">
+          <Link href="/profile" className="card-link">
             <div className="card-link__icon">👤</div>
             <div className="card-link__body">
               <h2>My Profile</h2>
               <p>Update details & password.</p>
             </div>
             <div className="card-link__chevron">›</div>
-          </a>
+          </Link>
 
-          <a href="/deep-clean" className="card-link">
+          <Link href="/deep-clean" className="card-link">
             <div className="card-link__icon">🧽</div>
             <div className="card-link__body">
               <h2>Autumn Deep Clean</h2>
               <p>Track progress across all stores.</p>
             </div>
             <div className="card-link__chevron">›</div>
-          </a>
+          </Link>
 
-          <a href="/memomailer" className="card-link">
+          <Link href="/memomailer" className="card-link">
             <div className="card-link__icon">📬</div>
             <div className="card-link__body">
               <h2>Weekly MemoMailer</h2>
               <p>Latest PDF loaded from Supabase.</p>
             </div>
             <div className="card-link__chevron">›</div>
-          </a>
+          </Link>
 
-          <a href="/pizza-of-the-week" className="card-link">
+          <Link href="/pizza-of-the-week" className="card-link">
             <div className="card-link__icon">🍕</div>
             <div className="card-link__body">
               <h2>Pizza of the Week</h2>
               <p>Current promo assets for team briefings.</p>
             </div>
             <div className="card-link__chevron">›</div>
-          </a>
+          </Link>
 
-          <a href="/admin/ticker" className="card-link">
+          <Link href="/admin/ticker" className="card-link">
             <div className="card-link__icon">⚙️</div>
             <div className="card-link__body">
               <h2>Admin</h2>
               <p>Manage ticker, service uploads, memomailer.</p>
             </div>
             <div className="card-link__chevron">›</div>
-          </a>
+          </Link>
         </section>
 
-        {/* ✅ MOVED: date/upload section to the bottom */}
+        {/* ✅ Latest uploads at the bottom */}
         <div className="status-bottom" aria-label="Data status">
           <div className="status-bottom-head">
             <h3>Latest uploads</h3>
@@ -599,9 +590,7 @@ export default function HubPage() {
             <div className="status-item">
               <span className="status-dot ok" />
               <span className="status-label">Service data:</span>
-              <span className="status-value">
-                {formatStamp(status.serviceLastUpdated)}
-              </span>
+              <span className="status-value">{formatStamp(status.serviceLastUpdated)}</span>
             </div>
 
             <div className="status-item">
@@ -639,11 +628,7 @@ export default function HubPage() {
 
         .wrap {
           min-height: 100dvh;
-          background: radial-gradient(
-              circle at top,
-              rgba(0, 100, 145, 0.08),
-              transparent 45%
-            ),
+          background: radial-gradient(circle at top, rgba(0, 100, 145, 0.08), transparent 45%),
             linear-gradient(180deg, #e3edf4 0%, #f2f5f9 30%, #f2f5f9 100%);
           display: flex;
           flex-direction: column;
@@ -719,12 +704,8 @@ export default function HubPage() {
         }
 
         @keyframes scroll {
-          0% {
-            transform: translateX(100%);
-          }
-          100% {
-            transform: translateX(-100%);
-          }
+          0% { transform: translateX(100%); }
+          100% { transform: translateX(-100%); }
         }
 
         .shell {
@@ -768,7 +749,6 @@ export default function HubPage() {
           letter-spacing: 0.01em;
         }
 
-        /* highlights */
         .highlights {
           margin: 18px auto 0;
           width: min(980px, 100%);
@@ -884,8 +864,7 @@ export default function HubPage() {
           padding: 8px 14px;
           cursor: pointer;
           box-shadow: 0 6px 14px rgba(0, 100, 145, 0.12);
-          transition: background 0.15s ease, color 0.15s ease,
-            transform 0.1s ease;
+          transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
         }
 
         .btn-logout:hover {
@@ -910,8 +889,7 @@ export default function HubPage() {
           padding: 14px 16px 14px 14px;
           border: 1px solid rgba(0, 100, 145, 0.12);
           box-shadow: 0 10px 25px rgba(15, 23, 42, 0.03);
-          transition: transform 0.12s ease-out, box-shadow 0.12s ease-out,
-            border 0.12s ease-out;
+          transition: transform 0.12s ease-out, box-shadow 0.12s ease-out, border 0.12s ease-out;
         }
 
         .card-link__icon {
@@ -951,7 +929,6 @@ export default function HubPage() {
           box-shadow: 0 16px 40px rgba(0, 0, 0, 0.04);
         }
 
-        /* bottom status */
         .status-bottom {
           margin-top: 22px;
           padding-top: 14px;
@@ -1012,12 +989,8 @@ export default function HubPage() {
           display: inline-block;
         }
 
-        .status-dot.ok {
-          background: #22c55e;
-        }
-        .status-dot.bad {
-          background: #ef4444;
-        }
+        .status-dot.ok { background: #22c55e; }
+        .status-dot.bad { background: #ef4444; }
 
         .status-label {
           color: #475569;
@@ -1037,32 +1010,16 @@ export default function HubPage() {
         }
 
         @media (max-width: 980px) {
-          .highlights-grid {
-            grid-template-columns: 1fr;
-          }
-          .highlights-head {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-          .status-bottom-head {
-            flex-direction: column;
-            align-items: flex-start;
-          }
+          .highlights-grid { grid-template-columns: 1fr; }
+          .highlights-head { flex-direction: column; align-items: flex-start; }
+          .status-bottom-head { flex-direction: column; align-items: flex-start; }
         }
 
         @media (max-width: 720px) {
-          .shell {
-            padding: 24px 16px 28px;
-          }
-          .card-link {
-            border-radius: 1rem;
-          }
-          .ticker-shell {
-            border-radius: 1.2rem;
-          }
-          .purpose-bar {
-            border-radius: 14px;
-          }
+          .shell { padding: 24px 16px 28px; }
+          .card-link { border-radius: 1rem; }
+          .ticker-shell { border-radius: 1.2rem; }
+          .purpose-bar { border-radius: 14px; }
         }
       `}</style>
     </main>
