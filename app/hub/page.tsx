@@ -41,7 +41,7 @@ type RankedItem = {
 
 type ImprovedItem = {
   name: string;
-  dotDelta: number; // -1..1 (percentage points in 0..1 scale)
+  dotDelta: number; // -1..1
   recentDOT: number;
   prevDOT: number;
   recentLabour: number;
@@ -52,7 +52,7 @@ export default function HubPage() {
   const [tickerMessages, setTickerMessages] = useState<TickerItem[]>([]);
   const [tickerError, setTickerError] = useState<string | null>(null);
 
-  // Status strip
+  // Status strip (timestamps)
   const [status, setStatus] = useState<HubStatus>({
     serviceLastUpdated: null,
     osaLastUpdated: null,
@@ -65,7 +65,7 @@ export default function HubPage() {
 
   const normalisePct = (v: number | null) => {
     if (v == null) return null;
-    return v > 1 ? v / 100 : v; // supports 78 or 0.78
+    return v > 1 ? v / 100 : v;
   };
 
   const formatStamp = (iso: string | null) => {
@@ -83,13 +83,12 @@ export default function HubPage() {
   const formatPct = (v: number | null, dp = 0) =>
     v == null ? "—" : (v * 100).toFixed(dp) + "%";
 
-  // category → colour bar
   const getCategoryColor = (cat?: string | null) => {
     const c = (cat || "").toLowerCase();
-    if (c === "service push") return "#E31837"; // red
-    if (c === "celebration") return "#16A34A"; // green
-    if (c === "ops") return "#F59E0B"; // amber
-    if (c === "warning") return "#7C3AED"; // purple
+    if (c === "service push") return "#E31837";
+    if (c === "celebration") return "#16A34A";
+    if (c === "ops") return "#F59E0B";
+    if (c === "warning") return "#7C3AED";
     return "#ffffff";
   };
 
@@ -179,7 +178,6 @@ export default function HubPage() {
 
         const { data, error } = await supabase
           .from("service_shifts")
-          // ✅ removed closing_manager (doesn't exist)
           .select("store, dot_pct, labour_pct, manager, created_at, shift_date")
           .gte("shift_date", fromStr)
           .order("shift_date", { ascending: false });
@@ -211,7 +209,6 @@ export default function HubPage() {
 
     for (const r of svcRows) {
       const iso = r.created_at ? new Date(r.created_at) : null;
-      // fallback: if created_at missing, treat as "recent" (prevents blank UI)
       const d = iso && !isNaN(iso.getTime()) ? iso : null;
 
       if (!d) {
@@ -234,7 +231,7 @@ export default function HubPage() {
       const name =
         key === "store"
           ? (r.store || "").trim()
-          : ((r.manager || "Unknown").trim() || "Unknown"); // ✅ removed closing_manager fallback
+          : ((r.manager || "Unknown").trim() || "Unknown");
 
       if (!name) continue;
 
@@ -257,7 +254,6 @@ export default function HubPage() {
       shifts: v.shifts,
     }));
 
-    // rank: higher DOT first, tie-break lower labour
     out.sort((a, b) => {
       if (b.avgDOT !== a.avgDOT) return b.avgDOT - a.avgDOT;
       return a.avgLabour - b.avgLabour;
@@ -268,10 +264,8 @@ export default function HubPage() {
 
   const computeImproved = (recent: ServiceRowMini[], prev: ServiceRowMini[]) => {
     const makeBucket = (rows: ServiceRowMini[]) => {
-      const bucket: Record<
-        string,
-        { dot: number[]; labour: number[]; shifts: number }
-      > = {};
+      const bucket: Record<string, { dot: number[]; labour: number[]; shifts: number }> =
+        {};
       for (const r of rows) {
         const name = (r.store || "").trim();
         if (!name) continue;
@@ -313,9 +307,7 @@ export default function HubPage() {
       };
     });
 
-    // biggest improvement first
     items.sort((a, b) => b.dotDelta - a.dotDelta);
-
     return items;
   };
 
@@ -334,7 +326,6 @@ export default function HubPage() {
     return improved[0] || null;
   }, [splitSvcRows]);
 
-  // logout
   const handleLogout = async () => {
     try {
       if (!supabase) return;
@@ -347,7 +338,6 @@ export default function HubPage() {
 
   return (
     <main className="wrap">
-      {/* Banner */}
       <div className="banner">
         <img
           src="/mourneoids_forms_header_1600x400.png"
@@ -355,7 +345,6 @@ export default function HubPage() {
         />
       </div>
 
-      {/* News Ticker */}
       <div className="ticker-shell" aria-label="Mourne-oids latest updates">
         <div className="ticker-inner">
           <div className="ticker">
@@ -389,9 +378,7 @@ export default function HubPage() {
         </div>
       </div>
 
-      {/* Page content */}
       <div className="shell">
-        {/* Title */}
         <header className="header">
           <h1>Mourne-oids Hub</h1>
           <p className="subtitle">“Climbing New Peaks, One Shift at a Time.” ⛰️🍕</p>
@@ -400,28 +387,7 @@ export default function HubPage() {
             One source of truth for service, standards, and leadership.
           </div>
 
-          <div className="status-strip" aria-label="Data status">
-            <div className="status-item">
-              <span className="status-dot ok" />
-              <span className="status-label">Service data:</span>
-              <span className="status-value">
-                {formatStamp(status.serviceLastUpdated)}
-              </span>
-            </div>
-            <div className="status-item">
-              <span className="status-dot ok" />
-              <span className="status-label">Internal OSA:</span>
-              <span className="status-value">{formatStamp(status.osaLastUpdated)}</span>
-            </div>
-            {status.error && (
-              <div className="status-item warn">
-                <span className="status-dot bad" />
-                <span className="status-label">Status:</span>
-                <span className="status-value">{status.error}</span>
-              </div>
-            )}
-          </div>
-
+          {/* Highlights stays at top */}
           <div className="highlights">
             <div className="highlights-head">
               <h2>Highlights</h2>
@@ -453,7 +419,8 @@ export default function HubPage() {
                         DOT: <b>{topStore ? formatPct(topStore.avgDOT, 0) : "—"}</b>
                       </span>
                       <span>
-                        Labour: <b>{topStore ? formatPct(topStore.avgLabour, 1) : "—"}</b>
+                        Labour:{" "}
+                        <b>{topStore ? formatPct(topStore.avgLabour, 1) : "—"}</b>
                       </span>
                       <span>
                         Shifts: <b>{topStore ? topStore.shifts : "—"}</b>
@@ -473,10 +440,14 @@ export default function HubPage() {
                     </div>
                     <div className="highlight-metrics">
                       <span>
-                        DOT: <b>{topManager ? formatPct(topManager.avgDOT, 0) : "—"}</b>
+                        DOT:{" "}
+                        <b>{topManager ? formatPct(topManager.avgDOT, 0) : "—"}</b>
                       </span>
                       <span>
-                        Labour: <b>{topManager ? formatPct(topManager.avgLabour, 1) : "—"}</b>
+                        Labour:{" "}
+                        <b>
+                          {topManager ? formatPct(topManager.avgLabour, 1) : "—"}
+                        </b>
                       </span>
                       <span>
                         Shifts: <b>{topManager ? topManager.shifts : "—"}</b>
@@ -527,14 +498,12 @@ export default function HubPage() {
           </div>
         </header>
 
-        {/* top actions */}
         <div className="top-actions">
           <button onClick={handleLogout} className="btn-logout">
             🚪 Log out
           </button>
         </div>
 
-        {/* Buttons */}
         <section className="grid">
           <a href="/dashboard/service" className="card-link">
             <div className="card-link__icon">📊</div>
@@ -559,6 +528,16 @@ export default function HubPage() {
             <div className="card-link__body">
               <h2>Standards Completion report</h2>
               <p>Review store performance and submissions.</p>
+            </div>
+            <div className="card-link__chevron">›</div>
+          </a>
+
+          {/* ✅ NEW: Internal OSA Scorecard link */}
+          <a href="/osa" className="card-link">
+            <div className="card-link__icon">⭐</div>
+            <div className="card-link__body">
+              <h2>Internal OSA Scorecard</h2>
+              <p>Scorecards, results, and rankings.</p>
             </div>
             <div className="card-link__chevron">›</div>
           </a>
@@ -608,9 +587,40 @@ export default function HubPage() {
             <div className="card-link__chevron">›</div>
           </a>
         </section>
+
+        {/* ✅ MOVED: date/upload section to the bottom */}
+        <div className="status-bottom" aria-label="Data status">
+          <div className="status-bottom-head">
+            <h3>Latest uploads</h3>
+            <p>Auto-updates from Supabase</p>
+          </div>
+
+          <div className="status-strip">
+            <div className="status-item">
+              <span className="status-dot ok" />
+              <span className="status-label">Service data:</span>
+              <span className="status-value">
+                {formatStamp(status.serviceLastUpdated)}
+              </span>
+            </div>
+
+            <div className="status-item">
+              <span className="status-dot ok" />
+              <span className="status-label">Internal OSA:</span>
+              <span className="status-value">{formatStamp(status.osaLastUpdated)}</span>
+            </div>
+
+            {status.error && (
+              <div className="status-item warn">
+                <span className="status-dot bad" />
+                <span className="status-label">Status:</span>
+                <span className="status-value">{status.error}</span>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Footer */}
       <footer className="footer">
         <p>© 2025 Mourne-oids | Domino’s Pizza | Racz Group</p>
       </footer>
@@ -629,8 +639,11 @@ export default function HubPage() {
 
         .wrap {
           min-height: 100dvh;
-          background:
-            radial-gradient(circle at top, rgba(0, 100, 145, 0.08), transparent 45%),
+          background: radial-gradient(
+              circle at top,
+              rgba(0, 100, 145, 0.08),
+              transparent 45%
+            ),
             linear-gradient(180deg, #e3edf4 0%, #f2f5f9 30%, #f2f5f9 100%);
           display: flex;
           flex-direction: column;
@@ -755,56 +768,7 @@ export default function HubPage() {
           letter-spacing: 0.01em;
         }
 
-        .status-strip {
-          margin: 12px auto 0;
-          width: min(900px, 100%);
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
-          justify-content: center;
-        }
-
-        .status-item {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 12px;
-          border-radius: 12px;
-          background: rgba(255, 255, 255, 0.85);
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          box-shadow: 0 8px 18px rgba(2, 6, 23, 0.04);
-          font-size: 13px;
-        }
-
-        .status-item.warn {
-          border-color: rgba(239, 68, 68, 0.25);
-          background: rgba(254, 242, 242, 0.75);
-        }
-
-        .status-dot {
-          width: 10px;
-          height: 10px;
-          border-radius: 999px;
-          display: inline-block;
-        }
-
-        .status-dot.ok {
-          background: #22c55e;
-        }
-        .status-dot.bad {
-          background: #ef4444;
-        }
-
-        .status-label {
-          color: #475569;
-          font-weight: 800;
-        }
-
-        .status-value {
-          color: #0f172a;
-          font-weight: 800;
-        }
-
+        /* highlights */
         .highlights {
           margin: 18px auto 0;
           width: min(980px, 100%);
@@ -987,6 +951,84 @@ export default function HubPage() {
           box-shadow: 0 16px 40px rgba(0, 0, 0, 0.04);
         }
 
+        /* bottom status */
+        .status-bottom {
+          margin-top: 22px;
+          padding-top: 14px;
+          border-top: 1px dashed rgba(15, 23, 42, 0.18);
+        }
+
+        .status-bottom-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+
+        .status-bottom-head h3 {
+          margin: 0;
+          font-size: 14px;
+          font-weight: 900;
+          color: #0f172a;
+        }
+
+        .status-bottom-head p {
+          margin: 0;
+          font-size: 12px;
+          color: #64748b;
+          font-weight: 700;
+        }
+
+        .status-strip {
+          width: min(900px, 100%);
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          justify-content: flex-start;
+        }
+
+        .status-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.85);
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          box-shadow: 0 8px 18px rgba(2, 6, 23, 0.04);
+          font-size: 13px;
+        }
+
+        .status-item.warn {
+          border-color: rgba(239, 68, 68, 0.25);
+          background: rgba(254, 242, 242, 0.75);
+        }
+
+        .status-dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 999px;
+          display: inline-block;
+        }
+
+        .status-dot.ok {
+          background: #22c55e;
+        }
+        .status-dot.bad {
+          background: #ef4444;
+        }
+
+        .status-label {
+          color: #475569;
+          font-weight: 800;
+        }
+
+        .status-value {
+          color: #0f172a;
+          font-weight: 800;
+        }
+
         .footer {
           text-align: center;
           margin-top: 24px;
@@ -999,6 +1041,10 @@ export default function HubPage() {
             grid-template-columns: 1fr;
           }
           .highlights-head {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+          .status-bottom-head {
             flex-direction: column;
             align-items: flex-start;
           }
