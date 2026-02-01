@@ -18,7 +18,7 @@ type SortMode = "points" | "stars" | "recent";
 
 type OsaRow = {
   id: string;
-  osa_date: string; // YYYY-MM-DD
+  shift_date: string; // YYYY-MM-DD
   team_member_name: string;
   store: string;
   starting_points: number | null;
