@@ -6,782 +6,623 @@ import { createClient } from "@supabase/supabase-js";
 const supabase =
   typeof window !== "undefined"
     ? createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL as string,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
       )
     : null;
 
-const STORES = ["Downpatrick", "Kilkeel", "Newcastle", "Ballynahinch"] as const;
-
-type DateRange = "yesterday" | "wtd" | "mtd" | "ytd" | "custom";
-type SortMode = "points" | "stars" | "recent";
-
-type OsaRow = {
-  id: string;
-  shift_date: string; // YYYY-MM-DD
-  team_member_name: string;
-  store: string;
-  starting_points: number | null;
-  points_lost: number | null;
-  overall_points: number | null;
-  star_rating: number | null; // 1-5, >5 = Elite
-  created_at?: string | null;
+type TickerItem = {
+  message: string;
+  active: boolean;
+  category?: string | null;
 };
 
-function asNumber(v: any): number | null {
-  if (v === null || v === undefined) return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
+type HubStatus = {
+  serviceLastUpdated: string | null;
+  osaLastUpdated: string | null;
+  error?: string | null;
+};
 
-function formatDateGB(iso: string) {
-  try {
-    return new Date(iso).toLocaleDateString("en-GB", {
+type ServiceRowMini = {
+  store: string;
+  dot_pct: number | null;
+  labour_pct: number | null;
+  manager: string | null; // ✅ current schema
+  created_at?: string | null;
+  shift_date?: string | null;
+};
+
+type RankedItem = {
+  name: string;
+  avgDOT: number; // 0..1
+  avgLabour: number; // 0..1
+  shifts: number;
+};
+
+type ImprovedItem = {
+  name: string;
+  dotDelta: number; // -1..1 (percentage points in 0..1 scale)
+  recentDOT: number;
+  prevDOT: number;
+  recentLabour: number;
+  shiftsRecent: number;
+};
+
+export default function HubPage() {
+  const [tickerMessages, setTickerMessages] = useState<TickerItem[]>([]);
+  const [tickerError, setTickerError] = useState<string | null>(null);
+
+  // Status strip
+  const [status, setStatus] = useState<HubStatus>({
+    serviceLastUpdated: null,
+    osaLastUpdated: null,
+    error: null,
+  });
+
+  // Highlights
+  const [svcRows, setSvcRows] = useState<ServiceRowMini[]>([]);
+  const [highlightsError, setHighlightsError] = useState<string | null>(null);
+
+  const normalisePct = (v: number | null) => {
+    if (v == null) return null;
+    return v > 1 ? v / 100 : v; // supports 78 or 0.78
+  };
+
+  const formatStamp = (iso: string | null) => {
+    if (!iso) return "No submissions yet";
+    const d = new Date(iso);
+    return d.toLocaleString("en-GB", {
       weekday: "short",
       day: "2-digit",
       month: "short",
-      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
-  } catch {
-    return iso;
-  }
-}
+  };
 
-function getMonday(d: Date) {
-  const x = new Date(d);
-  const day = (x.getDay() + 6) % 7; // Mon=0
-  x.setDate(x.getDate() - day);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
+  const formatPct = (v: number | null, dp = 0) =>
+    v == null ? "—" : (v * 100).toFixed(dp) + "%";
 
-function getStarLabel(stars: number | null) {
-  if (stars == null) return "—";
-  if (stars > 5) return "ELITE";
-  return `${stars}⭐`;
-}
+  // category → colour bar
+  const getCategoryColor = (cat?: string | null) => {
+    const c = (cat || "").toLowerCase();
+    if (c === "service push") return "#E31837"; // red
+    if (c === "celebration") return "#16A34A"; // green
+    if (c === "ops") return "#F59E0B"; // amber
+    if (c === "warning") return "#7C3AED"; // purple
+    return "#ffffff";
+  };
 
-function medalForRank(rank: number) {
-  if (rank === 1) return "🥇";
-  if (rank === 2) return "🥈";
-  if (rank === 3) return "🥉";
-  return null;
-}
-
-function clampName(raw: string) {
-  const t = (raw || "").trim();
-  return t.length ? t : "Unknown";
-}
-
-export default function OsaLeaderboardPage() {
-  const [rows, setRows] = useState<OsaRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  const [selectedStore, setSelectedStore] = useState<"all" | string>("all");
-
-  const [dateRange, setDateRange] = useState<DateRange>("wtd");
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
-
-  const [sortMode, setSortMode] = useState<SortMode>("points");
-
-  // ✅ modal state
-  const [activePerson, setActivePerson] = useState<string | null>(null);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setActivePerson(null);
-    };
-    if (activePerson) window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [activePerson]);
-
+  // Load ticker
   useEffect(() => {
     const load = async () => {
       if (!supabase) {
-        setErrorMsg("Supabase client not available");
-        setLoading(false);
+        setTickerError("Supabase client not available");
+        return;
+      }
+      const { data, error } = await supabase
+        .from("news_ticker")
+        .select("message, active, category")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        setTickerError(error.message);
         return;
       }
 
-      const since = new Date();
-      since.setDate(since.getDate() - 120);
-      const sinceStr = since.toISOString().slice(0, 10);
+      if (!data || data.length === 0) {
+        setTickerMessages([]);
+        return;
+      }
 
-      const { data, error } = await supabase
-       .from("osa_internal_results")
-
-        .select(
-          "id, shift_date, team_member_name, store, starting_points, points_lost, overall_points, star_rating, created_at"
-        )
-        .gte("shift_date", sinceStr)
-        .order("shift_date", { ascending: false });
-
-      if (error) setErrorMsg(error.message);
-      else setRows((data || []) as OsaRow[]);
-
-      setLoading(false);
+      const active = data.filter((d: any) => d.active === true);
+      setTickerMessages((active.length > 0 ? active : data) as TickerItem[]);
     };
-
     load();
   }, []);
 
-  const dateFilteredRows = useMemo(() => {
+  // Load hub status (last updated timestamps)
+  useEffect(() => {
+    const loadStatus = async () => {
+      if (!supabase) {
+        setStatus((s) => ({ ...s, error: "Supabase client not available" }));
+        return;
+      }
+
+      try {
+        const { data: svcData, error: svcErr } = await supabase
+          .from("service_shifts")
+          .select("created_at")
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        const { data: osaData, error: osaErr } = await supabase
+          .from("osa_internal_results")
+          .select("created_at")
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (svcErr) throw svcErr;
+        if (osaErr) throw osaErr;
+
+        setStatus({
+          serviceLastUpdated: svcData?.[0]?.created_at ?? null,
+          osaLastUpdated: osaData?.[0]?.created_at ?? null,
+          error: null,
+        });
+      } catch (e: any) {
+        setStatus((s) => ({
+          ...s,
+          error: e?.message || "Could not load status",
+        }));
+      }
+    };
+
+    loadStatus();
+  }, []);
+
+  // Load service rows for highlights (last 14 days)
+  useEffect(() => {
+    const loadHighlights = async () => {
+      if (!supabase) {
+        setHighlightsError("Supabase client not available");
+        return;
+      }
+
+      try {
+        setHighlightsError(null);
+
+        const now = new Date();
+        const fourteen = new Date(now);
+        fourteen.setDate(now.getDate() - 14);
+        const fromStr = fourteen.toISOString().slice(0, 10);
+
+        const { data, error } = await supabase
+          .from("service_shifts")
+          .select("store, dot_pct, labour_pct, manager, created_at, shift_date")
+          .gte("shift_date", fromStr)
+          .order("shift_date", { ascending: false });
+
+        if (error) throw error;
+
+        setSvcRows((data || []) as ServiceRowMini[]);
+      } catch (e: any) {
+        setHighlightsError(e?.message || "Could not load highlights");
+        setSvcRows([]);
+      }
+    };
+
+    loadHighlights();
+  }, []);
+
+  const splitSvcRows = useMemo(() => {
     const now = new Date();
+    const last7Start = new Date(now);
+    last7Start.setDate(now.getDate() - 7);
+    last7Start.setHours(0, 0, 0, 0);
 
-    if (dateRange === "yesterday") {
-      const y = new Date(now);
-      y.setDate(now.getDate() - 1);
-      const yStr = y.toISOString().slice(0, 10);
-      return rows.filter((r) => r.shift_date === yStr);
-    }
+    const prev7Start = new Date(now);
+    prev7Start.setDate(now.getDate() - 14);
+    prev7Start.setHours(0, 0, 0, 0);
 
-    if (dateRange === "wtd") {
-      const monday = getMonday(now);
-      return rows.filter((r) => {
-        const d = new Date(r.shift_date);
-        return d >= monday && d <= now;
-      });
-    }
+    const last7: ServiceRowMini[] = [];
+    const prev7: ServiceRowMini[] = [];
 
-    if (dateRange === "mtd") {
-      const first = new Date(now.getFullYear(), now.getMonth(), 1);
-      return rows.filter((r) => {
-        const d = new Date(r.shift_date);
-        return d >= first && d <= now;
-      });
-    }
+    for (const r of svcRows) {
+      const iso = r.created_at ? new Date(r.created_at) : null;
+      const d = iso && !isNaN(iso.getTime()) ? iso : null;
 
-    if (dateRange === "ytd") {
-      const first = new Date(now.getFullYear(), 0, 1);
-      return rows.filter((r) => {
-        const d = new Date(r.shift_date);
-        return d >= first && d <= now;
-      });
-    }
-
-    if (!customFrom && !customTo) return rows;
-
-    return rows.filter((r) => {
-      const d = new Date(r.shift_date);
-      if (customFrom) {
-        const f = new Date(customFrom);
-        f.setHours(0, 0, 0, 0);
-        if (d < f) return false;
-      }
-      if (customTo) {
-        const t = new Date(customTo);
-        t.setHours(23, 59, 59, 999);
-        if (d > t) return false;
-      }
-      return true;
-    });
-  }, [rows, dateRange, customFrom, customTo]);
-
-  const filteredRows = useMemo(() => {
-    if (selectedStore === "all") return dateFilteredRows;
-    return dateFilteredRows.filter((r) => r.store === selectedStore);
-  }, [dateFilteredRows, selectedStore]);
-
-  // normalise row calc (overall_points + stars)
-  const normalisedRows = useMemo(() => {
-    return filteredRows
-      .map((r) => {
-        const start = asNumber(r.starting_points);
-        const lost = asNumber(r.points_lost);
-        const overall =
-          asNumber(r.overall_points) ??
-          (start != null && lost != null ? start - lost : null);
-
-        const stars = asNumber(r.star_rating);
-
-        return {
-          ...r,
-          team_member_name: clampName(r.team_member_name),
-          overall_points: overall,
-          star_rating: stars,
-        };
-      })
-      .filter((r) => (r.team_member_name || "").trim().length > 0);
-  }, [filteredRows]);
-
-  // ✅ ranked leaderboard list
-  const rankedRows = useMemo(() => {
-    const list = [...normalisedRows];
-
-    list.sort((a, b) => {
-      if (sortMode === "recent") {
-        if (a.shift_date !== b.shift_date)
-          return a.shift_date < b.shift_date ? 1 : -1;
-        const ac = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const bc = b.created_at ? new Date(b.created_at).getTime() : 0;
-        return bc - ac;
+      if (!d) {
+        last7.push(r);
+        continue;
       }
 
-      if (sortMode === "stars") {
-        const aStars = a.star_rating ?? -1;
-        const bStars = b.star_rating ?? -1;
-        if (bStars !== aStars) return bStars - aStars;
-        const aPts = a.overall_points ?? -999999;
-        const bPts = b.overall_points ?? -999999;
-        return bPts - aPts;
-      }
-
-      const aPts = a.overall_points ?? -999999;
-      const bPts = b.overall_points ?? -999999;
-      if (bPts !== aPts) return bPts - aPts;
-
-      const aStars = a.star_rating ?? -1;
-      const bStars = b.star_rating ?? -1;
-      if (bStars !== aStars) return bStars - aStars;
-
-      if (a.shift_date !== b.shift_date) return a.shift_date < b.shift_date ? 1 : -1;
-      return 0;
-    });
-
-    return list.map((r, idx) => ({ ...r, rank: idx + 1 }));
-  }, [normalisedRows, sortMode]);
-
-  const podium = useMemo(() => rankedRows.slice(0, 3), [rankedRows]);
-
-  // ✅ store leaderboard (avg points, tie: elite count, tie: avg stars)
-  const storeLeaderboard = useMemo(() => {
-    const bucket: Record<
-      string,
-      { entries: number; points: number[]; stars: number[]; eliteCount: number }
-    > = {};
-
-    for (const r of normalisedRows) {
-      const store = (r.store || "Unknown").trim() || "Unknown";
-      if (!bucket[store]) bucket[store] = { entries: 0, points: [], stars: [], eliteCount: 0 };
-
-      bucket[store].entries += 1;
-      if (r.overall_points != null) bucket[store].points.push(r.overall_points);
-      if (r.star_rating != null) {
-        bucket[store].stars.push(r.star_rating);
-        if (r.star_rating > 5) bucket[store].eliteCount += 1;
-      }
+      if (d >= last7Start) last7.push(r);
+      else if (d >= prev7Start && d < last7Start) prev7.push(r);
     }
 
-    const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
+    return { last7, prev7 };
+  }, [svcRows]);
 
-    const arr = Object.entries(bucket).map(([store, v]) => ({
-      store,
-      entries: v.entries,
-      avgPoints: avg(v.points),
-      avgStars: avg(v.stars),
-      eliteCount: v.eliteCount,
+  const computeRanked = (rows: ServiceRowMini[], key: "store" | "manager") => {
+    const bucket: Record<string, { dot: number[]; labour: number[]; shifts: number }> =
+      {};
+
+    for (const r of rows) {
+      const name =
+        key === "store"
+          ? (r.store || "").trim()
+          : ((r.manager || "Unknown").trim() || "Unknown");
+
+      if (!name) continue;
+
+      if (!bucket[name]) bucket[name] = { dot: [], labour: [], shifts: 0 };
+      bucket[name].shifts += 1;
+
+      const d = normalisePct(r.dot_pct);
+      const l = normalisePct(r.labour_pct);
+      if (d != null) bucket[name].dot.push(d);
+      if (l != null) bucket[name].labour.push(l);
+    }
+
+    const avg = (arr: number[]) =>
+      arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+
+    const out: RankedItem[] = Object.entries(bucket).map(([name, v]) => ({
+      name,
+      avgDOT: avg(v.dot),
+      avgLabour: avg(v.labour),
+      shifts: v.shifts,
     }));
 
-    arr.sort((a, b) => {
-      if (b.avgPoints !== a.avgPoints) return b.avgPoints - a.avgPoints;
-      if (b.eliteCount !== a.eliteCount) return b.eliteCount - a.eliteCount;
-      return b.avgStars - a.avgStars;
+    out.sort((a, b) => {
+      if (b.avgDOT !== a.avgDOT) return b.avgDOT - a.avgDOT;
+      return a.avgLabour - b.avgLabour;
     });
 
-    return arr.map((s, idx) => ({ ...s, rank: idx + 1 }));
-  }, [normalisedRows]);
+    return out;
+  };
 
-  // ✅ modal: person history (within current filters)
-  const activePersonHistory = useMemo(() => {
-    if (!activePerson) return [];
+  const computeImproved = (recent: ServiceRowMini[], prev: ServiceRowMini[]) => {
+    const makeBucket = (rows: ServiceRowMini[]) => {
+      const bucket: Record<string, { dot: number[]; labour: number[]; shifts: number }> =
+        {};
+      for (const r of rows) {
+        const name = (r.store || "").trim();
+        if (!name) continue;
+        if (!bucket[name]) bucket[name] = { dot: [], labour: [], shifts: 0 };
+        bucket[name].shifts += 1;
 
-    const list = normalisedRows
-      .filter((r) => r.team_member_name === activePerson)
-      .sort((a, b) => {
-        if (a.shift_date !== b.shift_date) return a.shift_date < b.shift_date ? 1 : -1;
-        const ac = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const bc = b.created_at ? new Date(b.created_at).getTime() : 0;
-        return bc - ac;
-      });
-
-    return list;
-  }, [activePerson, normalisedRows]);
-
-  const activePersonSummary = useMemo(() => {
-    if (!activePerson) return null;
-    const list = activePersonHistory;
-    if (list.length === 0) {
-      return {
-        checks: 0,
-        avgPoints: null as number | null,
-        avgStars: null as number | null,
-        eliteCount: 0,
-        lastOverall: null as number | null,
-        prevOverall: null as number | null,
-      };
-    }
-
-    const pts = list.map((r) => r.overall_points).filter((v): v is number => v != null);
-    const stars = list.map((r) => r.star_rating).filter((v): v is number => v != null);
-    const eliteCount = list.filter((r) => (r.star_rating ?? 0) > 5).length;
-
-    const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
-
-    const lastOverall = list[0]?.overall_points ?? null;
-    const prevOverall = list[1]?.overall_points ?? null;
-
-    return {
-      checks: list.length,
-      avgPoints: avg(pts),
-      avgStars: avg(stars),
-      eliteCount,
-      lastOverall,
-      prevOverall,
+        const d = normalisePct(r.dot_pct);
+        const l = normalisePct(r.labour_pct);
+        if (d != null) bucket[name].dot.push(d);
+        if (l != null) bucket[name].labour.push(l);
+      }
+      return bucket;
     };
-  }, [activePerson, activePersonHistory]);
 
-  const trendDelta = useMemo(() => {
-    const s = activePersonSummary;
-    if (!s) return null;
-    if (s.lastOverall == null || s.prevOverall == null) return null;
-    return s.lastOverall - s.prevOverall;
-  }, [activePersonSummary]);
+    const avg = (arr: number[]) =>
+      arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
-  const trendBadge = useMemo(() => {
-    if (trendDelta == null) return { text: "No trend yet", tone: "neutral" as const };
-    if (trendDelta > 0) return { text: `Up +${trendDelta}`, tone: "pos" as const };
-    if (trendDelta < 0) return { text: `Down ${trendDelta}`, tone: "neg" as const };
-    return { text: "Flat 0", tone: "neutral" as const };
-  }, [trendDelta]);
+    const rB = makeBucket(recent);
+    const pB = makeBucket(prev);
 
-  const last10 = useMemo(() => activePersonHistory.slice(0, 10), [activePersonHistory]);
+    const names = Array.from(new Set([...Object.keys(rB), ...Object.keys(pB)]));
 
-  const periodLabel =
-    dateRange === "yesterday"
-      ? "Yesterday"
-      : dateRange === "wtd"
-      ? "Week to date"
-      : dateRange === "mtd"
-      ? "Month to date"
-      : dateRange === "ytd"
-      ? "Year to date"
-      : "Custom";
+    const items: ImprovedItem[] = names.map((name) => {
+      const r = rB[name];
+      const p = pB[name];
 
-  const handleBack = () => {
-    if (typeof window !== "undefined") window.history.back();
+      const recentDOT = r ? avg(r.dot) : 0;
+      const prevDOT = p ? avg(p.dot) : 0;
+
+      const recentLabour = r ? avg(r.labour) : 0;
+
+      return {
+        name,
+        dotDelta: recentDOT - prevDOT,
+        recentDOT,
+        prevDOT,
+        recentLabour,
+        shiftsRecent: r?.shifts ?? 0,
+      };
+    });
+
+    items.sort((a, b) => b.dotDelta - a.dotDelta);
+    return items;
+  };
+
+  const topStore = useMemo(() => {
+    const rankedStores = computeRanked(splitSvcRows.last7, "store");
+    return rankedStores[0] || null;
+  }, [splitSvcRows]);
+
+  const topManager = useMemo(() => {
+    const rankedManagers = computeRanked(splitSvcRows.last7, "manager");
+    return rankedManagers[0] || null;
+  }, [splitSvcRows]);
+
+  const mostImprovedStore = useMemo(() => {
+    const improved = computeImproved(splitSvcRows.last7, splitSvcRows.prev7);
+    return improved[0] || null;
+  }, [splitSvcRows]);
+
+  // logout
+  const handleLogout = async () => {
+    try {
+      if (!supabase) return;
+      await supabase.auth.signOut();
+      window.location.href = "/login";
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   return (
     <main className="wrap">
       <div className="banner">
-        <img src="/mourneoids_forms_header_1600x400.png" alt="Mourne-oids Header Banner" />
+        <img
+          src="/mourneoids_forms_header_1600x400.png"
+          alt="Mourne-oids Header Banner"
+        />
       </div>
 
-      <div className="nav-row">
-        <button onClick={handleBack} className="btn btn--ghost">
-          ← Back
-        </button>
-        <a href="/" className="btn btn--brand">
-          🏠 Home
-        </a>
-      </div>
-
-      <header className="header">
-        <h1>Internal OSA Leaderboard</h1>
-        <p className="subtitle">
-          Ranked by <b>overall points</b> (higher is better). Stars show 1–5⭐, and <b>Elite</b> above 5⭐.
-        </p>
-      </header>
-
-      {/* filters */}
-      <section className="container wide">
-        <div className="filters-panel card soft">
-          <div className="filters-block">
-            <p className="filters-title">Store</p>
-            <div className="filters">
-              <button
-                onClick={() => setSelectedStore("all")}
-                className={`chip ${selectedStore === "all" ? "chip--active" : ""}`}
-              >
-                All stores
-              </button>
-              {STORES.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setSelectedStore(s)}
-                  className={`chip ${selectedStore === s ? "chip--active" : ""}`}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
+      <div className="ticker-shell" aria-label="Mourne-oids latest updates">
+        <div className="ticker-inner">
+          <div className="ticker">
+            {tickerError ? (
+              <span className="ticker-item error">
+                <span className="cat-pill" style={{ background: "#ffffff" }} />
+                ⚠️ Ticker error: {tickerError}
+              </span>
+            ) : tickerMessages.length === 0 ? (
+              <span className="ticker-item muted">
+                <span className="cat-pill" style={{ background: "#ffffff" }} />
+                📰 No news items found in Supabase (table:{" "}
+                <code>news_ticker</code>)
+              </span>
+            ) : (
+              tickerMessages.map((item, i) => (
+                <span key={i} className="ticker-item">
+                  <span
+                    className="cat-pill"
+                    style={{ background: getCategoryColor(item.category) }}
+                    title={item.category || "Announcement"}
+                  />
+                  {item.message}
+                  {i < tickerMessages.length - 1 && (
+                    <span className="separator">•</span>
+                  )}
+                </span>
+              ))
+            )}
           </div>
-
-          <div className="filters-block">
-            <p className="filters-title">Period</p>
-            <div className="filters">
-              <button
-                onClick={() => setDateRange("yesterday")}
-                className={`chip small ${dateRange === "yesterday" ? "chip--active" : ""}`}
-              >
-                Yesterday
-              </button>
-              <button
-                onClick={() => setDateRange("wtd")}
-                className={`chip small ${dateRange === "wtd" ? "chip--active" : ""}`}
-              >
-                WTD
-              </button>
-              <button
-                onClick={() => setDateRange("mtd")}
-                className={`chip small ${dateRange === "mtd" ? "chip--active" : ""}`}
-              >
-                MTD
-              </button>
-              <button
-                onClick={() => setDateRange("ytd")}
-                className={`chip small ${dateRange === "ytd" ? "chip--active" : ""}`}
-              >
-                YTD
-              </button>
-              <button
-                onClick={() => setDateRange("custom")}
-                className={`chip small ${dateRange === "custom" ? "chip--active" : ""}`}
-              >
-                Custom
-              </button>
-            </div>
-          </div>
-
-          <div className="filters-block">
-            <p className="filters-title">Sort</p>
-            <div className="filters">
-              <button
-                onClick={() => setSortMode("points")}
-                className={`chip small ${sortMode === "points" ? "chip--active" : ""}`}
-              >
-                Overall points
-              </button>
-              <button
-                onClick={() => setSortMode("stars")}
-                className={`chip small ${sortMode === "stars" ? "chip--active" : ""}`}
-              >
-                Stars
-              </button>
-              <button
-                onClick={() => setSortMode("recent")}
-                className={`chip small ${sortMode === "recent" ? "chip--active" : ""}`}
-              >
-                Most recent
-              </button>
-            </div>
-          </div>
-
-          {dateRange === "custom" && (
-            <div className="custom-row">
-              <div className="date-field">
-                <label>From</label>
-                <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
-              </div>
-              <div className="date-field">
-                <label>To</label>
-                <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
-              </div>
-            </div>
-          )}
         </div>
-      </section>
+      </div>
 
-      <section className="container wide content">
-        {loading && <div className="card pad">Loading Internal OSA…</div>}
-        {errorMsg && <div className="card pad error">Error: {errorMsg}</div>}
+      <div className="shell">
+        <header className="header">
+          <h1>Mourne-oids Hub</h1>
+          <p className="subtitle">
+            “Climbing New Peaks, One Shift at a Time.” ⛰️🍕
+          </p>
 
-        {!loading && !errorMsg && (
-          <>
-            {/* STORE MINI-LEADERBOARD */}
-            <div className="section-head">
-              <h2>Store leaderboard</h2>
-              <p className="section-sub">{periodLabel}</p>
-            </div>
+          <div className="purpose-bar" role="note">
+            One source of truth for service, standards, and leadership.
+          </div>
 
-            {storeLeaderboard.length === 0 ? (
-              <div className="card pad">
-                <p className="muted">No store results for this filter.</p>
-              </div>
-            ) : (
-              <div className="store-mini-grid">
-                {storeLeaderboard.map((s) => (
-                  <div key={s.store} className="card store-mini-card">
-                    <div className="store-mini-top">
-                      <div className="store-mini-left">
-                        <span className="rank-badge">#{s.rank}</span>
-                        <div className="store-mini-title">
-                          <h3 title={s.store}>{s.store}</h3>
-                          <p className="muted-sm">{s.entries} checks</p>
-                        </div>
-                      </div>
-
-                      <span className={`pill ${s.eliteCount > 0 ? "pill--elite" : "pill--brand"}`}>
-                        {s.eliteCount > 0 ? `ELITE x${s.eliteCount}` : "No Elite"}
-                      </span>
-                    </div>
-
-                    <div className="rows">
-                      <p className="metric">
-                        <span>Avg overall</span>
-                        <strong>{s.avgPoints ? s.avgPoints.toFixed(1) : "—"}</strong>
-                      </p>
-                      <p className="metric">
-                        <span>Avg stars</span>
-                        <strong>{s.avgStars ? s.avgStars.toFixed(2) : "—"}</strong>
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* PODIUM */}
-            <div className="section-head mt">
-              <h2>Podium</h2>
-              <p className="section-sub">{periodLabel}</p>
-            </div>
-
-            {podium.length === 0 ? (
-              <div className="card pad">
-                <p className="muted">No results for this filter.</p>
-              </div>
-            ) : (
-              <div className="podium-grid">
-                {podium.map((p) => {
-                  const medal = medalForRank(p.rank);
-                  const stars = p.star_rating ?? null;
-                  const elite = stars != null && stars > 5;
-
-                  const overall = p.overall_points ?? 0;
-                  const start = p.starting_points ?? 0;
-                  const lost = p.points_lost ?? 0;
-
-                  return (
-                    <div key={p.id} className="card podium-card">
-                      <div className="podium-top">
-                        <div className="podium-left">
-                          <div className="rank-big">
-                            <span className="medal">{medal}</span>
-                            <span className="rank-num">#{p.rank}</span>
-                          </div>
-                          <div className="podium-name">
-                            <h3 title={p.team_member_name}>{p.team_member_name}</h3>
-                            <p className="muted-sm">
-                              {p.store} • {formatDateGB(p.shift_date)}
-                            </p>
-                          </div>
-                        </div>
-
-                        <span className={`pill ${elite ? "pill--elite" : "pill--brand"}`}>
-                          {getStarLabel(stars)}
-                        </span>
-                      </div>
-
-                      <div className="rows">
-                        <p className="metric">
-                          <span>Overall points</span>
-                          <strong>{overall}</strong>
-                        </p>
-                        <p className="metric">
-                          <span>Starting</span>
-                          <strong>{start}</strong>
-                        </p>
-                        <p className="metric">
-                          <span>Lost</span>
-                          <strong>{lost}</strong>
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* LEADERBOARD TABLE */}
-            <div className="section-head mt">
-              <h2>Leaderboard</h2>
-              <p className="section-sub">
-                {periodLabel} • {selectedStore === "all" ? "All stores" : selectedStore} • sorted by{" "}
-                {sortMode === "points" ? "overall points" : sortMode === "stars" ? "stars" : "most recent"}
-              </p>
-            </div>
-
-            <div className="card table-card">
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th style={{ width: 92 }}>Rank</th>
-                      <th>Team member</th>
-                      <th>Store</th>
-                      <th>Date</th>
-                      <th>Overall</th>
-                      <th>Start</th>
-                      <th>Lost</th>
-                      <th>Stars</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rankedRows.length === 0 && (
-                      <tr>
-                        <td colSpan={8} className="empty">
-                          No results for this filter.
-                        </td>
-                      </tr>
-                    )}
-
-                    {rankedRows.map((r) => {
-                      const stars = r.star_rating ?? null;
-                      const elite = stars != null && stars > 5;
-                      const overall = r.overall_points ?? 0;
-
-                      const tone =
-                        r.rank <= 3
-                          ? "row--podium"
-                          : overall >= 115
-                          ? "row--good"
-                          : overall >= 105
-                          ? "row--mid"
-                          : "row--low";
-
-                      return (
-                        <tr key={r.id} className={tone}>
-                          <td>
-                            <span className="rank-badge">#{r.rank}</span>
-                          </td>
-
-                          {/* ✅ clickable name → opens modal */}
-                          <td className="name-cell">
-                            <button
-                              className="name-link"
-                              onClick={() => setActivePerson(r.team_member_name)}
-                              title="View profile"
-                            >
-                              {r.team_member_name}
-                            </button>
-                          </td>
-
-                          <td>{r.store}</td>
-                          <td>{formatDateGB(r.shift_date)}</td>
-                          <td>
-                            <b>{overall}</b>
-                          </td>
-                          <td>{r.starting_points ?? "—"}</td>
-                          <td>{r.points_lost ?? "—"}</td>
-                          <td>
-                            <span className={`star-pill ${elite ? "star-pill--elite" : ""}`}>
-                              {getStarLabel(stars)}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </>
-        )}
-      </section>
-
-      {/* ✅ PROFILE MODAL */}
-      {activePerson && (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" onMouseDown={() => setActivePerson(null)}>
-          <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
-            <div className="modal-head">
-              <div className="modal-title">
-                <h3 title={activePerson}>{activePerson}</h3>
-                <p className="muted-sm">
-                  {periodLabel} • {selectedStore === "all" ? "All stores" : selectedStore}
-                </p>
-              </div>
-
-              <button className="modal-close" onClick={() => setActivePerson(null)} aria-label="Close">
-                ✕
-              </button>
-            </div>
-
-            <div className="modal-kpis">
-              <div className="kpi-card">
-                <p className="kpi-label">Checks</p>
-                <p className="kpi-value">{activePersonSummary?.checks ?? 0}</p>
-              </div>
-              <div className="kpi-card">
-                <p className="kpi-label">Avg overall</p>
-                <p className="kpi-value">
-                  {activePersonSummary?.avgPoints != null ? activePersonSummary.avgPoints.toFixed(1) : "—"}
-                </p>
-              </div>
-              <div className="kpi-card">
-                <p className="kpi-label">Avg stars</p>
-                <p className="kpi-value">
-                  {activePersonSummary?.avgStars != null ? activePersonSummary.avgStars.toFixed(2) : "—"}
-                </p>
-              </div>
-              <div className="kpi-card">
-                <p className="kpi-label">Elite</p>
-                <p className="kpi-value">{activePersonSummary?.eliteCount ?? 0}</p>
-              </div>
-            </div>
-
-            <div className="trend-row">
-              <span className="trend-label">Trend (latest vs previous)</span>
-              <span className={`trend-pill ${trendBadge.tone}`}>
-                {trendBadge.tone === "pos" ? "📈 " : trendBadge.tone === "neg" ? "📉 " : "➖ "}
-                {trendBadge.text}
+          <div className="status-strip" aria-label="Data status">
+            <div className="status-item">
+              <span className="status-dot ok" />
+              <span className="status-label">Service data:</span>
+              <span className="status-value">
+                {formatStamp(status.serviceLastUpdated)}
               </span>
             </div>
-
-            <div className="modal-section">
-              <h4>Last 10 checks</h4>
-              {last10.length === 0 ? (
-                <p className="muted">No checks for this person in the current filter.</p>
-              ) : (
-                <div className="modal-table-wrap">
-                  <table className="modal-table">
-                    <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th>Store</th>
-                        <th>Overall</th>
-                        <th>Start</th>
-                        <th>Lost</th>
-                        <th>Stars</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {last10.map((r) => {
-                        const stars = r.star_rating ?? null;
-                        const elite = stars != null && stars > 5;
-                        return (
-                          <tr key={r.id}>
-                            <td>{formatDateGB(r.shift_date)}</td>
-                            <td>{r.store}</td>
-                            <td>
-                              <b>{r.overall_points ?? "—"}</b>
-                            </td>
-                            <td>{r.starting_points ?? "—"}</td>
-                            <td>{r.points_lost ?? "—"}</td>
-                            <td>
-                              <span className={`star-pill ${elite ? "star-pill--elite" : ""}`}>
-                                {getStarLabel(stars)}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+            <div className="status-item">
+              <span className="status-dot ok" />
+              <span className="status-label">Internal OSA:</span>
+              <span className="status-value">
+                {formatStamp(status.osaLastUpdated)}
+              </span>
             </div>
-
-            <div className="modal-actions">
-              <button className="btn btn--ghost" onClick={() => setActivePerson(null)}>
-                Close
-              </button>
-            </div>
+            {status.error && (
+              <div className="status-item warn">
+                <span className="status-dot bad" />
+                <span className="status-label">Status:</span>
+                <span className="status-value">{status.error}</span>
+              </div>
+            )}
           </div>
+
+          <div className="highlights">
+            <div className="highlights-head">
+              <h2>Highlights</h2>
+              <p>Last 7 days • ranked by higher DOT% then lower labour%</p>
+            </div>
+
+            {highlightsError ? (
+              <div className="highlight-card warning">
+                <div className="highlight-top">
+                  <span className="highlight-title">⚠️ Highlights</span>
+                </div>
+                <div className="highlight-body">
+                  Could not load highlights: {highlightsError}
+                </div>
+              </div>
+            ) : (
+              <div className="highlights-grid">
+                <div className="highlight-card">
+                  <div className="highlight-top">
+                    <span className="highlight-title">🏆 Top Store</span>
+                    <span className="highlight-pill">Winners circle</span>
+                  </div>
+                  <div className="highlight-main">
+                    <div className="highlight-name">
+                      {topStore ? topStore.name : "No data"}
+                    </div>
+                    <div className="highlight-metrics">
+                      <span>
+                        DOT:{" "}
+                        <b>{topStore ? formatPct(topStore.avgDOT, 0) : "—"}</b>
+                      </span>
+                      <span>
+                        Labour:{" "}
+                        <b>
+                          {topStore ? formatPct(topStore.avgLabour, 1) : "—"}
+                        </b>
+                      </span>
+                      <span>
+                        Shifts: <b>{topStore ? topStore.shifts : "—"}</b>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="highlight-card">
+                  <div className="highlight-top">
+                    <span className="highlight-title">🥇 Top Manager</span>
+                    <span className="highlight-pill">Closing game</span>
+                  </div>
+                  <div className="highlight-main">
+                    <div className="highlight-name">
+                      {topManager ? topManager.name : "No data"}
+                    </div>
+                    <div className="highlight-metrics">
+                      <span>
+                        DOT:{" "}
+                        <b>
+                          {topManager ? formatPct(topManager.avgDOT, 0) : "—"}
+                        </b>
+                      </span>
+                      <span>
+                        Labour:{" "}
+                        <b>
+                          {topManager
+                            ? formatPct(topManager.avgLabour, 1)
+                            : "—"}
+                        </b>
+                      </span>
+                      <span>
+                        Shifts: <b>{topManager ? topManager.shifts : "—"}</b>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="highlight-card">
+                  <div className="highlight-top">
+                    <span className="highlight-title">📈 Most Improved Store</span>
+                    <span className="highlight-pill">Vs prev 7 days</span>
+                  </div>
+                  <div className="highlight-main">
+                    <div className="highlight-name">
+                      {mostImprovedStore ? mostImprovedStore.name : "No data"}
+                    </div>
+                    <div className="highlight-metrics">
+                      <span>
+                        DOT uplift:{" "}
+                        <b>
+                          {mostImprovedStore
+                            ? (mostImprovedStore.dotDelta * 100).toFixed(1) +
+                              "pp"
+                            : "—"}
+                        </b>
+                      </span>
+                      <span>
+                        Recent DOT:{" "}
+                        <b>
+                          {mostImprovedStore
+                            ? formatPct(mostImprovedStore.recentDOT, 0)
+                            : "—"}
+                        </b>
+                      </span>
+                      <span>
+                        Labour:{" "}
+                        <b>
+                          {mostImprovedStore
+                            ? formatPct(mostImprovedStore.recentLabour, 1)
+                            : "—"}
+                        </b>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </header>
+
+        <div className="top-actions">
+          <button onClick={handleLogout} className="btn-logout">
+            🚪 Log out
+          </button>
         </div>
-      )}
+
+        <section className="grid">
+          <a href="/dashboard/service" className="card-link">
+            <div className="card-link__icon">📊</div>
+            <div className="card-link__body">
+              <h2>Service Dashboard</h2>
+              <p>Live snapshots, sales, service metrics.</p>
+            </div>
+            <div className="card-link__chevron">›</div>
+          </a>
+
+          <a href="/walkthrough" className="card-link">
+            <div className="card-link__icon">🧾</div>
+            <div className="card-link__body">
+              <h2>Standards Walkthrough</h2>
+              <p>Store readiness + photos + automatic summary.</p>
+            </div>
+            <div className="card-link__chevron">›</div>
+          </a>
+
+          <a href="/admin" className="card-link">
+            <div className="card-link__icon">📈</div>
+            <div className="card-link__body">
+              <h2>Standards Completion report</h2>
+              <p>Review store performance and submissions.</p>
+            </div>
+            <div className="card-link__chevron">›</div>
+          </a>
+
+          {/* ✅ NEW: INTERNAL OSA SCORECARD BUTTON */}
+          <a href="/osa" className="card-link">
+            <div className="card-link__icon">⭐</div>
+            <div className="card-link__body">
+              <h2>Internal OSA Scorecard</h2>
+              <p>Record results and rank team members by points.</p>
+            </div>
+            <div className="card-link__chevron">›</div>
+          </a>
+
+          <a href="/profile" className="card-link">
+            <div className="card-link__icon">👤</div>
+            <div className="card-link__body">
+              <h2>My Profile</h2>
+              <p>Update details & password.</p>
+            </div>
+            <div className="card-link__chevron">›</div>
+          </a>
+
+          <a href="/deep-clean" className="card-link">
+            <div className="card-link__icon">🧽</div>
+            <div className="card-link__body">
+              <h2>Autumn Deep Clean</h2>
+              <p>Track progress across all stores.</p>
+            </div>
+            <div className="card-link__chevron">›</div>
+          </a>
+
+          <a href="/memomailer" className="card-link">
+            <div className="card-link__icon">📬</div>
+            <div className="card-link__body">
+              <h2>Weekly MemoMailer</h2>
+              <p>Latest PDF loaded from Supabase.</p>
+            </div>
+            <div className="card-link__chevron">›</div>
+          </a>
+
+          <a href="/pizza-of-the-week" className="card-link">
+            <div className="card-link__icon">🍕</div>
+            <div className="card-link__body">
+              <h2>Pizza of the Week</h2>
+              <p>Current promo assets for team briefings.</p>
+            </div>
+            <div className="card-link__chevron">›</div>
+          </a>
+
+          <a href="/admin/ticker" className="card-link">
+            <div className="card-link__icon">⚙️</div>
+            <div className="card-link__body">
+              <h2>Admin</h2>
+              <p>Manage ticker, service uploads, memomailer.</p>
+            </div>
+            <div className="card-link__chevron">›</div>
+          </a>
+        </section>
+      </div>
 
       <footer className="footer">
         <p>© 2025 Mourne-oids | Domino’s Pizza | Racz Group</p>
@@ -789,21 +630,28 @@ export default function OsaLeaderboardPage() {
 
       <style jsx>{`
         :root {
-          --bg: #f2f5f9;
+          --bg: #0f172a;
+          --paper: rgba(255, 255, 255, 0.08);
+          --paper-solid: #ffffff;
           --text: #0f172a;
           --muted: #475569;
           --brand: #006491;
           --brand-dark: #004b75;
-          --shadow-card: 0 10px 18px rgba(2, 6, 23, 0.08),
-            0 1px 3px rgba(2, 6, 23, 0.06);
+          --shadow-card: 0 16px 40px rgba(0, 0, 0, 0.05);
         }
 
         .wrap {
-          background: var(--bg);
           min-height: 100dvh;
+          background: radial-gradient(
+              circle at top,
+              rgba(0, 100, 145, 0.08),
+              transparent 45%
+            ),
+            linear-gradient(180deg, #e3edf4 0%, #f2f5f9 30%, #f2f5f9 100%);
           display: flex;
           flex-direction: column;
           align-items: center;
+          color: var(--text);
           padding-bottom: 40px;
         }
 
@@ -813,631 +661,377 @@ export default function OsaLeaderboardPage() {
           align-items: center;
           background: #fff;
           border-bottom: 3px solid var(--brand);
-          box-shadow: var(--shadow-card);
+          box-shadow: 0 12px 35px rgba(2, 6, 23, 0.08);
           width: 100%;
         }
 
         .banner img {
-          max-width: 92%;
+          max-width: min(1160px, 92%);
           height: auto;
+          display: block;
         }
 
-        .nav-row {
-          width: 100%;
-          max-width: 1100px;
-          display: flex;
-          gap: 10px;
-          justify-content: flex-start;
+        .ticker-shell {
+          width: min(1100px, 94vw);
           margin-top: 16px;
-          padding: 0 16px;
+          background: linear-gradient(90deg, #006491 0%, #004b75 100%);
+          border-radius: 9999px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          overflow: hidden;
+          box-shadow: 0 15px 30px rgba(0, 0, 0, 0.06);
+        }
+
+        .ticker-inner {
+          white-space: nowrap;
+          overflow: hidden;
+        }
+
+        .ticker {
+          display: inline-block;
+          animation: scroll 30s linear infinite;
+          padding: 9px 0;
+        }
+
+        .ticker-shell:hover .ticker {
+          animation-play-state: paused;
+        }
+
+        .ticker-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.6rem;
+          padding: 0 1.8rem;
+          font-weight: 700;
+          font-size: 0.9rem;
+          color: #fff;
+        }
+
+        .ticker-item.error {
+          color: #fee2e2;
+        }
+
+        .cat-pill {
+          width: 12px;
+          height: 20px;
+          border-radius: 8px;
+          box-shadow: 0 0 10px rgba(0, 0, 0, 0.25);
+        }
+
+        .separator {
+          opacity: 0.45;
+        }
+
+        @keyframes scroll {
+          0% {
+            transform: translateX(100%);
+          }
+          100% {
+            transform: translateX(-100%);
+          }
+        }
+
+        .shell {
+          width: min(1100px, 94vw);
+          margin-top: 26px;
+          background: rgba(255, 255, 255, 0.55);
+          backdrop-filter: saturate(160%) blur(6px);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 1.5rem;
+          box-shadow: var(--shadow-card);
+          padding: 30px 26px 34px;
         }
 
         .header {
           text-align: center;
-          margin: 16px 16px 8px;
+          margin-bottom: 12px;
         }
 
         .header h1 {
-          font-size: 26px;
+          font-size: clamp(2.1rem, 3vw, 2.4rem);
           font-weight: 900;
-          color: var(--text);
+          letter-spacing: -0.015em;
         }
 
         .subtitle {
-          color: var(--muted);
-          font-size: 14px;
-          margin-top: 3px;
+          color: #64748b;
+          font-size: 0.95rem;
+          margin-top: 6px;
         }
 
-        .container {
-          width: 100%;
-          max-width: 420px;
-          margin-top: 16px;
+        .purpose-bar {
+          display: inline-flex;
+          margin: 12px auto 0;
+          padding: 8px 14px;
+          border-radius: 999px;
+          background: rgba(0, 100, 145, 0.08);
+          border: 1px solid rgba(0, 100, 145, 0.14);
+          color: #0f172a;
+          font-weight: 800;
+          font-size: 13px;
+          letter-spacing: 0.01em;
+        }
+
+        .status-strip {
+          margin: 12px auto 0;
+          width: min(900px, 100%);
           display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
           justify-content: center;
         }
 
-        .container.wide {
-          max-width: 1100px;
+        .status-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.85);
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          box-shadow: 0 8px 18px rgba(2, 6, 23, 0.04);
+          font-size: 13px;
+        }
+
+        .status-item.warn {
+          border-color: rgba(239, 68, 68, 0.25);
+          background: rgba(254, 242, 242, 0.75);
+        }
+
+        .status-dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 999px;
+          display: inline-block;
+        }
+
+        .status-dot.ok {
+          background: #22c55e;
+        }
+        .status-dot.bad {
+          background: #ef4444;
+        }
+
+        .status-label {
+          color: #475569;
+          font-weight: 800;
+        }
+
+        .status-value {
+          color: #0f172a;
+          font-weight: 800;
+        }
+
+        .highlights {
+          margin: 18px auto 0;
+          width: min(980px, 100%);
+          text-align: left;
+        }
+
+        .highlights-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+
+        .highlights-head h2 {
+          font-size: 15px;
+          font-weight: 900;
+          margin: 0;
+          color: #0f172a;
+        }
+
+        .highlights-head p {
+          margin: 0;
+          font-size: 12px;
+          color: #64748b;
+          font-weight: 700;
+        }
+
+        .highlights-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .highlight-card {
+          background: rgba(255, 255, 255, 0.92);
+          border-radius: 16px;
+          border: 1px solid rgba(0, 100, 145, 0.14);
+          box-shadow: 0 12px 28px rgba(2, 6, 23, 0.05);
+          padding: 12px 14px;
+        }
+
+        .highlight-card.warning {
+          border-color: rgba(239, 68, 68, 0.22);
+          background: rgba(254, 242, 242, 0.85);
+        }
+
+        .highlight-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 8px;
+        }
+
+        .highlight-title {
+          font-size: 12px;
+          font-weight: 900;
+          color: #0f172a;
+          letter-spacing: 0.02em;
+          text-transform: uppercase;
+        }
+
+        .highlight-pill {
+          font-size: 11px;
+          font-weight: 800;
+          padding: 4px 10px;
+          border-radius: 999px;
+          background: rgba(0, 100, 145, 0.1);
+          border: 1px solid rgba(0, 100, 145, 0.16);
+          color: #004b75;
+          white-space: nowrap;
+        }
+
+        .highlight-name {
+          font-size: 16px;
+          font-weight: 900;
+          color: #0f172a;
+          margin-bottom: 6px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .highlight-metrics {
+          display: flex;
           flex-direction: column;
+          gap: 4px;
+          font-size: 13px;
+          color: #334155;
+          font-weight: 700;
+        }
+
+        .highlight-body {
+          font-size: 13px;
+          color: #334155;
+          font-weight: 800;
+        }
+
+        .top-actions {
+          display: flex;
+          justify-content: flex-end;
+          margin: 6px 0 16px;
+        }
+
+        .btn-logout {
+          background: #fff;
+          color: var(--brand);
+          border: 2px solid var(--brand);
+          border-radius: 14px;
+          font-weight: 800;
+          font-size: 14px;
+          padding: 8px 14px;
+          cursor: pointer;
+          box-shadow: 0 6px 14px rgba(0, 100, 145, 0.12);
+          transition: background 0.15s ease, color 0.15s ease,
+            transform 0.1s ease;
+        }
+
+        .btn-logout:hover {
+          background: var(--brand);
+          color: #fff;
+          transform: translateY(-1px);
+        }
+
+        .grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
           gap: 16px;
         }
 
-        .content {
-          gap: 18px;
-        }
-
-        .card {
-          background: #fff;
-          border-radius: 18px;
-          box-shadow: var(--shadow-card);
-          border: 1px solid rgba(0, 0, 0, 0.02);
-        }
-
-        .card.soft {
-          box-shadow: none;
-          background: rgba(255, 255, 255, 0.6);
-          backdrop-filter: blur(4px);
-        }
-
-        .pad {
-          padding: 14px 16px;
-        }
-
-        .error {
-          color: #b91c1c;
-        }
-
-        .filters-panel {
-          display: flex;
-          gap: 24px;
-          align-items: center;
-          justify-content: space-between;
-          padding: 14px 16px;
-        }
-
-        .filters-block {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-
-        .filters-title {
-          font-size: 12px;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-          color: var(--muted);
-          font-weight: 600;
-        }
-
-        .filters {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-        }
-
-        .chip {
-          background: #fff;
-          border: 1px solid rgba(0, 0, 0, 0.03);
-          border-radius: 999px;
-          padding: 6px 14px;
-          font-size: 13px;
-          font-weight: 600;
-          color: #0f172a;
-          cursor: pointer;
-          transition: 0.15s ease;
-        }
-
-        .chip.small {
-          padding: 5px 11px;
-          font-size: 12px;
-        }
-
-        .chip--active {
-          background: var(--brand);
-          color: #fff;
-          border-color: #004b75;
-          box-shadow: 0 6px 10px rgba(0, 100, 145, 0.26);
-        }
-
-        .custom-row {
+        .card-link {
           display: flex;
           gap: 14px;
-          align-items: flex-end;
-        }
-
-        .date-field {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-
-        .date-field label {
-          font-size: 12px;
-          color: var(--muted);
-          font-weight: 500;
-        }
-
-        .date-field input {
-          border: 1px solid rgba(15, 23, 42, 0.12);
-          border-radius: 10px;
-          padding: 5px 8px;
-          font-size: 13px;
-        }
-
-        .section-head {
-          display: flex;
-          justify-content: space-between;
           align-items: center;
-          margin-top: 8px;
+          background: #ffffff;
+          border-radius: 1.25rem;
+          text-decoration: none;
+          padding: 14px 16px 14px 14px;
+          border: 1px solid rgba(0, 100, 145, 0.12);
+          box-shadow: 0 10px 25px rgba(15, 23, 42, 0.03);
+          transition: transform 0.12s ease-out, box-shadow 0.12s ease-out,
+            border 0.12s ease-out;
         }
 
-        .section-head.mt {
-          margin-top: 22px;
-        }
-
-        .section-head h2 {
-          font-size: 16px;
-          font-weight: 800;
-        }
-
-        .section-sub {
-          font-size: 12px;
-          color: var(--muted);
-        }
-
-        .store-mini-grid {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 14px;
-        }
-
-        .store-mini-card {
-          padding: 12px 14px;
-        }
-
-        .store-mini-top {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          gap: 10px;
-          margin-bottom: 8px;
-        }
-
-        .store-mini-left {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          min-width: 0;
-        }
-
-        .store-mini-title h3 {
-          margin: 0;
-          font-size: 14px;
-          font-weight: 900;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .muted-sm {
-          margin: 2px 0 0;
-          font-size: 12px;
-          color: var(--muted);
-        }
-
-        .podium-grid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 14px;
-        }
-
-        .podium-card {
-          padding: 12px 14px;
-        }
-
-        .podium-top {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          gap: 10px;
-          margin-bottom: 8px;
-        }
-
-        .podium-left {
-          display: flex;
-          gap: 10px;
-          align-items: center;
-          min-width: 0;
-        }
-
-        .rank-big {
+        .card-link__icon {
+          width: 46px;
+          height: 46px;
+          border-radius: 1.2rem;
+          background: radial-gradient(circle, #006491 0%, #1f2937 100%);
           display: grid;
           place-items: center;
-          width: 52px;
-          height: 52px;
-          border-radius: 18px;
-          background: rgba(0, 100, 145, 0.1);
-          border: 1px solid rgba(0, 100, 145, 0.18);
-          flex: 0 0 52px;
+          font-size: 1.6rem;
+          color: #fff;
+          flex: 0 0 46px;
         }
 
-        .medal {
-          font-size: 18px;
-          line-height: 1;
+        .card-link__body h2 {
+          font-size: 1rem;
+          font-weight: 700;
+          color: #0f172a;
         }
 
-        .rank-num {
-          font-weight: 900;
-          font-size: 12px;
-          color: var(--brand-dark);
+        .card-link__body p {
+          font-size: 0.78rem;
+          color: #6b7280;
           margin-top: 2px;
         }
 
-        .podium-name {
-          min-width: 0;
+        .card-link__chevron {
+          margin-left: auto;
+          font-size: 1.6rem;
+          line-height: 1;
+          color: rgba(15, 23, 42, 0.38);
         }
 
-        .podium-name h3 {
-          margin: 0;
-          font-size: 14px;
-          font-weight: 900;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .rows {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-
-        .metric {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          font-size: 13px;
-        }
-
-        .metric span {
-          color: var(--muted);
-        }
-
-        .pill {
-          font-size: 11px;
-          font-weight: 800;
-          padding: 3px 10px;
-          border-radius: 999px;
-          white-space: nowrap;
-        }
-
-        .pill--brand {
-          background: rgba(0, 100, 145, 0.12);
-          color: var(--brand-dark);
-          border: 1px solid rgba(0, 100, 145, 0.18);
-        }
-
-        .pill--elite {
-          background: rgba(245, 158, 11, 0.16);
-          color: #92400e;
-          border: 1px solid rgba(245, 158, 11, 0.28);
-        }
-
-        /* TABLE */
-        .table-card {
-          padding: 0;
-        }
-
-        .table-wrap {
-          overflow-x: auto;
-        }
-
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 13px;
-        }
-
-        thead {
-          background: #f0f4f8;
-        }
-
-        th,
-        td {
-          padding: 9px 10px;
-          text-align: left;
-        }
-
-        tbody tr:nth-child(even) {
-          background: #f8fafc;
-        }
-
-        .empty {
-          text-align: center;
-          padding: 16px 6px;
-          color: var(--muted);
-        }
-
-        .rank-badge {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          height: 26px;
-          min-width: 62px;
-          padding: 0 10px;
-          border-radius: 999px;
-          background: rgba(0, 100, 145, 0.1);
-          color: var(--brand-dark);
-          border: 1px solid rgba(0, 100, 145, 0.18);
-          font-weight: 900;
-          font-size: 12px;
-        }
-
-        .star-pill {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          padding: 3px 10px;
-          border-radius: 999px;
-          font-weight: 800;
-          font-size: 12px;
-          background: rgba(0, 100, 145, 0.1);
-          color: var(--brand-dark);
-          border: 1px solid rgba(0, 100, 145, 0.18);
-          white-space: nowrap;
-        }
-
-        .star-pill--elite {
-          background: rgba(245, 158, 11, 0.16);
-          color: #92400e;
-          border: 1px solid rgba(245, 158, 11, 0.28);
-        }
-
-        .name-cell {
-          font-weight: 700;
-        }
-
-        .name-link {
-          appearance: none;
-          border: none;
-          background: transparent;
-          padding: 0;
-          margin: 0;
-          font: inherit;
-          font-weight: 800;
-          color: var(--brand-dark);
-          cursor: pointer;
-          text-decoration: underline;
-          text-decoration-color: rgba(0, 100, 145, 0.35);
-          text-underline-offset: 3px;
-        }
-
-        .name-link:hover {
-          text-decoration-color: rgba(0, 100, 145, 0.9);
-        }
-
-        .row--podium {
-          background: rgba(245, 158, 11, 0.08) !important;
-        }
-
-        .btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          text-align: center;
-          padding: 10px 14px;
-          border-radius: 14px;
-          font-weight: 700;
-          font-size: 14px;
-          text-decoration: none;
-          border: 2px solid transparent;
-          transition: background 0.2s, transform 0.1s;
-          cursor: pointer;
-        }
-
-        .btn--brand {
-          background: var(--brand);
-          border-color: var(--brand-dark);
-          color: #fff;
-        }
-
-        .btn--ghost {
-          background: #fff;
-          border-color: rgba(0, 0, 0, 0.02);
-          color: #0f172a;
-        }
-
-        .muted {
-          color: var(--muted);
-        }
-
-        /* ✅ MODAL */
-        .modal-backdrop {
-          position: fixed;
-          inset: 0;
-          background: rgba(2, 6, 23, 0.55);
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          padding: 18px;
-          z-index: 9999;
-        }
-
-        .modal {
-          width: min(900px, 96vw);
-          background: #fff;
-          border-radius: 18px;
-          box-shadow: 0 20px 60px rgba(2, 6, 23, 0.3);
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          overflow: hidden;
-        }
-
-        .modal-head {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          gap: 12px;
-          padding: 14px 16px;
-          border-bottom: 1px solid rgba(15, 23, 42, 0.06);
-          background: linear-gradient(180deg, rgba(0, 100, 145, 0.06), rgba(255, 255, 255, 0));
-        }
-
-        .modal-title h3 {
-          margin: 0;
-          font-size: 16px;
-          font-weight: 900;
-          color: var(--text);
-        }
-
-        .modal-close {
-          border: 1px solid rgba(15, 23, 42, 0.12);
-          background: #fff;
-          border-radius: 12px;
-          padding: 6px 10px;
-          font-weight: 900;
-          cursor: pointer;
-        }
-
-        .modal-kpis {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 10px;
-          padding: 12px 16px 6px;
-        }
-
-        .kpi-card {
-          border: 1px solid rgba(15, 23, 42, 0.06);
-          border-radius: 14px;
-          padding: 10px 12px;
-          background: rgba(255, 255, 255, 0.9);
-        }
-
-        .kpi-label {
-          margin: 0;
-          font-size: 11px;
-          color: var(--muted);
-          font-weight: 800;
-          text-transform: uppercase;
-          letter-spacing: 0.04em;
-        }
-
-        .kpi-value {
-          margin: 6px 0 0;
-          font-size: 18px;
-          font-weight: 900;
-        }
-
-        .trend-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 10px;
-          padding: 8px 16px 10px;
-        }
-
-        .trend-label {
-          font-size: 12px;
-          color: var(--muted);
-          font-weight: 700;
-        }
-
-        .trend-pill {
-          font-size: 12px;
-          font-weight: 900;
-          padding: 6px 10px;
-          border-radius: 999px;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-        }
-
-        .trend-pill.pos {
-          background: rgba(34, 197, 94, 0.14);
-          color: #166534;
-          border-color: rgba(34, 197, 94, 0.25);
-        }
-
-        .trend-pill.neg {
-          background: rgba(239, 68, 68, 0.14);
-          color: #991b1b;
-          border-color: rgba(239, 68, 68, 0.25);
-        }
-
-        .trend-pill.neutral {
-          background: rgba(100, 116, 139, 0.12);
-          color: #334155;
-          border-color: rgba(100, 116, 139, 0.22);
-        }
-
-        .modal-section {
-          padding: 8px 16px 14px;
-        }
-
-        .modal-section h4 {
-          margin: 6px 0 10px;
-          font-size: 14px;
-          font-weight: 900;
-        }
-
-        .modal-table-wrap {
-          border: 1px solid rgba(15, 23, 42, 0.06);
-          border-radius: 14px;
-          overflow-x: auto;
-        }
-
-        .modal-table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 13px;
-        }
-
-        .modal-table thead {
-          background: #f0f4f8;
-        }
-
-        .modal-table th,
-        .modal-table td {
-          padding: 9px 10px;
-          text-align: left;
-        }
-
-        .modal-actions {
-          padding: 12px 16px 16px;
-          display: flex;
-          justify-content: flex-end;
-          gap: 10px;
-          border-top: 1px solid rgba(15, 23, 42, 0.06);
-          background: rgba(248, 250, 252, 0.6);
+        .card-link:hover {
+          transform: translateY(-2px);
+          border: 1px solid rgba(0, 100, 145, 0.28);
+          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.04);
         }
 
         .footer {
           text-align: center;
-          margin-top: 36px;
-          color: var(--muted);
-          font-size: 13px;
+          margin-top: 24px;
+          color: #94a3b8;
+          font-size: 0.8rem;
         }
 
-        @media (max-width: 1100px) {
-          .filters-panel {
+        @media (max-width: 980px) {
+          .highlights-grid {
+            grid-template-columns: 1fr;
+          }
+          .highlights-head {
             flex-direction: column;
             align-items: flex-start;
           }
-          .store-mini-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-          .podium-grid {
-            grid-template-columns: 1fr;
-          }
-          .modal-kpis {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
         }
 
-        @media (max-width: 700px) {
-          .store-mini-grid {
-            grid-template-columns: 1fr;
+        @media (max-width: 720px) {
+          .shell {
+            padding: 24px 16px 28px;
           }
-          .container.wide {
-            max-width: 94%;
+          .card-link {
+            border-radius: 1rem;
+          }
+          .ticker-shell {
+            border-radius: 1.2rem;
+          }
+          .purpose-bar {
+            border-radius: 14px;
           }
         }
       `}</style>
