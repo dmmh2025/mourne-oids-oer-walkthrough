@@ -12,24 +12,20 @@ const STORES = ["Downpatrick", "Kilkeel", "Newcastle", "Ballynahinch"];
 
 type ShiftRow = {
   id: string;
+  week: number | null;
   shift_date: string;
   day_name: string | null;
   store: string;
-  forecast_sales: number | null;
-  actual_sales: number | null;
+
   labour_pct: number | null;
   additional_hours: number | null;
-  opening_manager: string | null;
-  closing_manager: string | null;
-  instores_scheduled: number | null;
-  actual_instores: number | null;        // <- fixed name
-  drivers_scheduled: number | null;
-  actual_drivers: number | null;         // <- fixed name
+  manager: string | null;
+
   dot_pct: number | null;
-  extremes_pct: number | null;
-  sbr_pct: number | null;
-  rnl_minutes: number | null;            // <- fixed name
-  food_variance_pct: number | null;      // <- fixed name
+  rnl_minutes: number | null;
+
+  extreme_over_40: number | null; // count or number you enter
+  food_pct: number | null; // % you enter
 };
 
 type DateRange = "yesterday" | "wtd" | "mtd" | "ytd" | "custom";
@@ -43,15 +39,16 @@ export default function ServiceDashboardPage() {
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
 
+  // Converts 24.5 or 78 into 0.245 / 0.78; leaves 0.245 as-is
   const normalisePct = (v: number | null) => {
     if (v == null) return null;
     return v > 1 ? v / 100 : v;
   };
 
-  const normaliseFoodVar = (v: number | null) => {
+  // Food % is a % metric, same behaviour as normalisePct
+  const normaliseFoodPct = (v: number | null) => {
     if (v == null) return null;
-    if (v <= 1) return v;
-    return v / 100;
+    return v > 1 ? v / 100 : v;
   };
 
   useEffect(() => {
@@ -136,218 +133,148 @@ export default function ServiceDashboardPage() {
     return rows;
   }, [rows, dateRange, customFrom, customTo]);
 
-  // store filter
+  // store filter (affects area + manager overview, keeps your existing behaviour)
   const filteredRows = useMemo(() => {
     if (selectedStore === "all") return dateFilteredRows;
     return dateFilteredRows.filter((r) => r.store === selectedStore);
   }, [dateFilteredRows, selectedStore]);
 
-  // area overview
+  const avg = (arr: number[]) =>
+    arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+
+  // AREA OVERVIEW (updated to match new recorded fields)
   const kpis = useMemo(() => {
     if (filteredRows.length === 0) {
       return {
-        totalActual: 0,
-        totalForecast: 0,
-        variancePct: 0,
         avgLabour: 0,
         avgDOT: 0,
         avgRnL: 0,
+        avgExtremeOver40: 0,
+        avgFoodPct: 0,
+        shifts: 0,
       };
     }
 
-    let totalActual = 0;
-    let totalForecast = 0;
     const labourVals: number[] = [];
     const dotVals: number[] = [];
     const rnlVals: number[] = [];
+    const extremeVals: number[] = [];
+    const foodVals: number[] = [];
 
     for (const r of filteredRows) {
-      if (r.actual_sales != null) totalActual += r.actual_sales;
-      if (r.forecast_sales != null) totalForecast += r.forecast_sales;
-
       const labour = normalisePct(r.labour_pct);
       if (labour != null) labourVals.push(labour);
 
       const dot = normalisePct(r.dot_pct);
       if (dot != null) dotVals.push(dot);
 
-      if (r.rnl_minutes != null) rnlVals.push(r.rnl_minutes); // <- use rnl_minutes
+      if (r.rnl_minutes != null) rnlVals.push(r.rnl_minutes);
+
+      if (r.extreme_over_40 != null) extremeVals.push(r.extreme_over_40);
+
+      const food = normaliseFoodPct(r.food_pct);
+      if (food != null) foodVals.push(food);
     }
 
-    const variancePct =
-      totalForecast > 0 ? (totalActual - totalForecast) / totalForecast : 0;
-
-    const avg = (arr: number[]) =>
-      arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-
     return {
-      totalActual,
-      totalForecast,
-      variancePct,
       avgLabour: avg(labourVals),
       avgDOT: avg(dotVals),
       avgRnL: avg(rnlVals),
+      avgExtremeOver40: avg(extremeVals),
+      avgFoodPct: avg(foodVals),
+      shifts: filteredRows.length,
     };
   }, [filteredRows]);
 
-  // store overview
-  const storeData = useMemo(() => {
-    return STORES.map((storeName) => {
-      const rowsForStore = dateFilteredRows.filter(
-        (r) => r.store === storeName
-      );
+  // STORE OVERVIEW (area-style + ranked by DOT desc then Labour asc)
+  const storeOverview = useMemo(() => {
+    const data = STORES.map((storeName) => {
+      const rowsForStore = dateFilteredRows.filter((r) => r.store === storeName);
 
-      if (rowsForStore.length === 0) {
-        return {
-          store: storeName,
-          totalActual: 0,
-          totalForecast: 0,
-          variancePct: 0,
-          avgLabour: 0,
-          avgDOT: 0,
-          avgSBR: 0,
-          avgRnL: 0,
-          avgFoodVar: 0,
-        };
-      }
-
-      const isSingleRowView =
-        (dateRange === "yesterday" || dateRange === "custom") &&
-        rowsForStore.length === 1;
-
-      if (isSingleRowView) {
-        const r = rowsForStore[0];
-
-        const labour = normalisePct(r.labour_pct);
-        const dot = normalisePct(r.dot_pct);
-        const sbr = normalisePct(r.sbr_pct);
-        const food = normaliseFoodVar(r.food_variance_pct);
-
-        const actual = r.actual_sales || 0;
-        const forecast = r.forecast_sales || 0;
-        const variance =
-          forecast > 0 ? (actual - forecast) / forecast : 0;
-
-        return {
-          store: storeName,
-          totalActual: actual,
-          totalForecast: forecast,
-          variancePct: variance,
-          avgLabour: labour || 0,
-          avgDOT: dot || 0,
-          avgSBR: sbr || 0,
-          avgRnL: r.rnl_minutes || 0,     // <- use r.rnl_minutes
-          avgFoodVar: food || 0,
-        };
-      }
-
-      // average for period
-      let totalActual = 0;
-      let totalForecast = 0;
       const lab: number[] = [];
       const dot: number[] = [];
-      const sbr: number[] = [];
       const rnl: number[] = [];
+      const ext: number[] = [];
       const food: number[] = [];
 
       for (const r of rowsForStore) {
-        if (r.actual_sales != null) totalActual += r.actual_sales;
-        if (r.forecast_sales != null) totalForecast += r.forecast_sales;
-
         const l = normalisePct(r.labour_pct);
         const d = normalisePct(r.dot_pct);
-        const s = normalisePct(r.sbr_pct);
-        const f = normaliseFoodVar(r.food_variance_pct);
+        const f = normaliseFoodPct(r.food_pct);
 
         if (l != null) lab.push(l);
         if (d != null) dot.push(d);
-        if (s != null) sbr.push(s);
-        if (r.rnl_minutes != null) rnl.push(r.rnl_minutes); // <- use rnl_minutes
+        if (r.rnl_minutes != null) rnl.push(r.rnl_minutes);
+        if (r.extreme_over_40 != null) ext.push(r.extreme_over_40);
         if (f != null) food.push(f);
       }
 
-      const avg = (arr: number[]) =>
-        arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-
-      const variancePct =
-        totalForecast > 0 ? (totalActual - totalForecast) / totalForecast : 0;
-
       return {
         store: storeName,
-        totalActual,
-        totalForecast,
-        variancePct,
+        shifts: rowsForStore.length,
         avgLabour: avg(lab),
         avgDOT: avg(dot),
-        avgSBR: avg(sbr),
         avgRnL: avg(rnl),
-        avgFoodVar: avg(food),
+        avgExtremeOver40: avg(ext),
+        avgFoodPct: avg(food),
       };
-    }).sort((a, b) => {
+    });
+
+    data.sort((a, b) => {
       if (b.avgDOT !== a.avgDOT) return b.avgDOT - a.avgDOT;
       return a.avgLabour - b.avgLabour;
     });
-  }, [dateFilteredRows, dateRange]);
 
-  // manager overview
-  const managerData = useMemo(() => {
+    return data;
+  }, [dateFilteredRows]);
+
+  // MANAGER OVERVIEW (area-style + ranked by DOT desc then Labour asc)
+  const managerOverview = useMemo(() => {
     const bucket: Record<
       string,
       {
         shifts: number;
-        sales: number;
         labour: number[];
         dot: number[];
-        sbr: number[];
         rnl: number[];
+        ext: number[];
         food: number[];
       }
     > = {};
 
     for (const r of filteredRows) {
-      const name = r.closing_manager || "Unknown";
+      const name = (r.manager || "").trim() || "Unknown";
       if (!bucket[name]) {
-        bucket[name] = {
-          shifts: 0,
-          sales: 0,
-          labour: [],
-          dot: [],
-          sbr: [],
-          rnl: [],
-          food: [],
-        };
+        bucket[name] = { shifts: 0, labour: [], dot: [], rnl: [], ext: [], food: [] };
       }
 
       bucket[name].shifts += 1;
-      if (r.actual_sales != null) bucket[name].sales += r.actual_sales;
 
       const l = normalisePct(r.labour_pct);
       const d = normalisePct(r.dot_pct);
-      const s = normalisePct(r.sbr_pct);
-      const f = normaliseFoodVar(r.food_variance_pct);
+      const f = normaliseFoodPct(r.food_pct);
 
       if (l != null) bucket[name].labour.push(l);
       if (d != null) bucket[name].dot.push(d);
-      if (s != null) bucket[name].sbr.push(s);
-      if (r.rnl_minutes != null) bucket[name].rnl.push(r.rnl_minutes); // <- use rnl_minutes
+      if (r.rnl_minutes != null) bucket[name].rnl.push(r.rnl_minutes);
+      if (r.extreme_over_40 != null) bucket[name].ext.push(r.extreme_over_40);
       if (f != null) bucket[name].food.push(f);
     }
-
-    const avg = (arr: number[]) =>
-      arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
     const arr = Object.entries(bucket).map(([name, v]) => ({
       name,
       shifts: v.shifts,
-      totalSales: v.sales,
       avgLabour: avg(v.labour),
       avgDOT: avg(v.dot),
-      avgSBR: avg(v.sbr),
       avgRnL: avg(v.rnl),
-      avgFoodVar: avg(v.food),
+      avgExtremeOver40: avg(v.ext),
+      avgFoodPct: avg(v.food),
     }));
 
-    arr.sort((a, b) => b.avgDOT - a.avgDOT);
+    arr.sort((a, b) => {
+      if (b.avgDOT !== a.avgDOT) return b.avgDOT - a.avgDOT;
+      return a.avgLabour - b.avgLabour;
+    });
 
     return arr;
   }, [filteredRows]);
@@ -391,7 +318,7 @@ export default function ServiceDashboardPage() {
       <header className="header">
         <h1>Mourne-oids Service Dashboard</h1>
         <p className="subtitle">
-          Track sales, labour, DOT, SBR, R&amp;L and food variance — by store and by manager.
+          Track Labour, DOT, R&amp;L, Extreme &gt;40, and Food % — by store and by manager.
         </p>
       </header>
 
@@ -488,40 +415,11 @@ export default function ServiceDashboardPage() {
             {/* AREA OVERVIEW */}
             <div className="section-head">
               <h2>Area overview</h2>
-              <p className="section-sub">{periodLabel}</p>
+              <p className="section-sub">
+                {periodLabel} · {kpis.shifts} shift(s)
+              </p>
             </div>
             <div className="kpi-grid">
-              <div className="card kpi">
-                <p className="kpi-title">Sales (£)</p>
-                <p className="kpi-value">
-                  £
-                  {kpis.totalActual.toLocaleString(undefined, {
-                    maximumFractionDigits: 0,
-                  })}
-                </p>
-                <p className="kpi-sub">
-                  {kpis.totalForecast
-                    ? `vs £${kpis.totalForecast.toLocaleString(undefined, {
-                        maximumFractionDigits: 0,
-                      })} forecast`
-                    : "No forecast recorded"}
-                </p>
-              </div>
-              <div
-                className={`card kpi ${
-                  kpis.variancePct >= 0
-                    ? "kpi--green"
-                    : kpis.variancePct >= -0.05
-                    ? "kpi--amber"
-                    : "kpi--red"
-                }`}
-              >
-                <p className="kpi-title">Variance %</p>
-                <p className="kpi-value">
-                  {(kpis.variancePct * 100).toFixed(1)}%
-                </p>
-                <p className="kpi-sub">Target: 0% or above</p>
-              </div>
               <div
                 className={`card kpi ${
                   kpis.avgLabour <= 0.25
@@ -532,11 +430,10 @@ export default function ServiceDashboardPage() {
                 }`}
               >
                 <p className="kpi-title">Avg Labour %</p>
-                <p className="kpi-value">
-                  {(kpis.avgLabour * 100).toFixed(1)}%
-                </p>
+                <p className="kpi-value">{(kpis.avgLabour * 100).toFixed(1)}%</p>
                 <p className="kpi-sub">Target: 25%</p>
               </div>
+
               <div
                 className={`card kpi ${
                   kpis.avgDOT >= 0.8
@@ -547,152 +444,231 @@ export default function ServiceDashboardPage() {
                 }`}
               >
                 <p className="kpi-title">Avg DOT %</p>
-                <p className="kpi-value">
-                  {(kpis.avgDOT * 100).toFixed(0)}%
-                </p>
+                <p className="kpi-value">{(kpis.avgDOT * 100).toFixed(0)}%</p>
                 <p className="kpi-sub">Target: 80%+</p>
+              </div>
+
+              <div
+                className={`card kpi ${
+                  kpis.avgRnL <= 9
+                    ? "kpi--green"
+                    : kpis.avgRnL <= 10
+                    ? "kpi--amber"
+                    : "kpi--red"
+                }`}
+              >
+                <p className="kpi-title">Avg R&amp;L</p>
+                <p className="kpi-value">{kpis.avgRnL.toFixed(1)}m</p>
+                <p className="kpi-sub">Target: ≤ 9m</p>
+              </div>
+
+              <div
+                className={`card kpi ${
+                  kpis.avgExtremeOver40 <= 0
+                    ? "kpi--green"
+                    : kpis.avgExtremeOver40 <= 1
+                    ? "kpi--amber"
+                    : "kpi--red"
+                }`}
+              >
+                <p className="kpi-title">Avg Extreme &gt;40</p>
+                <p className="kpi-value">{kpis.avgExtremeOver40.toFixed(1)}</p>
+                <p className="kpi-sub">Lower is better</p>
+              </div>
+
+              <div className="card kpi">
+                <p className="kpi-title">Avg Food %</p>
+                <p className="kpi-value">{(kpis.avgFoodPct * 100).toFixed(2)}%</p>
+                <p className="kpi-sub">Trend metric</p>
               </div>
             </div>
 
-            {/* STORE OVERVIEW */}
+            {/* STORE OVERVIEW (AREA-STYLE PER STORE) */}
             <div className="section-head mt">
               <h2>Store overview</h2>
-              <p className="section-sub">{periodLabel}</p>
+              <p className="section-sub">
+                Ranked by DOT% then Labour% · {periodLabel}
+              </p>
             </div>
-            <div className="store-grid">
-              {storeData.map((st) => (
-                <div key={st.store} className="card store-card">
-                  <div className="store-card__header">
-                    <h3>{st.store}</h3>
-                    <span
-                      className={`pill ${
-                        st.avgDOT >= 0.8
-                          ? "pill--green"
-                          : st.avgDOT >= 0.75
-                          ? "pill--amber"
-                          : "pill--red"
-                      }`}
-                    >
-                      {Math.round(st.avgDOT * 100)}% DOT
-                    </span>
+
+            <div style={{ display: "grid", gap: 14 }}>
+              {storeOverview.map((st) => (
+                <div key={st.store}>
+                  <div className="section-head" style={{ marginTop: 0 }}>
+                    <h2 style={{ fontSize: 16, fontWeight: 800 }}>{st.store}</h2>
+                    <p className="section-sub">{st.shifts} shift(s)</p>
                   </div>
-                  <div className="store-rows">
-                    <p className="metric">
-                      <span>Sales</span>
-                      <strong>£{st.totalActual.toLocaleString()}</strong>
-                    </p>
-                    <p className="metric">
-                      <span>Forecast</span>
-                      <strong>
-                        {st.totalForecast
-                          ? "£" + st.totalForecast.toLocaleString()
-                          : "—"}
-                      </strong>
-                    </p>
-                    <p
-                      className={`metric ${
-                        st.variancePct >= 0
-                          ? "pos"
-                          : st.variancePct >= -0.05
-                          ? "warn"
-                          : "neg"
+
+                  <div className="kpi-grid">
+                    <div
+                      className={`card kpi ${
+                        st.avgLabour <= 0.25
+                          ? "kpi--green"
+                          : st.avgLabour <= 0.28
+                          ? "kpi--amber"
+                          : "kpi--red"
                       }`}
                     >
-                      <span>Variance</span>
-                      <strong>{(st.variancePct * 100).toFixed(1)}%</strong>
-                    </p>
-                    <p className="metric">
-                      <span>Labour</span>
-                      <strong>{(st.avgLabour * 100).toFixed(1)}%</strong>
-                    </p>
-                    <p className="metric">
-                      <span>SBR</span>
-                      <strong>{(st.avgSBR * 100).toFixed(0)}%</strong>
-                    </p>
-                    <p className="metric">
-                      <span>R&amp;L</span>
-                      <strong>{st.avgRnL.toFixed(1)}m</strong>
-                    </p>
-                    <p className="metric">
-                      <span>Food var</span>
-                      <strong>
-                        {st.avgFoodVar != null
-                          ? st.avgFoodVar.toFixed(2) + "%"
-                          : "—"}
-                      </strong>
-                    </p>
+                      <p className="kpi-title">Avg Labour %</p>
+                      <p className="kpi-value">
+                        {(st.avgLabour * 100).toFixed(1)}%
+                      </p>
+                      <p className="kpi-sub">Target: 25%</p>
+                    </div>
+
+                    <div
+                      className={`card kpi ${
+                        st.avgDOT >= 0.8
+                          ? "kpi--green"
+                          : st.avgDOT >= 0.75
+                          ? "kpi--amber"
+                          : "kpi--red"
+                      }`}
+                    >
+                      <p className="kpi-title">Avg DOT %</p>
+                      <p className="kpi-value">
+                        {(st.avgDOT * 100).toFixed(0)}%
+                      </p>
+                      <p className="kpi-sub">Target: 80%+</p>
+                    </div>
+
+                    <div
+                      className={`card kpi ${
+                        st.avgRnL <= 9
+                          ? "kpi--green"
+                          : st.avgRnL <= 10
+                          ? "kpi--amber"
+                          : "kpi--red"
+                      }`}
+                    >
+                      <p className="kpi-title">Avg R&amp;L</p>
+                      <p className="kpi-value">{st.avgRnL.toFixed(1)}m</p>
+                      <p className="kpi-sub">Target: ≤ 9m</p>
+                    </div>
+
+                    <div
+                      className={`card kpi ${
+                        st.avgExtremeOver40 <= 0
+                          ? "kpi--green"
+                          : st.avgExtremeOver40 <= 1
+                          ? "kpi--amber"
+                          : "kpi--red"
+                      }`}
+                    >
+                      <p className="kpi-title">Avg Extreme &gt;40</p>
+                      <p className="kpi-value">
+                        {st.avgExtremeOver40.toFixed(1)}
+                      </p>
+                      <p className="kpi-sub">Lower is better</p>
+                    </div>
+
+                    <div className="card kpi">
+                      <p className="kpi-title">Avg Food %</p>
+                      <p className="kpi-value">
+                        {(st.avgFoodPct * 100).toFixed(2)}%
+                      </p>
+                      <p className="kpi-sub">Trend metric</p>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* MANAGER OVERVIEW */}
+            {/* MANAGER OVERVIEW (AREA-STYLE PER MANAGER) */}
             <div className="section-head mt">
-              <h2>Manager / closing overview</h2>
-              <p className="section-sub">{periodLabel}</p>
+              <h2>Manager overview</h2>
+              <p className="section-sub">
+                Ranked by DOT% then Labour% · {periodLabel}
+              </p>
             </div>
-            <div className="card table-card">
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Manager</th>
-                      <th>Shifts</th>
-                      <th>Total Sales</th>
-                      <th>Avg Labour</th>
-                      <th>Avg DOT</th>
-                      <th>Avg SBR</th>
-                      <th>Avg R&amp;L</th>
-                      <th>Food var</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {managerData.length === 0 && (
-                      <tr>
-                        <td colSpan={8} className="empty">
-                          No data for this period.
-                        </td>
-                      </tr>
-                    )}
-                    {managerData.map((mgr) => (
-                      <tr key={mgr.name}>
-                        <td>{mgr.name}</td>
-                        <td>{mgr.shifts}</td>
-                        <td>£{mgr.totalSales.toLocaleString()}</td>
-                        <td
-                          className={
-                            mgr.avgLabour <= 0.25
-                              ? "pos"
-                              : mgr.avgLabour <= 0.28
-                              ? "warn"
-                              : "neg"
-                          }
-                        >
+
+            <div style={{ display: "grid", gap: 14 }}>
+              {managerOverview.length === 0 ? (
+                <div className="card" style={{ padding: 14 }}>
+                  No data for this period.
+                </div>
+              ) : (
+                managerOverview.map((mgr) => (
+                  <div key={mgr.name}>
+                    <div className="section-head" style={{ marginTop: 0 }}>
+                      <h2 style={{ fontSize: 16, fontWeight: 800 }}>{mgr.name}</h2>
+                      <p className="section-sub">{mgr.shifts} shift(s)</p>
+                    </div>
+
+                    <div className="kpi-grid">
+                      <div
+                        className={`card kpi ${
+                          mgr.avgLabour <= 0.25
+                            ? "kpi--green"
+                            : mgr.avgLabour <= 0.28
+                            ? "kpi--amber"
+                            : "kpi--red"
+                        }`}
+                      >
+                        <p className="kpi-title">Avg Labour %</p>
+                        <p className="kpi-value">
                           {(mgr.avgLabour * 100).toFixed(1)}%
-                        </td>
-                        <td
-                          className={
-                            mgr.avgDOT >= 0.8
-                              ? "pos"
-                              : mgr.avgDOT >= 0.75
-                              ? "warn"
-                              : "neg"
-                          }
-                        >
+                        </p>
+                        <p className="kpi-sub">Target: 25%</p>
+                      </div>
+
+                      <div
+                        className={`card kpi ${
+                          mgr.avgDOT >= 0.8
+                            ? "kpi--green"
+                            : mgr.avgDOT >= 0.75
+                            ? "kpi--amber"
+                            : "kpi--red"
+                        }`}
+                      >
+                        <p className="kpi-title">Avg DOT %</p>
+                        <p className="kpi-value">
                           {(mgr.avgDOT * 100).toFixed(0)}%
-                        </td>
-                        <td>{(mgr.avgSBR * 100).toFixed(0)}%</td>
-                        <td>{mgr.avgRnL.toFixed(1)}m</td>
-                        <td>
-                          {mgr.avgFoodVar != null
-                            ? mgr.avgFoodVar.toFixed(2) + "%"
-                            : "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                        </p>
+                        <p className="kpi-sub">Target: 80%+</p>
+                      </div>
+
+                      <div
+                        className={`card kpi ${
+                          mgr.avgRnL <= 9
+                            ? "kpi--green"
+                            : mgr.avgRnL <= 10
+                            ? "kpi--amber"
+                            : "kpi--red"
+                        }`}
+                      >
+                        <p className="kpi-title">Avg R&amp;L</p>
+                        <p className="kpi-value">{mgr.avgRnL.toFixed(1)}m</p>
+                        <p className="kpi-sub">Target: ≤ 9m</p>
+                      </div>
+
+                      <div
+                        className={`card kpi ${
+                          mgr.avgExtremeOver40 <= 0
+                            ? "kpi--green"
+                            : mgr.avgExtremeOver40 <= 1
+                            ? "kpi--amber"
+                            : "kpi--red"
+                        }`}
+                      >
+                        <p className="kpi-title">Avg Extreme &gt;40</p>
+                        <p className="kpi-value">
+                          {mgr.avgExtremeOver40.toFixed(1)}
+                        </p>
+                        <p className="kpi-sub">Lower is better</p>
+                      </div>
+
+                      <div className="card kpi">
+                        <p className="kpi-title">Avg Food %</p>
+                        <p className="kpi-value">
+                          {(mgr.avgFoodPct * 100).toFixed(2)}%
+                        </p>
+                        <p className="kpi-sub">Trend metric</p>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </>
         )}
@@ -703,7 +679,7 @@ export default function ServiceDashboardPage() {
         <p>© 2025 Mourne-oids | Domino’s Pizza | Racz Group</p>
       </footer>
 
-      {/* styles */}
+      {/* styles (UNCHANGED) */}
       <style jsx>{`
         :root {
           --bg: #f2f5f9;
@@ -936,114 +912,6 @@ export default function ServiceDashboardPage() {
           border-left: 4px solid #ef4444;
         }
 
-        .store-grid {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 14px;
-        }
-
-        .store-card {
-          padding: 12px 14px 10px;
-        }
-
-        .store-card__header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 6px;
-        }
-
-        .store-rows {
-          display: flex;
-          flex-direction: column;
-          gap: 3px;
-        }
-
-        .metric {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          font-size: 13px;
-        }
-        .metric span {
-          color: var(--muted);
-        }
-        .metric.pos strong {
-          color: #166534;
-        }
-        .metric.warn strong {
-          color: #b45309;
-        }
-        .metric.neg strong {
-          color: #b91c1c;
-        }
-
-        .pill {
-          font-size: 11px;
-          font-weight: 600;
-          padding: 3px 10px;
-          border-radius: 999px;
-        }
-        .pill--green {
-          background: rgba(34, 197, 94, 0.12);
-          color: #166534;
-        }
-        .pill--amber {
-          background: rgba(249, 115, 22, 0.12);
-          color: #9a3412;
-        }
-        .pill--red {
-          background: rgba(239, 68, 68, 0.12);
-          color: #991b1b;
-        }
-
-        .table-card {
-          padding: 0;
-        }
-
-        .table-wrap {
-          overflow-x: auto;
-        }
-
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 13px;
-        }
-
-        thead {
-          background: #f0f4f8;
-        }
-
-        th,
-        td {
-          padding: 9px 10px;
-          text-align: left;
-        }
-
-        tbody tr:nth-child(even) {
-          background: #f8fafc;
-        }
-
-        td.pos {
-          color: #166534;
-          font-weight: 600;
-        }
-        td.warn {
-          color: #b45309;
-          font-weight: 600;
-        }
-        td.neg {
-          color: #b91c1c;
-          font-weight: 600;
-        }
-
-        .empty {
-          text-align: center;
-          padding: 16px 6px;
-          color: var(--muted);
-        }
-
         .btn {
           display: inline-flex;
           align-items: center;
@@ -1082,9 +950,6 @@ export default function ServiceDashboardPage() {
           .kpi-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
-          .store-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
           .filters-panel {
             flex-direction: column;
             align-items: flex-start;
@@ -1092,9 +957,6 @@ export default function ServiceDashboardPage() {
         }
 
         @media (max-width: 700px) {
-          .store-grid {
-            grid-template-columns: 1fr;
-          }
           .container.wide {
             max-width: 94%;
           }
