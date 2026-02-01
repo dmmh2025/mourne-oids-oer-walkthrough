@@ -15,20 +15,30 @@ type ShiftRow = {
   shift_date: string;
   day_name: string | null;
   store: string;
+
+  // legacy / may still exist in table
   forecast_sales: number | null;
   actual_sales: number | null;
+
   labour_pct: number | null;
   additional_hours: number | null;
+
   opening_manager: string | null;
   closing_manager: string | null;
+
   instores_scheduled: number | null;
   actual_instores: number | null;
   drivers_scheduled: number | null;
   actual_drivers: number | null;
+
   dot_pct: number | null;
+
+  // assumed to represent "Extremes >40 mins %"
   extremes_pct: number | null;
+
   sbr_pct: number | null;
   rnl_minutes: number | null;
+
   food_variance_pct: number | null;
 };
 
@@ -45,14 +55,11 @@ export default function ServiceDashboardPage() {
 
   const normalisePct = (v: number | null) => {
     if (v == null) return null;
-    return v > 1 ? v / 100 : v;
+    return v > 1 ? v / 100 : v; // accept 78 or 0.78
   };
 
-  const normaliseFoodVar = (v: number | null) => {
-    if (v == null) return null;
-    if (v <= 1) return v;
-    return v / 100;
-  };
+  const avg = (arr: number[]) =>
+    arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
   useEffect(() => {
     const load = async () => {
@@ -134,189 +141,106 @@ export default function ServiceDashboardPage() {
     return rows;
   }, [rows, dateRange, customFrom, customTo]);
 
-  // store filter
+  // store filter (affects Area + Manager sections; Store overview always shows all stores in period)
   const filteredRows = useMemo(() => {
     if (selectedStore === "all") return dateFilteredRows;
     return dateFilteredRows.filter((r) => r.store === selectedStore);
   }, [dateFilteredRows, selectedStore]);
 
-  // area overview
-  const kpis = useMemo(() => {
-    if (filteredRows.length === 0) {
-      return {
-        totalActual: 0,
-        totalForecast: 0,
-        variancePct: 0,
-        avgLabour: 0,
-        avgDOT: 0,
-        avgRnL: 0,
-        avgExtremes: 0,
-        avgFoodVar: 0,
-      };
-    }
-
-    let totalActual = 0;
-    let totalForecast = 0;
+  // AREA OVERVIEW: Avg DOT, Avg Labour, Avg Extremes >40%, Additional hours used (TOTAL)
+  const areaKpis = useMemo(() => {
     const labourVals: number[] = [];
     const dotVals: number[] = [];
-    const rnlVals: number[] = [];
     const extVals: number[] = [];
-    const foodVals: number[] = [];
+    let totalAddHours = 0;
 
     for (const r of filteredRows) {
-      if (r.actual_sales != null) totalActual += r.actual_sales;
-      if (r.forecast_sales !=null) totalForecast += r.forecast_sales;
-
       const labour = normalisePct(r.labour_pct);
       if (labour != null) labourVals.push(labour);
 
       const dot = normalisePct(r.dot_pct);
       if (dot != null) dotVals.push(dot);
 
-      if (r.rnl_minutes != null) rnlVals.push(r.rnl_minutes);
-
       const ext = normalisePct(r.extremes_pct);
       if (ext != null) extVals.push(ext);
 
-      const food = normaliseFoodVar(r.food_variance_pct);
-      if (food != null) foodVals.push(food);
+      if (typeof r.additional_hours === "number" && !Number.isNaN(r.additional_hours)) {
+        totalAddHours += r.additional_hours;
+      }
     }
 
-    const variancePct =
-      totalForecast > 0 ? (totalActual - totalForecast) / totalForecast : 0;
-
-    const avg = (arr: number[]) =>
-      arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-
     return {
-      totalActual,
-      totalForecast,
-      variancePct,
       avgLabour: avg(labourVals),
       avgDOT: avg(dotVals),
-      avgRnL: avg(rnlVals),
       avgExtremes: avg(extVals),
-      avgFoodVar: avg(foodVals),
+      totalAddHours,
     };
   }, [filteredRows]);
 
-  // STORE overview (rank by DOT desc, Labour asc)
+  // STORE OVERVIEW (rank by DOT desc, Labour asc)
   const storeData = useMemo(() => {
-    const avg = (arr: number[]) =>
-      arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-
     return STORES.map((storeName) => {
       const rowsForStore = dateFilteredRows.filter((r) => r.store === storeName);
 
       if (rowsForStore.length === 0) {
         return {
           store: storeName,
-          totalActual: 0,
-          totalForecast: 0,
-          variancePct: 0,
           avgLabour: 0,
           avgDOT: 0,
           avgRnL: 0,
           avgExtremes: 0,
-          avgFoodVar: 0,
-          avgAddHours: 0,
+          totalAddHours: 0,
           shifts: 0,
         };
       }
 
-      const isSingleRowView =
-        (dateRange === "yesterday" || dateRange === "custom") &&
-        rowsForStore.length === 1;
-
-      if (isSingleRowView) {
-        const r = rowsForStore[0];
-
-        const labour = normalisePct(r.labour_pct) || 0;
-        const dot = normalisePct(r.dot_pct) || 0;
-        const ext = normalisePct(r.extremes_pct) || 0;
-        const food = normaliseFoodVar(r.food_variance_pct) ?? null;
-
-        const actual = r.actual_sales || 0;
-        const forecast = r.forecast_sales || 0;
-        const variance = forecast > 0 ? (actual - forecast) / forecast : 0;
-
-        return {
-          store: storeName,
-          totalActual: actual,
-          totalForecast: forecast,
-          variancePct: variance,
-          avgLabour: labour,
-          avgDOT: dot,
-          avgRnL: r.rnl_minutes || 0,
-          avgExtremes: ext,
-          avgFoodVar: food,
-          avgAddHours: r.additional_hours || 0,
-          shifts: 1,
-        };
-      }
-
-      let totalActual = 0;
-      let totalForecast = 0;
       const lab: number[] = [];
       const dot: number[] = [];
       const rnl: number[] = [];
       const ext: number[] = [];
-      const food: number[] = [];
-      const addHrs: number[] = [];
+      let totalAddHours = 0;
 
       for (const r of rowsForStore) {
-        if (r.actual_sales != null) totalActual += r.actual_sales;
-        if (r.forecast_sales != null) totalForecast += r.forecast_sales;
-
         const l = normalisePct(r.labour_pct);
         const d = normalisePct(r.dot_pct);
         const e = normalisePct(r.extremes_pct);
-        const f = normaliseFoodVar(r.food_variance_pct);
 
         if (l != null) lab.push(l);
         if (d != null) dot.push(d);
-        if (r.rnl_minutes != null) rnl.push(r.rnl_minutes);
+        if (typeof r.rnl_minutes === "number" && !Number.isNaN(r.rnl_minutes)) rnl.push(r.rnl_minutes);
         if (e != null) ext.push(e);
-        if (f != null) food.push(f);
 
-        if (r.additional_hours != null) addHrs.push(r.additional_hours);
+        if (typeof r.additional_hours === "number" && !Number.isNaN(r.additional_hours)) {
+          totalAddHours += r.additional_hours;
+        }
       }
-
-      const variancePct =
-        totalForecast > 0 ? (totalActual - totalForecast) / totalForecast : 0;
 
       return {
         store: storeName,
-        totalActual,
-        totalForecast,
-        variancePct,
         avgLabour: avg(lab),
         avgDOT: avg(dot),
         avgRnL: avg(rnl),
         avgExtremes: avg(ext),
-        avgFoodVar: food.length ? avg(food) : null,
-        avgAddHours: avg(addHrs),
+        totalAddHours,
         shifts: rowsForStore.length,
       };
     }).sort((a, b) => {
       if (b.avgDOT !== a.avgDOT) return b.avgDOT - a.avgDOT; // higher DOT first
       return a.avgLabour - b.avgLabour; // lower labour wins ties
     });
-  }, [dateFilteredRows, dateRange]);
+  }, [dateFilteredRows]);
 
-  // MANAGER overview (rank by DOT desc, Labour asc) — display as cards
+  // MANAGER OVERVIEW (rank by DOT desc, Labour asc) — uses closing_manager
   const managerData = useMemo(() => {
     const bucket: Record<
       string,
       {
         shifts: number;
-        sales: number;
         labour: number[];
         dot: number[];
         rnl: number[];
-        food: number[];
         ext: number[];
-        addHrs: number[];
+        totalAddHours: number;
       }
     > = {};
 
@@ -325,50 +249,43 @@ export default function ServiceDashboardPage() {
       if (!bucket[name]) {
         bucket[name] = {
           shifts: 0,
-          sales: 0,
           labour: [],
           dot: [],
           rnl: [],
-          food: [],
           ext: [],
-          addHrs: [],
+          totalAddHours: 0,
         };
       }
 
       bucket[name].shifts += 1;
-      if (r.actual_sales != null) bucket[name].sales += r.actual_sales;
 
       const l = normalisePct(r.labour_pct);
       const d = normalisePct(r.dot_pct);
       const e = normalisePct(r.extremes_pct);
-      const f = normaliseFoodVar(r.food_variance_pct);
 
       if (l != null) bucket[name].labour.push(l);
       if (d != null) bucket[name].dot.push(d);
-      if (r.rnl_minutes != null) bucket[name].rnl.push(r.rnl_minutes);
+      if (typeof r.rnl_minutes === "number" && !Number.isNaN(r.rnl_minutes)) bucket[name].rnl.push(r.rnl_minutes);
       if (e != null) bucket[name].ext.push(e);
-      if (f != null) bucket[name].food.push(f);
-      if (r.additional_hours != null) bucket[name].addHrs.push(r.additional_hours);
-    }
 
-    const avg = (arr: number[]) =>
-      arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+      if (typeof r.additional_hours === "number" && !Number.isNaN(r.additional_hours)) {
+        bucket[name].totalAddHours += r.additional_hours;
+      }
+    }
 
     const arr = Object.entries(bucket).map(([name, v]) => ({
       name,
       shifts: v.shifts,
-      totalSales: v.sales,
       avgLabour: avg(v.labour),
       avgDOT: avg(v.dot),
       avgRnL: avg(v.rnl),
       avgExtremes: avg(v.ext),
-      avgFoodVar: v.food.length ? avg(v.food) : null,
-      avgAddHours: avg(v.addHrs),
+      totalAddHours: v.totalAddHours,
     }));
 
     arr.sort((a, b) => {
-      if (b.avgDOT !== a.avgDOT) return b.avgDOT - a.avgDOT; // higher DOT first
-      return a.avgLabour - b.avgLabour; // lower labour wins ties
+      if (b.avgDOT !== a.avgDOT) return b.avgDOT - a.avgDOT;
+      return a.avgLabour - b.avgLabour;
     });
 
     return arr;
@@ -389,11 +306,10 @@ export default function ServiceDashboardPage() {
       ? "Year to date"
       : "Custom";
 
-  const formatMoney = (n: number) =>
-    "£" + n.toLocaleString(undefined, { maximumFractionDigits: 0 });
-
   const formatPct = (v: number | null, dp = 1) =>
     v == null ? "—" : (v * 100).toFixed(dp) + "%";
+
+  const formatHours = (n: number) => (Number.isFinite(n) ? n.toFixed(1) : "0.0");
 
   return (
     <main className="wrap">
@@ -419,7 +335,8 @@ export default function ServiceDashboardPage() {
       <header className="header">
         <h1>Mourne-oids Service Dashboard</h1>
         <p className="subtitle">
-          Area, store and manager performance — ranked by <b>higher DOT%</b> then <b>lower labour%</b>.
+          Area, store and manager performance — ranked by <b>higher DOT%</b> then{" "}
+          <b>lower labour%</b>.
         </p>
       </header>
 
@@ -431,7 +348,9 @@ export default function ServiceDashboardPage() {
             <div className="filters">
               <button
                 onClick={() => setSelectedStore("all")}
-                className={`chip ${selectedStore === "all" ? "chip--active" : ""}`}
+                className={`chip ${
+                  selectedStore === "all" ? "chip--active" : ""
+                }`}
               >
                 All stores
               </button>
@@ -439,7 +358,9 @@ export default function ServiceDashboardPage() {
                 <button
                   key={s}
                   onClick={() => setSelectedStore(s)}
-                  className={`chip ${selectedStore === s ? "chip--active" : ""}`}
+                  className={`chip ${
+                    selectedStore === s ? "chip--active" : ""
+                  }`}
                 >
                   {s}
                 </button>
@@ -452,7 +373,9 @@ export default function ServiceDashboardPage() {
             <div className="filters">
               <button
                 onClick={() => setDateRange("yesterday")}
-                className={`chip small ${dateRange === "yesterday" ? "chip--active" : ""}`}
+                className={`chip small ${
+                  dateRange === "yesterday" ? "chip--active" : ""
+                }`}
               >
                 Yesterday
               </button>
@@ -476,7 +399,9 @@ export default function ServiceDashboardPage() {
               </button>
               <button
                 onClick={() => setDateRange("custom")}
-                className={`chip small ${dateRange === "custom" ? "chip--active" : ""}`}
+                className={`chip small ${
+                  dateRange === "custom" ? "chip--active" : ""
+                }`}
               >
                 Custom
               </button>
@@ -518,64 +443,55 @@ export default function ServiceDashboardPage() {
               <h2>Area overview</h2>
               <p className="section-sub">{periodLabel}</p>
             </div>
+
             <div className="kpi-grid">
-              <div className="card kpi">
-                <p className="kpi-title">Sales (£)</p>
-                <p className="kpi-value">{formatMoney(kpis.totalActual)}</p>
-                <p className="kpi-sub">
-                  {kpis.totalForecast
-                    ? `vs ${formatMoney(kpis.totalForecast)} forecast`
-                    : "No forecast recorded"}
-                </p>
-              </div>
-
               <div
                 className={`card kpi ${
-                  kpis.variancePct >= 0
+                  areaKpis.avgDOT >= 0.8
                     ? "kpi--green"
-                    : kpis.variancePct >= -0.05
-                    ? "kpi--amber"
-                    : "kpi--red"
-                }`}
-              >
-                <p className="kpi-title">Variance %</p>
-                <p className="kpi-value">{(kpis.variancePct * 100).toFixed(1)}%</p>
-                <p className="kpi-sub">Target: 0% or above</p>
-              </div>
-
-              <div
-                className={`card kpi ${
-                  kpis.avgLabour <= 0.25
-                    ? "kpi--green"
-                    : kpis.avgLabour <= 0.28
-                    ? "kpi--amber"
-                    : "kpi--red"
-                }`}
-              >
-                <p className="kpi-title">Avg Labour %</p>
-                <p className="kpi-value">{formatPct(kpis.avgLabour, 1)}</p>
-                <p className="kpi-sub">Lower is better</p>
-              </div>
-
-              <div
-                className={`card kpi ${
-                  kpis.avgDOT >= 0.8
-                    ? "kpi--green"
-                    : kpis.avgDOT >= 0.75
+                    : areaKpis.avgDOT >= 0.75
                     ? "kpi--amber"
                     : "kpi--red"
                 }`}
               >
                 <p className="kpi-title">Avg DOT %</p>
-                <p className="kpi-value">{formatPct(kpis.avgDOT, 0)}</p>
+                <p className="kpi-value">{formatPct(areaKpis.avgDOT, 0)}</p>
                 <p className="kpi-sub">Higher is better</p>
+              </div>
+
+              <div
+                className={`card kpi ${
+                  areaKpis.avgLabour <= 0.25
+                    ? "kpi--green"
+                    : areaKpis.avgLabour <= 0.28
+                    ? "kpi--amber"
+                    : "kpi--red"
+                }`}
+              >
+                <p className="kpi-title">Avg Labour %</p>
+                <p className="kpi-value">{formatPct(areaKpis.avgLabour, 1)}</p>
+                <p className="kpi-sub">Lower is better</p>
+              </div>
+
+              <div className="card kpi">
+                <p className="kpi-title">Avg Extremes &gt;40 %</p>
+                <p className="kpi-value">{formatPct(areaKpis.avgExtremes, 1)}</p>
+                <p className="kpi-sub">Lower is better</p>
+              </div>
+
+              <div className="card kpi">
+                <p className="kpi-title">Additional hours used</p>
+                <p className="kpi-value">{formatHours(areaKpis.totalAddHours)}</p>
+                <p className="kpi-sub">Total for selected period</p>
               </div>
             </div>
 
-            {/* STORE OVERVIEW (ranked) */}
+            {/* STORE OVERVIEW */}
             <div className="section-head mt">
               <h2>Store overview</h2>
-              <p className="section-sub">{periodLabel} • ranked by DOT then labour</p>
+              <p className="section-sub">
+                {periodLabel} • ranked by DOT then labour
+              </p>
             </div>
 
             <div className="store-grid">
@@ -605,49 +521,21 @@ export default function ServiceDashboardPage() {
 
                   <div className="store-rows">
                     <p className="metric">
-                      <span>Labour</span>
+                      <span>Avg Labour</span>
                       <strong>{formatPct(st.avgLabour, 1)}</strong>
                     </p>
-
                     <p className="metric">
-                      <span>Sales</span>
-                      <strong>{formatMoney(st.totalActual)}</strong>
-                    </p>
-
-                    <p className="metric">
-                      <span>Forecast</span>
-                      <strong>{st.totalForecast ? formatMoney(st.totalForecast) : "—"}</strong>
-                    </p>
-
-                    <p
-                      className={`metric ${
-                        st.variancePct >= 0 ? "pos" : st.variancePct >= -0.05 ? "warn" : "neg"
-                      }`}
-                    >
-                      <span>Variance</span>
-                      <strong>{(st.variancePct * 100).toFixed(1)}%</strong>
-                    </p>
-
-                    <p className="metric">
-                      <span>R&amp;L</span>
+                      <span>Avg R&amp;L</span>
                       <strong>{st.avgRnL ? st.avgRnL.toFixed(1) + "m" : "—"}</strong>
                     </p>
-
                     <p className="metric">
-                      <span>Extremes</span>
+                      <span>Avg Extremes &gt;40</span>
                       <strong>{formatPct(st.avgExtremes, 1)}</strong>
                     </p>
-
                     <p className="metric">
-                      <span>Food %</span>
-                      <strong>{st.avgFoodVar != null ? st.avgFoodVar.toFixed(2) + "%" : "—"}</strong>
+                      <span>Additional hours</span>
+                      <strong>{formatHours(st.totalAddHours)}</strong>
                     </p>
-
-                    <p className="metric">
-                      <span>Add. hours</span>
-                      <strong>{st.avgAddHours ? st.avgAddHours.toFixed(1) : "0.0"}</strong>
-                    </p>
-
                     <p className="metric">
                       <span>Shifts</span>
                       <strong>{st.shifts}</strong>
@@ -657,10 +545,12 @@ export default function ServiceDashboardPage() {
               ))}
             </div>
 
-            {/* MANAGER OVERVIEW (ranked, cards) */}
+            {/* MANAGER OVERVIEW */}
             <div className="section-head mt">
               <h2>Manager overview</h2>
-              <p className="section-sub">{periodLabel} • ranked by DOT then labour</p>
+              <p className="section-sub">
+                {periodLabel} • ranked by DOT then labour
+              </p>
             </div>
 
             <div className="manager-grid">
@@ -700,35 +590,21 @@ export default function ServiceDashboardPage() {
 
                     <div className="store-rows">
                       <p className="metric">
-                        <span>Labour</span>
+                        <span>Avg Labour</span>
                         <strong>{formatPct(mgr.avgLabour, 1)}</strong>
                       </p>
-
                       <p className="metric">
-                        <span>Total sales</span>
-                        <strong>{formatMoney(mgr.totalSales)}</strong>
-                      </p>
-
-                      <p className="metric">
-                        <span>R&amp;L</span>
+                        <span>Avg R&amp;L</span>
                         <strong>{mgr.avgRnL ? mgr.avgRnL.toFixed(1) + "m" : "—"}</strong>
                       </p>
-
                       <p className="metric">
-                        <span>Extremes</span>
+                        <span>Avg Extremes &gt;40</span>
                         <strong>{formatPct(mgr.avgExtremes, 1)}</strong>
                       </p>
-
                       <p className="metric">
-                        <span>Food %</span>
-                        <strong>{mgr.avgFoodVar != null ? mgr.avgFoodVar.toFixed(2) + "%" : "—"}</strong>
+                        <span>Additional hours</span>
+                        <strong>{formatHours(mgr.totalAddHours)}</strong>
                       </p>
-
-                      <p className="metric">
-                        <span>Add. hours</span>
-                        <strong>{mgr.avgAddHours ? mgr.avgAddHours.toFixed(1) : "0.0"}</strong>
-                      </p>
-
                       <p className="metric">
                         <span>Shifts</span>
                         <strong>{mgr.shifts}</strong>
@@ -1052,15 +928,6 @@ export default function ServiceDashboardPage() {
         }
         .metric span {
           color: var(--muted);
-        }
-        .metric.pos strong {
-          color: #166534;
-        }
-        .metric.warn strong {
-          color: #b45309;
-        }
-        .metric.neg strong {
-          color: #b91c1c;
         }
 
         .pill {
