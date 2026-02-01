@@ -42,27 +42,32 @@ export default function HubPage() {
         return;
       }
 
+      // prefer active messages, fallback to all
       const active = data.filter((d: any) => d.active === true);
       setTickerMessages((active.length > 0 ? active : data) as TickerItem[]);
     };
     load();
   }, []);
 
+  // category → colour bar
   const getCategoryColor = (cat?: string | null) => {
     const c = (cat || "").toLowerCase();
-    if (c === "service push") return "#E31837";
-    if (c === "celebration") return "#16A34A";
-    if (c === "ops") return "#F59E0B";
-    if (c === "warning") return "#7C3AED";
+    if (c === "service push") return "#E31837"; // red
+    if (c === "celebration") return "#16A34A"; // green
+    if (c === "ops") return "#F59E0B"; // amber
+    if (c === "warning") return "#7C3AED"; // purple
+    // default / announcement
     return "#ffffff";
   };
 
+  // NEW: logout
   const handleLogout = async () => {
     try {
       if (!supabase) return;
       await supabase.auth.signOut();
       window.location.href = "/login";
     } catch (e) {
+      // Optional: you could toast an error here if you add a toast system
       console.error(e);
     }
   };
@@ -89,7 +94,8 @@ export default function HubPage() {
             ) : tickerMessages.length === 0 ? (
               <span className="ticker-item muted">
                 <span className="cat-pill" style={{ background: "#ffffff" }} />
-                📰 No news items found in Supabase (<code>news_ticker</code>)
+                📰 No news items found in Supabase (table:{" "}
+                <code>news_ticker</code>)
               </span>
             ) : (
               tickerMessages.map((item, i) => (
@@ -112,6 +118,7 @@ export default function HubPage() {
 
       {/* Page content */}
       <div className="shell">
+        {/* Title */}
         <header className="header">
           <h1>Mourne-oids Hub</h1>
           <p className="subtitle">
@@ -119,6 +126,7 @@ export default function HubPage() {
           </p>
         </header>
 
+        {/* NEW: top actions (logout) */}
         <div className="top-actions">
           <button onClick={handleLogout} className="btn-logout">
             🚪 Log out
@@ -140,7 +148,7 @@ export default function HubPage() {
             <div className="card-link__icon">🧾</div>
             <div className="card-link__body">
               <h2>Standards Walkthrough</h2>
-              <p>Pre-open & handover standards checklist.</p>
+              <p>Store readiness + photos + automatic summary.</p>
             </div>
             <div className="card-link__chevron">›</div>
           </a>
@@ -149,11 +157,12 @@ export default function HubPage() {
             <div className="card-link__icon">📈</div>
             <div className="card-link__body">
               <h2>Standards Completion report</h2>
-              <p>Track pre-open & handover completion by store.</p>
+              <p>Review store performance and submissions.</p>
             </div>
             <div className="card-link__chevron">›</div>
           </a>
 
+          {/* NEW PROFILE LINK (same style) */}
           <a href="/profile" className="card-link">
             <div className="card-link__icon">👤</div>
             <div className="card-link__body">
@@ -201,9 +210,241 @@ export default function HubPage() {
         </section>
       </div>
 
+      {/* Footer */}
       <footer className="footer">
         <p>© 2025 Mourne-oids | Domino’s Pizza | Racz Group</p>
       </footer>
+
+      <style jsx>{`
+        :root {
+          --bg: #0f172a;
+          --paper: rgba(255, 255, 255, 0.08);
+          --paper-solid: #ffffff;
+          --text: #0f172a;
+          --muted: #475569;
+          --brand: #006491;
+          --brand-dark: #004b75;
+          --radius-lg: 1.4rem;
+          --shadow-card: 0 16px 40px rgba(0, 0, 0, 0.05);
+        }
+
+        .wrap {
+          min-height: 100dvh;
+          background:
+            radial-gradient(circle at top, rgba(0, 100, 145, 0.08), transparent 45%),
+            linear-gradient(180deg, #e3edf4 0%, #f2f5f9 30%, #f2f5f9 100%);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          color: var(--text);
+          padding-bottom: 40px;
+        }
+
+        .banner {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          background: #fff;
+          border-bottom: 3px solid var(--brand);
+          box-shadow: 0 12px 35px rgba(2, 6, 23, 0.08);
+          width: 100%;
+        }
+
+        .banner img {
+          max-width: min(1160px, 92%);
+          height: auto;
+          display: block;
+        }
+
+        .ticker-shell {
+          width: min(1100px, 94vw);
+          margin-top: 16px;
+          background: linear-gradient(90deg, #006491 0%, #004b75 100%);
+          border-radius: 9999px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          overflow: hidden;
+          box-shadow: 0 15px 30px rgba(0, 0, 0, 0.06);
+        }
+
+        .ticker-inner {
+          white-space: nowrap;
+          overflow: hidden;
+        }
+
+        .ticker {
+          display: inline-block;
+          animation: scroll 30s linear infinite;
+          padding: 9px 0;
+        }
+
+        .ticker-shell:hover .ticker {
+          animation-play-state: paused;
+        }
+
+        .ticker-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.6rem;
+          padding: 0 1.8rem;
+          font-weight: 700;
+          font-size: 0.9rem;
+          color: #fff;
+        }
+
+        .ticker-item.error {
+          color: #fee2e2;
+        }
+
+        .cat-pill {
+          width: 12px;
+          height: 20px;
+          border-radius: 8px;
+          box-shadow: 0 0 10px rgba(0, 0, 0, 0.25);
+        }
+
+        .separator {
+          opacity: 0.45;
+        }
+
+        @keyframes scroll {
+          0% {
+            transform: translateX(100%);
+          }
+          100% {
+            transform: translateX(-100%);
+          }
+        }
+
+        .shell {
+          width: min(1100px, 94vw);
+          margin-top: 26px;
+          background: rgba(255, 255, 255, 0.55);
+          backdrop-filter: saturate(160%) blur(6px);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 1.5rem;
+          box-shadow: var(--shadow-card);
+          padding: 30px 26px 34px;
+        }
+
+        .header {
+          text-align: center;
+          margin-bottom: 12px;
+        }
+
+        .header h1 {
+          font-size: clamp(2.1rem, 3vw, 2.4rem);
+          font-weight: 900;
+          letter-spacing: -0.015em;
+        }
+
+        .subtitle {
+          color: #64748b;
+          font-size: 0.95rem;
+          margin-top: 6px;
+        }
+
+        /* NEW: top actions row */
+        .top-actions {
+          display: flex;
+          justify-content: flex-end;
+          margin: 6px 0 16px;
+        }
+
+        .btn-logout {
+          background: #fff;
+          color: var(--brand);
+          border: 2px solid var(--brand);
+          border-radius: 14px;
+          font-weight: 800;
+          font-size: 14px;
+          padding: 8px 14px;
+          cursor: pointer;
+          box-shadow: 0 6px 14px rgba(0, 100, 145, 0.12);
+          transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+        }
+
+        .btn-logout:hover {
+          background: var(--brand);
+          color: #fff;
+          transform: translateY(-1px);
+        }
+
+        .grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 16px;
+        }
+
+        .card-link {
+          display: flex;
+          gap: 14px;
+          align-items: center;
+          background: #ffffff;
+          border-radius: 1.25rem;
+          text-decoration: none;
+          padding: 14px 16px 14px 14px;
+          border: 1px solid rgba(0, 100, 145, 0.12);
+          box-shadow: 0 10px 25px rgba(15, 23, 42, 0.03);
+          transition: transform 0.12s ease-out, box-shadow 0.12s ease-out,
+            border 0.12s ease-out;
+        }
+
+        .card-link__icon {
+          width: 46px;
+          height: 46px;
+          border-radius: 1.2rem;
+          background: radial-gradient(circle, #006491 0%, #1f2937 100%);
+          display: grid;
+          place-items: center;
+          font-size: 1.6rem;
+          color: #fff;
+          flex: 0 0 46px;
+        }
+
+        .card-link__body h2 {
+          font-size: 1rem;
+          font-weight: 700;
+          color: #0f172a;
+        }
+
+        .card-link__body p {
+          font-size: 0.78rem;
+          color: #6b7280;
+          margin-top: 2px;
+        }
+
+        .card-link__chevron {
+          margin-left: auto;
+          font-size: 1.6rem;
+          line-height: 1;
+          color: rgba(15, 23, 42, 0.38);
+        }
+
+        .card-link:hover {
+          transform: translateY(-2px);
+          border: 1px solid rgba(0, 100, 145, 0.28);
+          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.04);
+        }
+
+        .footer {
+          text-align: center;
+          margin-top: 24px;
+          color: #94a3b8;
+          font-size: 0.8rem;
+        }
+
+        @media (max-width: 720px) {
+          .shell {
+            padding: 24px 16px 28px;
+          }
+          .card-link {
+            border-radius: 1rem;
+          }
+          .ticker-shell {
+            border-radius: 1.2rem;
+          }
+        }
+      `}</style>
     </main>
   );
 }
