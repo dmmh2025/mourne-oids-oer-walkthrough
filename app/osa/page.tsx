@@ -22,16 +22,23 @@ function safeString(v: any) {
   return String(v);
 }
 
+function parseNumber(v: any): number | null {
+  if (v == null) return null;
+  const n =
+    typeof v === "number"
+      ? v
+      : Number(String(v).replace(/[^\d.-]/g, ""));
+  return Number.isFinite(n) ? n : null;
+}
+
 function findFirstKey(row: AnyRow | null, keys: string[]) {
   if (!row) return null;
   for (const k of keys) if (k in row) return k;
   return null;
 }
 
-function parseNumber(v: any): number | null {
-  if (v == null) return null;
-  const n = typeof v === "number" ? v : Number(String(v).replace(/[^\d.-]/g, ""));
-  return Number.isFinite(n) ? n : null;
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
 }
 
 export default function OSAInternalScorecardPage() {
@@ -48,7 +55,7 @@ export default function OSAInternalScorecardPage() {
   });
   const [toDate, setToDate] = useState<string>(() => toISODate(new Date()));
 
-  // Detect key columns (based on first row)
+  // Detect columns (based on first row)
   const detected = useMemo(() => {
     const first = rows[0] || null;
 
@@ -63,40 +70,45 @@ export default function OSAInternalScorecardPage() {
     const storeKey =
       findFirstKey(first, ["store", "store_name", "storeName", "location"]) || "store";
 
-    // Common score shapes: score_pct, score_percent, score, result, stars, points_lost
-    const scoreKey = findFirstKey(first, [
-      "score_pct",
-      "score_percent",
-      "scorePercentage",
-      "score",
-      "result",
-      "overall_score",
-      "overall",
-      "percent",
-    ]);
+    const managerKey =
+      findFirstKey(first, [
+        "manager",
+        "closing_manager",
+        "shift_runner",
+        "shiftRunner",
+        "completed_by",
+        "completedBy",
+        "auditor",
+        "user_name",
+        "user",
+      ]) || "manager";
 
-    const starsKey = findFirstKey(first, ["stars", "star_rating", "rating", "osa_stars"]);
-    const pointsLostKey = findFirstKey(first, ["points_lost", "pointsLost", "pl", "point_loss"]);
+    const starsKey =
+      findFirstKey(first, ["stars", "star_rating", "rating", "osa_stars"]) || null;
 
-    const whoKey = findFirstKey(first, [
-      "manager",
-      "shift_runner",
-      "shiftRunner",
-      "auditor",
-      "completed_by",
-      "completedBy",
-      "user_name",
-      "user",
-    ]);
+    const pointsLostKey =
+      findFirstKey(first, ["points_lost", "pointsLost", "pl", "point_loss"]) || null;
+
+    const scoreKey =
+      findFirstKey(first, [
+        "score_pct",
+        "score_percent",
+        "scorePercentage",
+        "score",
+        "overall_score",
+        "overall",
+        "percent",
+        "result",
+      ]) || null;
 
     return {
       createdKey,
       shiftDateKey,
       storeKey,
-      scoreKey,
+      managerKey,
       starsKey,
       pointsLostKey,
-      whoKey,
+      scoreKey,
     };
   }, [rows]);
 
@@ -113,13 +125,11 @@ export default function OSAInternalScorecardPage() {
         setLoading(true);
         setError(null);
 
-        // Use created_at for ordering; filter by date if we can.
-        // We'll attempt to filter on shift_date first (if exists), else fallback to created_at.
         const { data, error } = await supabase
           .from("osa_internal_results")
           .select("*")
           .order("created_at", { ascending: false })
-          .limit(500);
+          .limit(800);
 
         if (error) throw error;
 
@@ -155,128 +165,21 @@ export default function OSAInternalScorecardPage() {
         if (s !== storeFilter) return false;
       }
 
-      const dateKeyToUse = detected.shiftDateKey || detected.createdKey;
-      const raw = r[dateKeyToUse];
-
+      const dateKey = detected.shiftDateKey || detected.createdKey;
+      const raw = r[dateKey];
       const d = raw ? new Date(raw) : null;
-      if (!d || isNaN(d.getTime())) return true; // don't hide weird records
+      if (!d || isNaN(d.getTime())) return true;
 
       return d >= from && d <= to;
     });
-  }, [rows, storeFilter, fromDate, toDate, detected.shiftDateKey, detected.createdKey, detected.storeKey]);
-
-  // Compute summary KPIs (best-effort)
-  const summary = useMemo(() => {
-    const scoreKey = detected.scoreKey;
-    const starsKey = detected.starsKey;
-    const pointsLostKey = detected.pointsLostKey;
-
-    let scoreSum = 0;
-    let scoreCount = 0;
-
-    let starsSum = 0;
-    let starsCount = 0;
-
-    let plSum = 0;
-    let plCount = 0;
-
-    // Latest per store (by created_at)
-    const latestByStore: Record<string, AnyRow> = {};
-
-    for (const r of filtered) {
-      if (scoreKey) {
-        const sc = parseNumber(r[scoreKey]);
-        if (sc != null) {
-          // If values look like 0..1, convert to %
-          const val = sc <= 1 ? sc * 100 : sc;
-          scoreSum += val;
-          scoreCount += 1;
-        }
-      }
-      if (starsKey) {
-        const st = parseNumber(r[starsKey]);
-        if (st != null) {
-          starsSum += st;
-          starsCount += 1;
-        }
-      }
-      if (pointsLostKey) {
-        const pl = parseNumber(r[pointsLostKey]);
-        if (pl != null) {
-          plSum += pl;
-          plCount += 1;
-        }
-      }
-
-      const store = safeString(r[detected.storeKey]).trim() || "Unknown";
-      const existing = latestByStore[store];
-
-      const dtKey = detected.createdKey;
-      const dNew = r[dtKey] ? new Date(r[dtKey]) : null;
-      const dOld = existing?.[dtKey] ? new Date(existing[dtKey]) : null;
-
-      if (!existing) latestByStore[store] = r;
-      else if (dNew && !isNaN(dNew.getTime()) && dOld && !isNaN(dOld.getTime())) {
-        if (dNew > dOld) latestByStore[store] = r;
-      } else {
-        // fallback: keep the first one we saw (already ordered desc)
-      }
-    }
-
-    const avgScore = scoreCount ? scoreSum / scoreCount : null;
-    const avgStars = starsCount ? starsSum / starsCount : null;
-    const avgPL = plCount ? plSum / plCount : null;
-
-    return {
-      avgScore,
-      avgStars,
-      avgPL,
-      latestByStore,
-    };
-  }, [filtered, detected.scoreKey, detected.starsKey, detected.pointsLostKey, detected.storeKey, detected.createdKey]);
-
-  // Decide which columns to display (make it readable)
-  const columns = useMemo(() => {
-    // If we have data, prefer a tidy set of columns, but still include unknowns at the end.
-    const allKeys = new Set<string>();
-    for (const r of filtered.slice(0, 50)) Object.keys(r).forEach((k) => allKeys.add(k));
-
-    const preferred = [
-      detected.shiftDateKey,
-      detected.createdKey,
-      detected.storeKey,
-      detected.whoKey,
-      detected.scoreKey,
-      detected.starsKey,
-      detected.pointsLostKey,
-      "comments",
-      "comment",
-      "notes",
-      "note",
-    ].filter(Boolean) as string[];
-
-    const ordered: string[] = [];
-    for (const k of preferred) if (k && allKeys.has(k) && !ordered.includes(k)) ordered.push(k);
-
-    // add remaining keys (but avoid huge payload fields)
-    const blacklist = new Set(["id", "uuid", "raw", "payload", "json", "images", "photos"]);
-    for (const k of Array.from(allKeys)) {
-      if (ordered.includes(k)) continue;
-      if (blacklist.has(k.toLowerCase())) continue;
-      ordered.push(k);
-    }
-
-    // cap columns so table stays usable
-    return ordered.slice(0, 10);
   }, [
-    filtered,
+    rows,
+    storeFilter,
+    fromDate,
+    toDate,
+    detected.storeKey,
     detected.shiftDateKey,
     detected.createdKey,
-    detected.storeKey,
-    detected.whoKey,
-    detected.scoreKey,
-    detected.starsKey,
-    detected.pointsLostKey,
   ]);
 
   const formatStamp = (iso: any) => {
@@ -290,6 +193,230 @@ export default function OSAInternalScorecardPage() {
       hour: "2-digit",
       minute: "2-digit",
     });
+  };
+
+  // --- Aggregations: Managers & Stores leaderboard ---
+  type LeaderRow = {
+    name: string;
+    audits: number;
+    totalPL: number; // lower is better
+    avgPL: number;
+    avgStars: number;
+    avgScorePct: number | null;
+    lastSeen: string | null;
+  };
+
+  const leaderboards = useMemo(() => {
+    const plKey = detected.pointsLostKey;
+    const starsKey = detected.starsKey;
+    const scoreKey = detected.scoreKey;
+
+    const mgrBucket: Record<string, { audits: number; pl: number[]; stars: number[]; score: number[]; last: string | null }> =
+      {};
+    const storeBucket: Record<string, { audits: number; pl: number[]; stars: number[]; score: number[]; last: string | null }> =
+      {};
+
+    for (const r of filtered) {
+      const mgr = safeString(r[detected.managerKey]).trim() || "Unknown";
+      const store = safeString(r[detected.storeKey]).trim() || "Unknown";
+
+      const created = r[detected.createdKey] ?? null;
+
+      const pl = plKey ? parseNumber(r[plKey]) : null;
+      const stars = starsKey ? parseNumber(r[starsKey]) : null;
+
+      let scorePct: number | null = null;
+      if (scoreKey) {
+        const sc = parseNumber(r[scoreKey]);
+        if (sc != null) scorePct = sc <= 1 ? sc * 100 : sc;
+      }
+
+      if (!mgrBucket[mgr]) mgrBucket[mgr] = { audits: 0, pl: [], stars: [], score: [], last: null };
+      if (!storeBucket[store]) storeBucket[store] = { audits: 0, pl: [], stars: [], score: [], last: null };
+
+      mgrBucket[mgr].audits += 1;
+      storeBucket[store].audits += 1;
+
+      if (pl != null) {
+        mgrBucket[mgr].pl.push(pl);
+        storeBucket[store].pl.push(pl);
+      }
+      if (stars != null) {
+        mgrBucket[mgr].stars.push(stars);
+        storeBucket[store].stars.push(stars);
+      }
+      if (scorePct != null) {
+        mgrBucket[mgr].score.push(scorePct);
+        storeBucket[store].score.push(scorePct);
+      }
+
+      // last seen
+      if (created) {
+        if (!mgrBucket[mgr].last) mgrBucket[mgr].last = created;
+        if (!storeBucket[store].last) storeBucket[store].last = created;
+      }
+    }
+
+    const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
+    const sum = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) : 0);
+
+    const managers: LeaderRow[] = Object.entries(mgrBucket).map(([name, v]) => ({
+      name,
+      audits: v.audits,
+      totalPL: sum(v.pl),
+      avgPL: v.pl.length ? avg(v.pl) : 0,
+      avgStars: v.stars.length ? avg(v.stars) : 0,
+      avgScorePct: v.score.length ? avg(v.score) : null,
+      lastSeen: v.last,
+    }));
+
+    const storesL: LeaderRow[] = Object.entries(storeBucket).map(([name, v]) => ({
+      name,
+      audits: v.audits,
+      totalPL: sum(v.pl),
+      avgPL: v.pl.length ? avg(v.pl) : 0,
+      avgStars: v.stars.length ? avg(v.stars) : 0,
+      avgScorePct: v.score.length ? avg(v.score) : null,
+      lastSeen: v.last,
+    }));
+
+    // Ranking: lowest total PL first, then higher stars, then more audits
+    const rankFn = (a: LeaderRow, b: LeaderRow) => {
+      if (a.totalPL !== b.totalPL) return a.totalPL - b.totalPL;
+      if (b.avgStars !== a.avgStars) return b.avgStars - a.avgStars;
+      return b.audits - a.audits;
+    };
+
+    managers.sort(rankFn);
+    storesL.sort(rankFn);
+
+    return { managers, stores: storesL };
+  }, [
+    filtered,
+    detected.managerKey,
+    detected.storeKey,
+    detected.createdKey,
+    detected.pointsLostKey,
+    detected.starsKey,
+    detected.scoreKey,
+  ]);
+
+  const topManager = leaderboards.managers[0] || null;
+  const topStore = leaderboards.stores[0] || null;
+
+  // "Most Improved" (optional): compare last 14 days vs prev 14 days by average PL (down is improvement)
+  const mostImprovedManager = useMemo(() => {
+    const dateKey = detected.shiftDateKey || detected.createdKey;
+
+    const now = new Date();
+    const recentStart = new Date(now);
+    recentStart.setDate(now.getDate() - 14);
+    recentStart.setHours(0, 0, 0, 0);
+
+    const prevStart = new Date(now);
+    prevStart.setDate(now.getDate() - 28);
+    prevStart.setHours(0, 0, 0, 0);
+
+    const plKey = detected.pointsLostKey;
+    if (!plKey) return null;
+
+    const bucket = (rowsIn: AnyRow[]) => {
+      const b: Record<string, number[]> = {};
+      for (const r of rowsIn) {
+        const mgr = safeString(r[detected.managerKey]).trim() || "Unknown";
+        const pl = parseNumber(r[plKey]);
+        if (pl == null) continue;
+        if (!b[mgr]) b[mgr] = [];
+        b[mgr].push(pl);
+      }
+      return b;
+    };
+
+    const recentRows: AnyRow[] = [];
+    const prevRows: AnyRow[] = [];
+
+    for (const r of filtered) {
+      const raw = r[dateKey];
+      const d = raw ? new Date(raw) : null;
+      if (!d || isNaN(d.getTime())) continue;
+
+      if (d >= recentStart) recentRows.push(r);
+      else if (d >= prevStart && d < recentStart) prevRows.push(r);
+    }
+
+    const rB = bucket(recentRows);
+    const pB = bucket(prevRows);
+    const names = Array.from(new Set([...Object.keys(rB), ...Object.keys(pB)]));
+
+    const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
+
+    // improvement = prevAvgPL - recentAvgPL (positive means better)
+    const improvements = names
+      .map((name) => {
+        const prevAvg = avg(pB[name] || []);
+        const recentAvg = avg(rB[name] || []);
+        if (prevAvg == null || recentAvg == null) return null;
+        return { name, delta: prevAvg - recentAvg, prevAvg, recentAvg };
+      })
+      .filter(Boolean) as { name: string; delta: number; prevAvg: number; recentAvg: number }[];
+
+    improvements.sort((a, b) => b.delta - a.delta);
+    return improvements[0] || null;
+  }, [
+    filtered,
+    detected.shiftDateKey,
+    detected.createdKey,
+    detected.pointsLostKey,
+    detected.managerKey,
+  ]);
+
+  // Overall summary
+  const summary = useMemo(() => {
+    const plKey = detected.pointsLostKey;
+    const starsKey = detected.starsKey;
+
+    let plSum = 0;
+    let plCount = 0;
+
+    let starsSum = 0;
+    let starsCount = 0;
+
+    for (const r of filtered) {
+      if (plKey) {
+        const pl = parseNumber(r[plKey]);
+        if (pl != null) {
+          plSum += pl;
+          plCount += 1;
+        }
+      }
+      if (starsKey) {
+        const st = parseNumber(r[starsKey]);
+        if (st != null) {
+          starsSum += st;
+          starsCount += 1;
+        }
+      }
+    }
+
+    return {
+      records: filtered.length,
+      avgPL: plCount ? plSum / plCount : null,
+      avgStars: starsCount ? starsSum / starsCount : null,
+    };
+  }, [filtered, detected.pointsLostKey, detected.starsKey]);
+
+  // Badge helper
+  const rankBadge = (idx: number) => {
+    if (idx === 0) return { label: "🏆 1st", cls: "badge gold" };
+    if (idx === 1) return { label: "🥈 2nd", cls: "badge silver" };
+    if (idx === 2) return { label: "🥉 3rd", cls: "badge bronze" };
+    return { label: `#${idx + 1}`, cls: "badge" };
+    };
+
+  const fmt = {
+    pl: (n: number | null) => (n == null ? "—" : n.toFixed(1)),
+    stars: (n: number | null) => (n == null ? "—" : n.toFixed(2)),
+    pct: (n: number | null) => (n == null ? "—" : n.toFixed(1) + "%"),
   };
 
   return (
@@ -307,14 +434,14 @@ export default function OSAInternalScorecardPage() {
           <div className="header-top">
             <div>
               <h1>Internal OSA Scorecard</h1>
-              <p className="subtitle">Scorecards • Results • Rankings</p>
+              <p className="subtitle">Leaderboards • Points Lost • Star Ratings</p>
             </div>
-
             <a className="btn-back" href="/">
               ← Back to Hub
             </a>
           </div>
 
+          {/* Filters */}
           <div className="filters">
             <div className="filter">
               <label>Store</label>
@@ -346,128 +473,279 @@ export default function OSAInternalScorecardPage() {
           <div className="notice error">
             <b>Could not load:</b> {error}
             <div className="hint">
-              Check Supabase table name is <code>osa_internal_results</code> and RLS allows reads
-              for logged-in users.
+              Check Supabase table name is <code>osa_internal_results</code> and RLS allows reads.
             </div>
           </div>
         ) : (
           <>
-            {/* Summary cards */}
-            <section className="cards">
-              <div className="card">
-                <div className="card-title">Records</div>
-                <div className="card-value">{filtered.length}</div>
-                <div className="card-sub">Within selected filters</div>
+            {/* Summary strip */}
+            <section className="summary">
+              <div className="summary-item">
+                <div className="summary-k">Records</div>
+                <div className="summary-v">{summary.records}</div>
               </div>
-
-              <div className="card">
-                <div className="card-title">Average Score</div>
-                <div className="card-value">
-                  {summary.avgScore == null ? "—" : summary.avgScore.toFixed(1) + "%"}
-                </div>
-                <div className="card-sub">
-                  {detected.scoreKey ? `Using “${detected.scoreKey}”` : "No score column detected"}
-                </div>
+              <div className="summary-item">
+                <div className="summary-k">Avg Points Lost</div>
+                <div className="summary-v">{fmt.pl(summary.avgPL)}</div>
               </div>
-
-              <div className="card">
-                <div className="card-title">Average Stars</div>
-                <div className="card-value">
-                  {summary.avgStars == null ? "—" : summary.avgStars.toFixed(2)}
-                </div>
-                <div className="card-sub">
-                  {detected.starsKey ? `Using “${detected.starsKey}”` : "No stars column detected"}
-                </div>
+              <div className="summary-item">
+                <div className="summary-k">Avg Stars</div>
+                <div className="summary-v">{fmt.stars(summary.avgStars)}</div>
               </div>
-
-              <div className="card">
-                <div className="card-title">Avg Points Lost</div>
-                <div className="card-value">
-                  {summary.avgPL == null ? "—" : summary.avgPL.toFixed(1)}
-                </div>
-                <div className="card-sub">
-                  {detected.pointsLostKey
-                    ? `Using “${detected.pointsLostKey}”`
-                    : "No points lost column detected"}
+              <div className="summary-item subtle">
+                <div className="summary-k">Ranking Logic</div>
+                <div className="summary-v small">
+                  Lowest <b>total</b> PL, then highest stars
                 </div>
               </div>
             </section>
 
-            {/* Latest per store */}
-            <section className="latest">
-              <div className="section-head">
-                <h2>Latest by Store</h2>
-                <p>Most recent submission (best-effort, based on created_at)</p>
+            {/* Highlights (like service dashboard) */}
+            <section className="highlights">
+              <div className="highlights-head">
+                <h2>Highlights</h2>
+                <p>Based on filtered results</p>
               </div>
 
-              <div className="latest-grid">
-                {Object.entries(summary.latestByStore)
-                  .sort((a, b) => a[0].localeCompare(b[0]))
-                  .map(([store, r]) => {
-                    const score = detected.scoreKey ? parseNumber(r[detected.scoreKey]) : null;
-                    const scorePct = score == null ? null : score <= 1 ? score * 100 : score;
+              <div className="highlights-grid">
+                <div className="highlight-card">
+                  <div className="highlight-top">
+                    <span className="highlight-title">🏆 Top Manager</span>
+                    <span className="highlight-pill">Lowest PL</span>
+                  </div>
+                  <div className="highlight-main">
+                    <div className="highlight-name">
+                      {topManager ? topManager.name : "No data"}
+                    </div>
+                    <div className="highlight-metrics">
+                      <span>
+                        Total PL: <b>{topManager ? fmt.pl(topManager.totalPL) : "—"}</b>
+                      </span>
+                      <span>
+                        Stars: <b>{topManager ? fmt.stars(topManager.avgStars) : "—"}</b>
+                      </span>
+                      <span>
+                        Audits: <b>{topManager ? topManager.audits : "—"}</b>
+                      </span>
+                    </div>
+                  </div>
+                </div>
 
-                    const stars = detected.starsKey ? parseNumber(r[detected.starsKey]) : null;
-                    const pl = detected.pointsLostKey ? parseNumber(r[detected.pointsLostKey]) : null;
+                <div className="highlight-card">
+                  <div className="highlight-top">
+                    <span className="highlight-title">🏬 Top Store</span>
+                    <span className="highlight-pill">Lowest PL</span>
+                  </div>
+                  <div className="highlight-main">
+                    <div className="highlight-name">
+                      {topStore ? topStore.name : "No data"}
+                    </div>
+                    <div className="highlight-metrics">
+                      <span>
+                        Total PL: <b>{topStore ? fmt.pl(topStore.totalPL) : "—"}</b>
+                      </span>
+                      <span>
+                        Stars: <b>{topStore ? fmt.stars(topStore.avgStars) : "—"}</b>
+                      </span>
+                      <span>
+                        Audits: <b>{topStore ? topStore.audits : "—"}</b>
+                      </span>
+                    </div>
+                  </div>
+                </div>
 
-                    return (
-                      <div key={store} className="latest-card">
-                        <div className="latest-top">
-                          <div className="latest-store">{store}</div>
-                          <div className="latest-time">{formatStamp(r[detected.createdKey])}</div>
-                        </div>
-
-                        <div className="latest-metrics">
-                          <span>
-                            Score: <b>{scorePct == null ? "—" : scorePct.toFixed(1) + "%"}</b>
-                          </span>
-                          <span>
-                            Stars: <b>{stars == null ? "—" : stars}</b>
-                          </span>
-                          <span>
-                            PL: <b>{pl == null ? "—" : pl}</b>
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                <div className="highlight-card">
+                  <div className="highlight-top">
+                    <span className="highlight-title">📈 Most Improved</span>
+                    <span className="highlight-pill">Last 14d vs prev</span>
+                  </div>
+                  <div className="highlight-main">
+                    <div className="highlight-name">
+                      {mostImprovedManager ? mostImprovedManager.name : "Not enough data"}
+                    </div>
+                    <div className="highlight-metrics">
+                      <span>
+                        PL improvement:{" "}
+                        <b>
+                          {mostImprovedManager
+                            ? `${clamp(mostImprovedManager.delta, -999, 999).toFixed(1)} ↓`
+                            : "—"}
+                        </b>
+                      </span>
+                      <span>
+                        Prev avg PL:{" "}
+                        <b>{mostImprovedManager ? fmt.pl(mostImprovedManager.prevAvg) : "—"}</b>
+                      </span>
+                      <span>
+                        Recent avg PL:{" "}
+                        <b>{mostImprovedManager ? fmt.pl(mostImprovedManager.recentAvg) : "—"}</b>
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </section>
 
-            {/* Results table */}
-            <section className="table-wrap">
+            {/* Manager leaderboard */}
+            <section className="leader">
               <div className="section-head">
-                <h2>Results</h2>
-                <p>Showing up to 500 recent rows loaded • filtered client-side</p>
+                <h2>Manager Leaderboard</h2>
+                <p>Ranked by total points lost, then stars</p>
               </div>
 
-              {filtered.length === 0 ? (
-                <div className="notice">No results for these filters.</div>
+              {leaderboards.managers.length === 0 ? (
+                <div className="notice">No manager results for these filters.</div>
               ) : (
                 <div className="table-scroll">
                   <table className="table">
                     <thead>
                       <tr>
-                        {columns.map((c) => (
-                          <th key={c}>{c.replaceAll("_", " ")}</th>
-                        ))}
+                        <th>Rank</th>
+                        <th>Manager</th>
+                        <th>Total PL</th>
+                        <th>Avg PL</th>
+                        <th>Stars</th>
+                        <th>Audits</th>
+                        <th>Last seen</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filtered.slice(0, 200).map((r, idx) => (
-                        <tr key={idx}>
-                          {columns.map((c) => {
-                            const v = r[c];
-                            const isDate =
-                              c === detected.createdKey || c === detected.shiftDateKey;
-                            return <td key={c}>{isDate ? formatStamp(v) : safeString(v) || "—"}</td>;
-                          })}
-                        </tr>
-                      ))}
+                      {leaderboards.managers.slice(0, 50).map((m, idx) => {
+                        const badge = rankBadge(idx);
+                        return (
+                          <tr key={m.name}>
+                            <td>
+                              <span className={badge.cls}>{badge.label}</span>
+                            </td>
+                            <td className="strong">{m.name}</td>
+                            <td>
+                              <span className="pill pl">{fmt.pl(m.totalPL)}</span>
+                            </td>
+                            <td>{fmt.pl(m.avgPL)}</td>
+                            <td>
+                              <span className="pill stars">⭐ {fmt.stars(m.avgStars)}</span>
+                            </td>
+                            <td>{m.audits}</td>
+                            <td className="muted">{formatStamp(m.lastSeen)}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
               )}
+            </section>
+
+            {/* Store leaderboard */}
+            <section className="leader">
+              <div className="section-head">
+                <h2>Store Leaderboard</h2>
+                <p>Same ranking rules</p>
+              </div>
+
+              {leaderboards.stores.length === 0 ? (
+                <div className="notice">No store results for these filters.</div>
+              ) : (
+                <div className="table-scroll">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Rank</th>
+                        <th>Store</th>
+                        <th>Total PL</th>
+                        <th>Avg PL</th>
+                        <th>Stars</th>
+                        <th>Audits</th>
+                        <th>Last seen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {leaderboards.stores.slice(0, 30).map((s, idx) => {
+                        const badge = rankBadge(idx);
+                        return (
+                          <tr key={s.name}>
+                            <td>
+                              <span className={badge.cls}>{badge.label}</span>
+                            </td>
+                            <td className="strong">{s.name}</td>
+                            <td>
+                              <span className="pill pl">{fmt.pl(s.totalPL)}</span>
+                            </td>
+                            <td>{fmt.pl(s.avgPL)}</td>
+                            <td>
+                              <span className="pill stars">⭐ {fmt.stars(s.avgStars)}</span>
+                            </td>
+                            <td>{s.audits}</td>
+                            <td className="muted">{formatStamp(s.lastSeen)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
+            {/* Raw results (optional but useful) */}
+            <section className="raw">
+              <div className="section-head">
+                <h2>Raw Results</h2>
+                <p>Most recent entries</p>
+              </div>
+
+              <div className="table-scroll">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Store</th>
+                      <th>Manager</th>
+                      {detected.pointsLostKey ? <th>Points Lost</th> : null}
+                      {detected.starsKey ? <th>Stars</th> : null}
+                      {detected.scoreKey ? <th>Score</th> : null}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.slice(0, 120).map((r, idx) => {
+                      const dateKey = detected.shiftDateKey || detected.createdKey;
+                      const store = safeString(r[detected.storeKey]).trim() || "—";
+                      const mgr = safeString(r[detected.managerKey]).trim() || "—";
+
+                      const pl = detected.pointsLostKey
+                        ? parseNumber(r[detected.pointsLostKey])
+                        : null;
+                      const st = detected.starsKey
+                        ? parseNumber(r[detected.starsKey])
+                        : null;
+
+                      let scorePct: number | null = null;
+                      if (detected.scoreKey) {
+                        const sc = parseNumber(r[detected.scoreKey]);
+                        if (sc != null) scorePct = sc <= 1 ? sc * 100 : sc;
+                      }
+
+                      return (
+                        <tr key={idx}>
+                          <td className="muted">{formatStamp(r[dateKey])}</td>
+                          <td className="strong">{store}</td>
+                          <td>{mgr}</td>
+                          {detected.pointsLostKey ? (
+                            <td>
+                              <span className="pill pl">{pl == null ? "—" : pl}</span>
+                            </td>
+                          ) : null}
+                          {detected.starsKey ? (
+                            <td>
+                              <span className="pill stars">⭐ {st == null ? "—" : st}</span>
+                            </td>
+                          ) : null}
+                          {detected.scoreKey ? <td>{scorePct == null ? "—" : fmt.pct(scorePct)}</td> : null}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </section>
           </>
         )}
@@ -526,10 +804,6 @@ export default function OSAInternalScorecardPage() {
           border-radius: 1.5rem;
           box-shadow: var(--shadow);
           padding: 26px 22px 30px;
-        }
-
-        .header {
-          margin-bottom: 14px;
         }
 
         .header-top {
@@ -626,14 +900,15 @@ export default function OSAInternalScorecardPage() {
           font-size: 13px;
         }
 
-        .cards {
-          margin-top: 14px;
+        /* Summary strip */
+        .summary {
+          margin-top: 16px;
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 12px;
+          gap: 10px;
         }
 
-        .card {
+        .summary-item {
           background: rgba(255, 255, 255, 0.92);
           border-radius: 16px;
           border: 1px solid rgba(0, 100, 145, 0.14);
@@ -642,7 +917,11 @@ export default function OSAInternalScorecardPage() {
           text-align: left;
         }
 
-        .card-title {
+        .summary-item.subtle {
+          border-style: dashed;
+        }
+
+        .summary-k {
           font-size: 12px;
           font-weight: 900;
           letter-spacing: 0.02em;
@@ -650,19 +929,108 @@ export default function OSAInternalScorecardPage() {
           color: #0f172a;
         }
 
-        .card-value {
+        .summary-v {
           margin-top: 6px;
           font-size: 20px;
           font-weight: 900;
         }
 
-        .card-sub {
-          margin-top: 4px;
+        .summary-v.small {
+          font-size: 13px;
+          font-weight: 800;
+          color: #334155;
+        }
+
+        /* Highlights */
+        .highlights {
+          margin: 18px auto 0;
+          width: 100%;
+          text-align: left;
+        }
+
+        .highlights-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+
+        .highlights-head h2 {
+          font-size: 15px;
+          font-weight: 900;
+          margin: 0;
+          color: #0f172a;
+        }
+
+        .highlights-head p {
+          margin: 0;
           font-size: 12px;
           color: #64748b;
           font-weight: 700;
         }
 
+        .highlights-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .highlight-card {
+          background: rgba(255, 255, 255, 0.92);
+          border-radius: 16px;
+          border: 1px solid rgba(0, 100, 145, 0.14);
+          box-shadow: 0 12px 28px rgba(2, 6, 23, 0.05);
+          padding: 12px 14px;
+        }
+
+        .highlight-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 8px;
+        }
+
+        .highlight-title {
+          font-size: 12px;
+          font-weight: 900;
+          color: #0f172a;
+          letter-spacing: 0.02em;
+          text-transform: uppercase;
+        }
+
+        .highlight-pill {
+          font-size: 11px;
+          font-weight: 800;
+          padding: 4px 10px;
+          border-radius: 999px;
+          background: rgba(0, 100, 145, 0.1);
+          border: 1px solid rgba(0, 100, 145, 0.16);
+          color: #004b75;
+          white-space: nowrap;
+        }
+
+        .highlight-name {
+          font-size: 16px;
+          font-weight: 900;
+          color: #0f172a;
+          margin-bottom: 6px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .highlight-metrics {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          font-size: 13px;
+          color: #334155;
+          font-weight: 700;
+        }
+
+        /* Sections */
         .section-head {
           display: flex;
           justify-content: space-between;
@@ -685,53 +1053,7 @@ export default function OSAInternalScorecardPage() {
           font-weight: 700;
         }
 
-        .latest-grid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 12px;
-        }
-
-        .latest-card {
-          background: rgba(255, 255, 255, 0.92);
-          border-radius: 16px;
-          border: 1px solid rgba(0, 100, 145, 0.14);
-          box-shadow: 0 12px 28px rgba(2, 6, 23, 0.05);
-          padding: 12px 14px;
-          text-align: left;
-        }
-
-        .latest-top {
-          display: flex;
-          justify-content: space-between;
-          gap: 10px;
-          margin-bottom: 8px;
-        }
-
-        .latest-store {
-          font-weight: 900;
-          font-size: 14px;
-        }
-
-        .latest-time {
-          font-size: 12px;
-          color: #64748b;
-          font-weight: 800;
-          white-space: nowrap;
-        }
-
-        .latest-metrics {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-          font-size: 13px;
-          color: #334155;
-          font-weight: 800;
-        }
-
-        .table-wrap {
-          margin-top: 10px;
-        }
-
+        /* Table */
         .table-scroll {
           overflow: auto;
           border-radius: 16px;
@@ -743,7 +1065,7 @@ export default function OSAInternalScorecardPage() {
         .table {
           width: 100%;
           border-collapse: collapse;
-          min-width: 760px;
+          min-width: 900px;
         }
 
         th, td {
@@ -763,13 +1085,56 @@ export default function OSAInternalScorecardPage() {
         }
 
         td {
-          font-weight: 700;
+          font-weight: 750;
           color: #0f172a;
         }
 
         tr:hover td {
           background: rgba(0, 100, 145, 0.04);
         }
+
+        .strong { font-weight: 900; }
+        .muted { color: #64748b; font-weight: 800; }
+
+        /* Pills & badges */
+        .pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          border-radius: 999px;
+          padding: 4px 10px;
+          font-weight: 900;
+          font-size: 12px;
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          background: rgba(255, 255, 255, 0.95);
+        }
+
+        .pill.pl {
+          border-color: rgba(227, 24, 55, 0.18);
+          background: rgba(227, 24, 55, 0.06);
+        }
+
+        .pill.stars {
+          border-color: rgba(245, 158, 11, 0.22);
+          background: rgba(245, 158, 11, 0.08);
+        }
+
+        .badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 4px 10px;
+          border-radius: 999px;
+          font-weight: 900;
+          font-size: 12px;
+          border: 1px solid rgba(0, 100, 145, 0.16);
+          background: rgba(0, 100, 145, 0.08);
+          color: #004b75;
+          white-space: nowrap;
+        }
+        .badge.gold { background: rgba(245, 158, 11, 0.14); border-color: rgba(245, 158, 11, 0.25); color: #7c2d12; }
+        .badge.silver { background: rgba(148, 163, 184, 0.18); border-color: rgba(148, 163, 184, 0.30); color: #334155; }
+        .badge.bronze { background: rgba(234, 179, 8, 0.10); border-color: rgba(234, 179, 8, 0.18); color: #713f12; }
 
         .footer {
           text-align: center;
@@ -779,15 +1144,10 @@ export default function OSAInternalScorecardPage() {
         }
 
         @media (max-width: 980px) {
-          .cards {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-          .latest-grid {
-            grid-template-columns: 1fr;
-          }
-          .filters {
-            grid-template-columns: 1fr;
-          }
+          .filters { grid-template-columns: 1fr; }
+          .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .highlights-grid { grid-template-columns: 1fr; }
+          .section-head { flex-direction: column; align-items: flex-start; }
         }
       `}</style>
     </main>
