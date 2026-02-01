@@ -63,6 +63,13 @@ export default function HubPage() {
   const [svcRows, setSvcRows] = useState<ServiceRowMini[]>([]);
   const [highlightsError, setHighlightsError] = useState<string | null>(null);
 
+  // NEW: for nav active state
+  const [path, setPath] = useState<string>("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") setPath(window.location.pathname || "");
+  }, []);
+
   const normalisePct = (v: number | null) => {
     if (v == null) return null;
     return v > 1 ? v / 100 : v; // supports 78 or 0.78
@@ -179,7 +186,6 @@ export default function HubPage() {
 
         const { data, error } = await supabase
           .from("service_shifts")
-          // ✅ removed closing_manager (doesn't exist)
           .select("store, dot_pct, labour_pct, manager, created_at, shift_date")
           .gte("shift_date", fromStr)
           .order("shift_date", { ascending: false });
@@ -211,7 +217,6 @@ export default function HubPage() {
 
     for (const r of svcRows) {
       const iso = r.created_at ? new Date(r.created_at) : null;
-      // fallback: if created_at missing, treat as "recent" (prevents blank UI)
       const d = iso && !isNaN(iso.getTime()) ? iso : null;
 
       if (!d) {
@@ -234,7 +239,7 @@ export default function HubPage() {
       const name =
         key === "store"
           ? (r.store || "").trim()
-          : ((r.manager || "Unknown").trim() || "Unknown"); // ✅ removed closing_manager fallback
+          : ((r.manager || "Unknown").trim() || "Unknown");
 
       if (!name) continue;
 
@@ -257,7 +262,6 @@ export default function HubPage() {
       shifts: v.shifts,
     }));
 
-    // rank: higher DOT first, tie-break lower labour
     out.sort((a, b) => {
       if (b.avgDOT !== a.avgDOT) return b.avgDOT - a.avgDOT;
       return a.avgLabour - b.avgLabour;
@@ -268,10 +272,8 @@ export default function HubPage() {
 
   const computeImproved = (recent: ServiceRowMini[], prev: ServiceRowMini[]) => {
     const makeBucket = (rows: ServiceRowMini[]) => {
-      const bucket: Record<
-        string,
-        { dot: number[]; labour: number[]; shifts: number }
-      > = {};
+      const bucket: Record<string, { dot: number[]; labour: number[]; shifts: number }> =
+        {};
       for (const r of rows) {
         const name = (r.store || "").trim();
         if (!name) continue;
@@ -300,7 +302,6 @@ export default function HubPage() {
 
       const recentDOT = r ? avg(r.dot) : 0;
       const prevDOT = p ? avg(p.dot) : 0;
-
       const recentLabour = r ? avg(r.labour) : 0;
 
       return {
@@ -313,9 +314,7 @@ export default function HubPage() {
       };
     });
 
-    // biggest improvement first
     items.sort((a, b) => b.dotDelta - a.dotDelta);
-
     return items;
   };
 
@@ -343,6 +342,13 @@ export default function HubPage() {
     } catch (e) {
       console.error(e);
     }
+  };
+
+  // helper for nav active state
+  const isActive = (href: string) => {
+    if (!path) return false;
+    if (href === "/") return path === "/";
+    return path.startsWith(href);
   };
 
   return (
@@ -391,6 +397,42 @@ export default function HubPage() {
 
       {/* Page content */}
       <div className="shell">
+        {/* ✅ Global Nav (Improvement #2) */}
+        <nav className="top-nav" aria-label="Primary">
+          <div className="nav-left">
+            <a className={`nav-link ${isActive("/") ? "active" : ""}`} href="/">
+              🏠 Hub
+            </a>
+            <a
+              className={`nav-link ${isActive("/dashboard/service") ? "active" : ""}`}
+              href="/dashboard/service"
+            >
+              📊 Service
+            </a>
+            <a className={`nav-link ${isActive("/osa") ? "active" : ""}`} href="/osa">
+              ✅ OSA
+            </a>
+            <a
+              className={`nav-link ${isActive("/walkthrough") ? "active" : ""}`}
+              href="/walkthrough"
+            >
+              🧾 Walkthrough
+            </a>
+            <a
+              className={`nav-link ${isActive("/admin") ? "active" : ""}`}
+              href="/admin"
+            >
+              ⚙️ Admin
+            </a>
+          </div>
+
+          <div className="nav-right">
+            <button onClick={handleLogout} className="btn-logout" type="button">
+              🚪 Log out
+            </button>
+          </div>
+        </nav>
+
         {/* Title */}
         <header className="header">
           <h1>Mourne-oids Hub</h1>
@@ -453,7 +495,8 @@ export default function HubPage() {
                         DOT: <b>{topStore ? formatPct(topStore.avgDOT, 0) : "—"}</b>
                       </span>
                       <span>
-                        Labour: <b>{topStore ? formatPct(topStore.avgLabour, 1) : "—"}</b>
+                        Labour:{" "}
+                        <b>{topStore ? formatPct(topStore.avgLabour, 1) : "—"}</b>
                       </span>
                       <span>
                         Shifts: <b>{topStore ? topStore.shifts : "—"}</b>
@@ -473,10 +516,14 @@ export default function HubPage() {
                     </div>
                     <div className="highlight-metrics">
                       <span>
-                        DOT: <b>{topManager ? formatPct(topManager.avgDOT, 0) : "—"}</b>
+                        DOT:{" "}
+                        <b>{topManager ? formatPct(topManager.avgDOT, 0) : "—"}</b>
                       </span>
                       <span>
-                        Labour: <b>{topManager ? formatPct(topManager.avgLabour, 1) : "—"}</b>
+                        Labour:{" "}
+                        <b>
+                          {topManager ? formatPct(topManager.avgLabour, 1) : "—"}
+                        </b>
                       </span>
                       <span>
                         Shifts: <b>{topManager ? topManager.shifts : "—"}</b>
@@ -526,13 +573,6 @@ export default function HubPage() {
             )}
           </div>
         </header>
-
-        {/* top actions */}
-        <div className="top-actions">
-          <button onClick={handleLogout} className="btn-logout">
-            🚪 Log out
-          </button>
-        </div>
 
         {/* Buttons */}
         <section className="grid">
@@ -706,12 +746,8 @@ export default function HubPage() {
         }
 
         @keyframes scroll {
-          0% {
-            transform: translateX(100%);
-          }
-          100% {
-            transform: translateX(-100%);
-          }
+          0% { transform: translateX(100%); }
+          100% { transform: translateX(-100%); }
         }
 
         .shell {
@@ -722,7 +758,84 @@ export default function HubPage() {
           border: 1px solid rgba(255, 255, 255, 0.2);
           border-radius: 1.5rem;
           box-shadow: var(--shadow-card);
-          padding: 30px 26px 34px;
+          padding: 22px 26px 34px;
+        }
+
+        /* ✅ Global nav */
+        .top-nav {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 10px 12px;
+          margin-bottom: 10px;
+          border-radius: 16px;
+          background: rgba(255, 255, 255, 0.75);
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          box-shadow: 0 10px 22px rgba(2, 6, 23, 0.04);
+        }
+
+        .nav-left {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+
+        .nav-right {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex: 0 0 auto;
+        }
+
+        .nav-link {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          border-radius: 999px;
+          text-decoration: none;
+          font-weight: 900;
+          font-size: 13px;
+          color: #0f172a;
+          background: rgba(255, 255, 255, 0.9);
+          border: 1px solid rgba(0, 100, 145, 0.14);
+          transition: transform 0.12s ease, border 0.12s ease, box-shadow 0.12s ease;
+        }
+
+        .nav-link:hover {
+          transform: translateY(-1px);
+          border-color: rgba(0, 100, 145, 0.28);
+          box-shadow: 0 10px 18px rgba(2, 6, 23, 0.05);
+        }
+
+        .nav-link.active {
+          background: #006491;
+          color: #fff;
+          border-color: #004b75;
+          box-shadow: 0 10px 18px rgba(0, 100, 145, 0.25);
+        }
+
+        .btn-logout {
+          background: #fff;
+          color: var(--brand);
+          border: 2px solid var(--brand);
+          border-radius: 14px;
+          font-weight: 900;
+          font-size: 13px;
+          padding: 8px 12px;
+          cursor: pointer;
+          box-shadow: 0 6px 14px rgba(0, 100, 145, 0.12);
+          transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+          white-space: nowrap;
+        }
+
+        .btn-logout:hover {
+          background: var(--brand);
+          color: #fff;
+          transform: translateY(-1px);
         }
 
         .header {
@@ -788,12 +901,8 @@ export default function HubPage() {
           display: inline-block;
         }
 
-        .status-dot.ok {
-          background: #22c55e;
-        }
-        .status-dot.bad {
-          background: #ef4444;
-        }
+        .status-dot.ok { background: #22c55e; }
+        .status-dot.bad { background: #ef4444; }
 
         .status-label {
           color: #475569;
@@ -904,36 +1013,11 @@ export default function HubPage() {
           font-weight: 800;
         }
 
-        .top-actions {
-          display: flex;
-          justify-content: flex-end;
-          margin: 6px 0 16px;
-        }
-
-        .btn-logout {
-          background: #fff;
-          color: var(--brand);
-          border: 2px solid var(--brand);
-          border-radius: 14px;
-          font-weight: 800;
-          font-size: 14px;
-          padding: 8px 14px;
-          cursor: pointer;
-          box-shadow: 0 6px 14px rgba(0, 100, 145, 0.12);
-          transition: background 0.15s ease, color 0.15s ease,
-            transform 0.1s ease;
-        }
-
-        .btn-logout:hover {
-          background: var(--brand);
-          color: #fff;
-          transform: translateY(-1px);
-        }
-
         .grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
           gap: 16px;
+          margin-top: 18px;
         }
 
         .card-link {
@@ -1006,7 +1090,18 @@ export default function HubPage() {
 
         @media (max-width: 720px) {
           .shell {
-            padding: 24px 16px 28px;
+            padding: 18px 14px 28px;
+          }
+          .top-nav {
+            border-radius: 14px;
+          }
+          .nav-link {
+            padding: 7px 10px;
+            font-size: 12px;
+          }
+          .btn-logout {
+            padding: 7px 10px;
+            font-size: 12px;
           }
           .card-link {
             border-radius: 1rem;
