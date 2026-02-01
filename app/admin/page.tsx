@@ -35,6 +35,19 @@ type Submission = {
   sections: SectionPayload[] | string | Record<string, unknown>;
 };
 
+// ---------- OSA Standards status types ----------
+type OsaStatusRow = {
+  store: string;
+  walkthrough_type: "pre_open" | "handover";
+  completed_at: string;
+  completed_by: string;
+  is_admin_override?: boolean;
+};
+type OsaStatusResponse = {
+  ok: boolean;
+  data: OsaStatusRow[];
+};
+
 // ---------- STORES (now includes Ballynahinch) ----------
 const STORES = ["Downpatrick", "Kilkeel", "Newcastle", "Ballynahinch"] as const;
 type Store = (typeof STORES)[number];
@@ -155,11 +168,45 @@ function BarChart({
   );
 }
 
+// ---------- OSA completion helpers ----------
+function fmtTime(iso: string) {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
+const badge = (ok: boolean) => (ok ? "🟢 Complete" : "🔴 Missing");
+
 // ---------- Page ----------
 export default function AdminPage() {
   const [rows, setRows] = React.useState<Submission[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState<string | null>(null);
+
+  // ---- OSA Status state
+  const [osaLoading, setOsaLoading] = React.useState(true);
+  const [osaErr, setOsaErr] = React.useState<string | null>(null);
+  const [osaRows, setOsaRows] = React.useState<OsaStatusRow[]>([]);
+
+  async function loadOsaStatus() {
+    try {
+      setOsaErr(null);
+      setOsaLoading(true);
+      const res = await fetch("/api/osa-standards/status", { cache: "no-store" });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || res.statusText);
+      }
+      const json = (await res.json()) as OsaStatusResponse;
+      setOsaRows(Array.isArray(json.data) ? json.data : []);
+    } catch (e: any) {
+      setOsaErr(e?.message || "Failed to load OSA status");
+    } finally {
+      setOsaLoading(false);
+    }
+  }
 
   // Filters
   const todayISO = new Date().toISOString().slice(0, 10);
@@ -225,6 +272,13 @@ export default function AdminPage() {
     })();
   }, [fromDate, toDate, storeFilter]);
 
+  // Load OSA status once + refresh every minute
+  React.useEffect(() => {
+    loadOsaStatus();
+    const t = setInterval(loadOsaStatus, 60_000);
+    return () => clearInterval(t);
+  }, []);
+
   // Summary stats (top strip)
   const summary = React.useMemo(() => {
     const total = rows.length;
@@ -236,6 +290,33 @@ export default function AdminPage() {
 
   // Fixed store options (always includes Ballynahinch)
   const allStores = STORE_OPTIONS;
+
+  // ---- OSA per-store status map (latest entries today)
+  const osaByStore = React.useMemo(() => {
+    const map: Record<
+      string,
+      {
+        pre_open?: OsaStatusRow;
+        handover?: OsaStatusRow;
+        last?: OsaStatusRow;
+      }
+    > = {};
+
+    STORES.forEach((s) => (map[s] = {} as any));
+
+    for (const r of osaRows) {
+      if (!r?.store) continue;
+      if (!map[r.store]) map[r.store] = {} as any;
+
+      const slot = r.walkthrough_type === "pre_open" ? "pre_open" : "handover";
+
+      // API is ordered desc by completed_at, so first seen is the latest
+      if (!map[r.store][slot]) map[r.store][slot] = r;
+      if (!map[r.store].last) map[r.store].last = r;
+    }
+
+    return map;
+  }, [osaRows]);
 
   // ---- Per-store analytics
   type StoreStats = {
@@ -438,6 +519,129 @@ export default function AdminPage() {
           />
         </section>
 
+        {/* ===== OSA STANDARDS COMPLETION (TODAY) ===== */}
+        <section
+          style={{
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            background: "white",
+            padding: 12,
+            marginBottom: 14,
+            boxShadow: "0 6px 18px rgba(0,0,0,.04)",
+          }}
+        >
+          <header
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              borderBottom: "1px solid #eef2f7",
+              paddingBottom: 8,
+              marginBottom: 10,
+              gap: 10,
+            }}
+          >
+            <div>
+              <strong style={{ fontSize: 18 }}>OSA Standards Walkthrough — Today</strong>
+              <div style={{ color: "#64748b", fontSize: 13, marginTop: 2 }}>
+                Completion tracker for <b>Pre-Open</b> and <b>Handover</b> (auto-refreshes every 60s).
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={loadOsaStatus}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #e5e7eb",
+                background: "white",
+                fontWeight: 800,
+                cursor: "pointer",
+              }}
+            >
+              Refresh
+            </button>
+          </header>
+
+          {osaLoading && <p style={{ color: "#64748b", margin: 0 }}>Loading OSA status…</p>}
+          {osaErr && <p style={{ color: "#7f1d1d", fontWeight: 700, margin: 0 }}>❌ {osaErr}</p>}
+
+          {!osaLoading && !osaErr && (
+            <div
+              style={{
+                display: "grid",
+                gap: 10,
+                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+              }}
+            >
+              {STORES.map((s) => {
+                const pre = osaByStore[s]?.pre_open;
+                const han = osaByStore[s]?.handover;
+                const last = osaByStore[s]?.last;
+
+                return (
+                  <div
+                    key={s}
+                    style={{
+                      border: "1px solid #eef2f7",
+                      borderRadius: 12,
+                      background: "#f8fafc",
+                      padding: 12,
+                      display: "grid",
+                      gap: 10,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <strong style={{ fontSize: 16 }}>{s}</strong>
+                      <span style={{ color: "#64748b", fontSize: 12, fontWeight: 700 }}>
+                        Last:{" "}
+                        {last
+                          ? `${last.walkthrough_type === "pre_open" ? "Pre-Open" : "Handover"} · ${fmtTime(
+                              last.completed_at
+                            )}`
+                          : "—"}
+                      </span>
+                    </div>
+
+                    <div style={{ display: "grid", gap: 8 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "100px 1fr", gap: 8, alignItems: "center" }}>
+                        <div style={{ fontWeight: 800, color: "#111827" }}>Pre-Open</div>
+                        <div style={{ fontWeight: 900 }}>
+                          {badge(!!pre)}
+                          {pre ? (
+                            <span style={{ marginLeft: 8, color: "#64748b", fontWeight: 700, fontSize: 12 }}>
+                              {fmtTime(pre.completed_at)} · {pre.completed_by}
+                              {pre.is_admin_override ? " (override)" : ""}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "100px 1fr", gap: 8, alignItems: "center" }}>
+                        <div style={{ fontWeight: 800, color: "#111827" }}>Handover</div>
+                        <div style={{ fontWeight: 900 }}>
+                          {badge(!!han)}
+                          {han ? (
+                            <span style={{ marginLeft: 8, color: "#64748b", fontWeight: 700, fontSize: 12 }}>
+                              {fmtTime(han.completed_at)} · {han.completed_by}
+                              {han.is_admin_override ? " (override)" : ""}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 10, color: "#64748b", fontSize: 12 }}>
+                      <span style={{ fontWeight: 900, color: "#111827" }}>Expected:</span> Pre-Open and Handover daily.
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
         {/* ===== COLLAPSIBLE STORE ANALYTICS ===== */}
         <section style={{ border: "1px solid #e5e7eb", borderRadius: 12, background: "white", padding: 12, marginBottom: 14 }}>
           <header
@@ -501,7 +705,10 @@ export default function AdminPage() {
                         }}
                         title="Grade"
                       >
-                        <span>{"★".repeat(stars)}{"☆".repeat(5 - stars)}</span>
+                        <span>
+                          {"★".repeat(stars)}
+                          {"☆".repeat(5 - stars)}
+                        </span>
                         <span>({stars})</span>
                       </span>
                       <Badge label="Subs" value={`${s.count}`} />
