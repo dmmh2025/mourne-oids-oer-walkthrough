@@ -49,7 +49,6 @@ type ImprovedItem = {
   shiftsRecent: number;
 };
 
-// Variants used by tiles
 type TileVariant =
   | "service"
   | "standards"
@@ -61,30 +60,89 @@ type TileVariant =
   | "promo"
   | "admin";
 
-const VARIANT_LABEL: Record<TileVariant, string> = {
-  service: "Service",
-  standards: "Standards",
-  reports: "Reports",
-  osa: "OSA",
-  profile: "Profile",
-  deepclean: "Deep clean",
-  memomailer: "MemoMailer",
-  promo: "Promo",
-  admin: "Admin",
+type Tile = {
+  href: string;
+  title: string;
+  desc: string;
+  variant: TileVariant;
+  icon: string; // small glyph in a muted pill, not a big block
+  badge?: "NEW" | null;
 };
 
-// ✅ Only these three tiles show NEW
-const BADGE: Record<TileVariant, "NEW" | "HOT" | null> = {
-  service: null,
-  standards: "NEW", // Standards Walkthrough
-  reports: "NEW", // Standards Completion report
-  osa: "NEW", // Internal OSA Scorecard
-  profile: null,
-  deepclean: null,
-  memomailer: null,
-  promo: null,
-  admin: null,
-};
+const TILES: Tile[] = [
+  {
+    href: "/dashboard/service",
+    title: "Service Dashboard",
+    desc: "Live snapshots, sales, service metrics.",
+    variant: "service",
+    icon: "📊",
+    badge: null,
+  },
+  {
+    href: "/walkthrough",
+    title: "Standards Walkthrough",
+    desc: "Store readiness + photos + automatic summary.",
+    variant: "standards",
+    icon: "🧾",
+    badge: "NEW",
+  },
+  {
+    href: "/admin",
+    title: "Standards Completion report",
+    desc: "Review store performance and submissions.",
+    variant: "reports",
+    icon: "📈",
+    badge: "NEW",
+  },
+  {
+    href: "/osa",
+    title: "Internal OSA Scorecard",
+    desc: "Scorecards, results, and rankings.",
+    variant: "osa",
+    icon: "⭐",
+    badge: "NEW",
+  },
+  {
+    href: "/profile",
+    title: "My Profile",
+    desc: "Update details & password.",
+    variant: "profile",
+    icon: "👤",
+    badge: null,
+  },
+  {
+    href: "/deep-clean",
+    title: "Autumn Deep Clean",
+    desc: "Track progress across all stores.",
+    variant: "deepclean",
+    icon: "🧽",
+    badge: null,
+  },
+  {
+    href: "/memomailer",
+    title: "Weekly MemoMailer",
+    desc: "Latest PDF loaded from Supabase.",
+    variant: "memomailer",
+    icon: "📬",
+    badge: null,
+  },
+  {
+    href: "/pizza-of-the-week",
+    title: "Pizza of the Week",
+    desc: "Current promo assets for team briefings.",
+    variant: "promo",
+    icon: "🍕",
+    badge: null,
+  },
+  {
+    href: "/admin/ticker",
+    title: "Admin",
+    desc: "Manage ticker, service uploads, memomailer.",
+    variant: "admin",
+    icon: "⚙️",
+    badge: null,
+  },
+];
 
 export default function HubPage() {
   const [tickerMessages, setTickerMessages] = useState<TickerItem[]>([]);
@@ -313,7 +371,7 @@ export default function HubPage() {
       return bucket;
     };
 
-    const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
+    const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
     const rB = makeBucket(recent);
     const pB = makeBucket(prev);
@@ -367,43 +425,29 @@ export default function HubPage() {
     }
   };
 
-  // helper so badges stay consistent
-  const Tile = ({
-    href,
-    variant,
-    icon,
-    title,
-    desc,
-  }: {
-    href: string;
-    variant: TileVariant;
-    icon: React.ReactNode;
-    title: string;
-    desc: string;
-  }) => {
-    const badgeText = BADGE[variant];
-    return (
-      <Link href={href} className="card-link" data-variant={variant}>
-        <div className="card-link__icon">{icon}</div>
-
-        <div className="card-link__body">
-          <div className="card-link__topline">
-            <h2>{title}</h2>
-            {badgeText && (
-              <span className={`pill pill--${badgeText.toLowerCase()}`}>
-                {badgeText}
-              </span>
-            )}
-          </div>
-          <p>{desc}</p>
-          <div className="card-link__meta">
-            <span className="meta-chip">{VARIANT_LABEL[variant]}</span>
-          </div>
-        </div>
-
-        <div className="card-link__chevron">›</div>
-      </Link>
-    );
+  const accentFor = (variant: TileVariant) => {
+    switch (variant) {
+      case "service":
+        return "linear-gradient(180deg, #006491 0%, #004b75 100%)";
+      case "standards":
+        return "linear-gradient(180deg, #16a34a 0%, #166534 100%)";
+      case "reports":
+        return "linear-gradient(180deg, #f59e0b 0%, #b45309 100%)";
+      case "osa":
+        return "linear-gradient(180deg, #7c3aed 0%, #4c1d95 100%)";
+      case "profile":
+        return "linear-gradient(180deg, #0ea5e9 0%, #0369a1 100%)";
+      case "deepclean":
+        return "linear-gradient(180deg, #22c55e 0%, #15803d 100%)";
+      case "memomailer":
+        return "linear-gradient(180deg, #ef4444 0%, #991b1b 100%)";
+      case "promo":
+        return "linear-gradient(180deg, #e31837 0%, #8a1020 100%)";
+      case "admin":
+        return "linear-gradient(180deg, #0f172a 0%, #334155 100%)";
+      default:
+        return "linear-gradient(180deg, #006491 0%, #004b75 100%)";
+    }
   };
 
   return (
@@ -527,10 +571,16 @@ export default function HubPage() {
                         </b>
                       </span>
                       <span>
-                        Recent DOT: <b>{mostImprovedStore ? formatPct(mostImprovedStore.recentDOT, 0) : "—"}</b>
+                        Recent DOT:{" "}
+                        <b>{mostImprovedStore ? formatPct(mostImprovedStore.recentDOT, 0) : "—"}</b>
                       </span>
                       <span>
-                        Labour: <b>{mostImprovedStore ? formatPct(mostImprovedStore.recentLabour, 1) : "—"}</b>
+                        Labour:{" "}
+                        <b>
+                          {mostImprovedStore
+                            ? formatPct(mostImprovedStore.recentLabour, 1)
+                            : "—"}
+                        </b>
                       </span>
                     </div>
                   </div>
@@ -546,78 +596,37 @@ export default function HubPage() {
           </button>
         </div>
 
-        <section className="grid">
-          <Tile
-            href="/dashboard/service"
-            variant="service"
-            icon="📊"
-            title="Service Dashboard"
-            desc="Live snapshots, sales, service metrics."
-          />
+        {/* ✅ Modern, integrated tiles */}
+        <section className="tileGrid" aria-label="Hub navigation">
+          {TILES.map((t) => (
+            <Link
+              key={t.href}
+              href={t.href}
+              className="tile"
+              data-variant={t.variant}
+              style={{ ["--accent" as any]: accentFor(t.variant) }}
+            >
+              <div className="tileHead">
+                <span className="tileIcon" aria-hidden="true">
+                  {t.icon}
+                </span>
+                <div className="tileTitleWrap">
+                  <div className="tileTitleRow">
+                    <h2 className="tileTitle">{t.title}</h2>
+                    {t.badge ? <span className="tileBadge">{t.badge}</span> : null}
+                  </div>
+                  <p className="tileDesc">{t.desc}</p>
+                </div>
+              </div>
 
-          <Tile
-            href="/walkthrough"
-            variant="standards"
-            icon="🧾"
-            title="Standards Walkthrough"
-            desc="Store readiness + photos + automatic summary."
-          />
-
-          <Tile
-            href="/admin"
-            variant="reports"
-            icon="📈"
-            title="Standards Completion report"
-            desc="Review store performance and submissions."
-          />
-
-          <Tile
-            href="/osa"
-            variant="osa"
-            icon="⭐"
-            title="Internal OSA Scorecard"
-            desc="Scorecards, results, and rankings."
-          />
-
-          <Tile
-            href="/profile"
-            variant="profile"
-            icon="👤"
-            title="My Profile"
-            desc="Update details & password."
-          />
-
-          <Tile
-            href="/deep-clean"
-            variant="deepclean"
-            icon="🧽"
-            title="Autumn Deep Clean"
-            desc="Track progress across all stores."
-          />
-
-          <Tile
-            href="/memomailer"
-            variant="memomailer"
-            icon="📬"
-            title="Weekly MemoMailer"
-            desc="Latest PDF loaded from Supabase."
-          />
-
-          <Tile
-            href="/pizza-of-the-week"
-            variant="promo"
-            icon="🍕"
-            title="Pizza of the Week"
-            desc="Current promo assets for team briefings."
-          />
-
-          <Tile
-            href="/admin/ticker"
-            variant="admin"
-            icon="⚙️"
-            title="Admin"
-            desc="Manage ticker, service uploads, memomailer."
-          />
+              <div className="tileFoot">
+                <span className="tileMeta">Open</span>
+                <span className="tileChevron" aria-hidden="true">
+                  →
+                </span>
+              </div>
+            </Link>
+          ))}
         </section>
 
         <div className="status-bottom" aria-label="Data status">
@@ -656,11 +665,8 @@ export default function HubPage() {
 
       <style jsx>{`
         :root {
-          --bg: #0f172a;
-          --paper: rgba(255, 255, 255, 0.08);
-          --paper-solid: #ffffff;
           --text: #0f172a;
-          --muted: #475569;
+          --muted: #64748b;
           --brand: #006491;
           --brand-dark: #004b75;
           --shadow-card: 0 16px 40px rgba(0, 0, 0, 0.05);
@@ -908,8 +914,8 @@ export default function HubPage() {
           padding: 9px 14px;
           cursor: pointer;
           box-shadow: 0 10px 22px rgba(2, 6, 23, 0.06);
-          transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease,
-            background 0.14s ease;
+          transition: transform 0.14s ease, box-shadow 0.14s ease,
+            border-color 0.14s ease, background 0.14s ease;
         }
 
         .btn-logout:hover {
@@ -921,221 +927,171 @@ export default function HubPage() {
 
         .btn-logout:focus-visible {
           outline: none;
-          box-shadow: 0 0 0 4px rgba(0, 100, 145, 0.22), 0 12px 26px rgba(2, 6, 23, 0.08);
+          box-shadow: 0 0 0 4px rgba(0, 100, 145, 0.22),
+            0 12px 26px rgba(2, 6, 23, 0.08);
         }
 
-        .grid {
+        /* ✅ New integrated tile grid */
+        .tileGrid {
+          margin-top: 6px;
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-          gap: 14px;
+          grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+          gap: 12px;
         }
 
-        .card-link {
-          position: relative;
-          display: flex;
-          gap: 14px;
-          align-items: center;
-          background: rgba(255, 255, 255, 0.92);
-          border-radius: 18px;
+        .tile {
+          --accent: linear-gradient(180deg, #006491, #004b75);
           text-decoration: none;
-          padding: 16px 16px;
+          color: inherit;
+
+          background: rgba(255, 255, 255, 0.9);
           border: 1px solid rgba(15, 23, 42, 0.08);
-          box-shadow: 0 10px 22px rgba(2, 6, 23, 0.06), 0 1px 0 rgba(255, 255, 255, 0.65) inset;
-          transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease,
-            background 0.14s ease;
+          border-radius: 16px;
+          box-shadow: 0 10px 22px rgba(2, 6, 23, 0.06);
+
+          padding: 14px 14px 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+
+          position: relative;
           overflow: hidden;
+
+          transition: transform 0.14s ease, box-shadow 0.14s ease,
+            border-color 0.14s ease, background 0.14s ease;
         }
 
-        .card-link::after {
+        /* subtle accent stripe (not loud) */
+        .tile::before {
           content: "";
           position: absolute;
           left: 0;
           top: 10px;
           bottom: 10px;
-          width: 6px;
+          width: 4px;
           border-radius: 999px;
-          background: rgba(0, 100, 145, 0.3);
-          box-shadow: 0 8px 16px rgba(2, 6, 23, 0.08);
+          background: var(--accent);
+          opacity: 0.9;
         }
 
-        .card-link::before {
+        /* soft highlight */
+        .tile::after {
           content: "";
           position: absolute;
           inset: 0;
-          background: radial-gradient(800px 240px at 15% 0%, rgba(0, 100, 145, 0.1), transparent 55%),
-            radial-gradient(700px 260px at 90% 10%, rgba(227, 24, 55, 0.07), transparent 55%);
-          opacity: 0.9;
+          background: radial-gradient(
+            900px 260px at 15% 0%,
+            rgba(0, 100, 145, 0.08),
+            transparent 55%
+          );
           pointer-events: none;
         }
 
-        .card-link:focus-visible {
+        .tile:hover {
+          transform: translateY(-2px);
+          border-color: rgba(0, 100, 145, 0.18);
+          background: rgba(255, 255, 255, 0.96);
+          box-shadow: 0 16px 34px rgba(2, 6, 23, 0.09);
+        }
+
+        .tile:focus-visible {
           outline: none;
-          box-shadow: 0 0 0 4px rgba(0, 100, 145, 0.22), 0 12px 26px rgba(2, 6, 23, 0.08),
-            0 1px 0 rgba(255, 255, 255, 0.65) inset;
-          border-color: rgba(0, 100, 145, 0.38);
+          box-shadow: 0 0 0 4px rgba(0, 100, 145, 0.22),
+            0 16px 34px rgba(2, 6, 23, 0.09);
+          border-color: rgba(0, 100, 145, 0.28);
         }
 
-        .card-link:hover {
-          transform: translateY(-3px);
-          border-color: rgba(0, 100, 145, 0.26);
-          background: rgba(255, 255, 255, 0.98);
-          box-shadow: 0 18px 42px rgba(2, 6, 23, 0.1), 0 1px 0 rgba(255, 255, 255, 0.75) inset;
-        }
-
-        .card-link__icon {
+        .tileHead {
+          display: grid;
+          grid-template-columns: 34px 1fr;
+          gap: 10px;
+          align-items: start;
+          padding-left: 6px; /* room for accent */
           position: relative;
           z-index: 1;
-          width: 52px;
-          height: 52px;
-          border-radius: 16px;
+        }
+
+        .tileIcon {
+          width: 34px;
+          height: 34px;
+          border-radius: 12px;
           display: grid;
           place-items: center;
-          font-size: 1.55rem;
-          color: #fff;
-          background: linear-gradient(135deg, #006491 0%, #004b75 40%, #0f172a 100%);
-          border: 1px solid rgba(255, 255, 255, 0.22);
-          box-shadow: 0 10px 22px rgba(0, 75, 117, 0.22), 0 1px 0 rgba(255, 255, 255, 0.2) inset;
-          flex: 0 0 52px;
+          background: rgba(2, 6, 23, 0.04);
+          border: 1px solid rgba(15, 23, 42, 0.06);
+          font-size: 16px;
         }
 
-        .card-link__icon::after {
-          content: "";
-          position: absolute;
-          inset: 1px;
-          border-radius: 15px;
-          background: radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.26), transparent 55%);
-          pointer-events: none;
-        }
-
-        .card-link__body {
-          position: relative;
-          z-index: 1;
-          min-width: 0;
-          width: 100%;
-        }
-
-        .card-link__topline {
+        .tileTitleRow {
           display: flex;
-          align-items: center;
           gap: 10px;
+          align-items: center;
           justify-content: space-between;
         }
 
-        .card-link__body h2 {
-          font-size: 0.98rem;
+        .tileTitle {
+          margin: 0;
+          font-size: 15px;
           font-weight: 900;
           letter-spacing: -0.01em;
           color: #0f172a;
-          margin: 0;
           line-height: 1.2;
         }
 
-        .card-link__body p {
-          font-size: 0.82rem;
+        .tileDesc {
+          margin: 6px 0 0;
+          font-size: 13px;
+          font-weight: 700;
           color: #64748b;
-          margin: 5px 0 0;
           line-height: 1.35;
         }
 
-        .card-link__meta {
-          margin-top: 8px;
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-        }
-
-        .meta-chip {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
+        .tileBadge {
+          flex: 0 0 auto;
           font-size: 11px;
           font-weight: 900;
-          padding: 4px 10px;
-          border-radius: 999px;
-          background: rgba(2, 6, 23, 0.04);
-          border: 1px solid rgba(15, 23, 42, 0.06);
-          color: rgba(15, 23, 42, 0.78);
-        }
-
-        .pill {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 999px;
-          padding: 5px 10px;
-          font-size: 11px;
-          font-weight: 950;
           letter-spacing: 0.02em;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          background: rgba(255, 255, 255, 0.85);
-          color: #0f172a;
-          box-shadow: 0 10px 18px rgba(2, 6, 23, 0.06);
-          white-space: nowrap;
-          flex: 0 0 auto;
-        }
-
-        .pill--new {
-          background: linear-gradient(180deg, rgba(14, 165, 233, 0.2), rgba(0, 100, 145, 0.12));
-          border-color: rgba(0, 100, 145, 0.24);
+          padding: 4px 9px;
+          border-radius: 999px;
+          background: rgba(0, 100, 145, 0.1);
+          border: 1px solid rgba(0, 100, 145, 0.18);
           color: #004b75;
         }
 
-        .pill--hot {
-          background: linear-gradient(180deg, rgba(239, 68, 68, 0.22), rgba(227, 24, 55, 0.12));
-          border-color: rgba(227, 24, 55, 0.26);
-          color: #8a1020;
-        }
-
-        .card-link__chevron {
+        .tileFoot {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding-left: 6px;
           position: relative;
           z-index: 1;
-          margin-left: auto;
-          width: 34px;
-          height: 34px;
+        }
+
+        .tileMeta {
+          font-size: 12px;
+          font-weight: 800;
+          color: rgba(15, 23, 42, 0.7);
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(2, 6, 23, 0.03);
+          border: 1px solid rgba(15, 23, 42, 0.06);
+        }
+
+        .tileChevron {
+          width: 30px;
+          height: 30px;
           border-radius: 999px;
           display: grid;
           place-items: center;
-          font-size: 1.25rem;
-          line-height: 1;
-          color: rgba(15, 23, 42, 0.55);
-          background: rgba(2, 6, 23, 0.04);
-          border: 1px solid rgba(15, 23, 42, 0.06);
-          transition: transform 0.14s ease, background 0.14s ease, color 0.14s ease;
-          flex: 0 0 auto;
-        }
-
-        .card-link:hover .card-link__chevron {
-          transform: translateX(2px);
-          background: rgba(0, 100, 145, 0.1);
+          font-weight: 900;
           color: rgba(0, 75, 117, 0.9);
+          background: rgba(0, 100, 145, 0.08);
+          border: 1px solid rgba(0, 100, 145, 0.12);
+          transition: transform 0.14s ease;
         }
 
-        .card-link[data-variant="service"]::after {
-          background: linear-gradient(180deg, #006491 0%, #004b75 100%);
-        }
-        .card-link[data-variant="standards"]::after {
-          background: linear-gradient(180deg, #16a34a 0%, #166534 100%);
-        }
-        .card-link[data-variant="reports"]::after {
-          background: linear-gradient(180deg, #f59e0b 0%, #b45309 100%);
-        }
-        .card-link[data-variant="osa"]::after {
-          background: linear-gradient(180deg, #7c3aed 0%, #4c1d95 100%);
-        }
-        .card-link[data-variant="profile"]::after {
-          background: linear-gradient(180deg, #0ea5e9 0%, #0369a1 100%);
-        }
-        .card-link[data-variant="deepclean"]::after {
-          background: linear-gradient(180deg, #22c55e 0%, #15803d 100%);
-        }
-        .card-link[data-variant="memomailer"]::after {
-          background: linear-gradient(180deg, #ef4444 0%, #991b1b 100%);
-        }
-        .card-link[data-variant="promo"]::after {
-          background: linear-gradient(180deg, #e31837 0%, #8a1020 100%);
-        }
-        .card-link[data-variant="admin"]::after {
-          background: linear-gradient(180deg, #0f172a 0%, #334155 100%);
+        .tile:hover .tileChevron {
+          transform: translateX(2px);
         }
 
         .status-bottom {
@@ -1240,24 +1196,14 @@ export default function HubPage() {
           .shell {
             padding: 24px 16px 28px;
           }
-          .grid {
-            grid-template-columns: 1fr;
-            gap: 12px;
-          }
-          .card-link {
-            padding: 14px 14px;
-          }
-          .card-link__icon {
-            width: 50px;
-            height: 50px;
-            border-radius: 15px;
-            flex: 0 0 50px;
-          }
           .ticker-shell {
             border-radius: 1.2rem;
           }
           .purpose-bar {
             border-radius: 14px;
+          }
+          .tileGrid {
+            grid-template-columns: 1fr;
           }
         }
       `}</style>
