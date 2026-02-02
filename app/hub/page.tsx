@@ -49,6 +49,43 @@ type ImprovedItem = {
   shiftsRecent: number;
 };
 
+// Variants used by tiles
+type TileVariant =
+  | "service"
+  | "standards"
+  | "reports"
+  | "osa"
+  | "profile"
+  | "deepclean"
+  | "memomailer"
+  | "promo"
+  | "admin";
+
+const VARIANT_LABEL: Record<TileVariant, string> = {
+  service: "Service",
+  standards: "Standards",
+  reports: "Reports",
+  osa: "OSA",
+  profile: "Profile",
+  deepclean: "Deep clean",
+  memomailer: "MemoMailer",
+  promo: "Promo",
+  admin: "Admin",
+};
+
+// ✅ Only these three tiles show NEW
+const BADGE: Record<TileVariant, "NEW" | "HOT" | null> = {
+  service: null,
+  standards: "NEW", // Standards Walkthrough
+  reports: "NEW", // Standards Completion report
+  osa: "NEW", // Internal OSA Scorecard
+  profile: null,
+  deepclean: null,
+  memomailer: null,
+  promo: null,
+  admin: null,
+};
+
 export default function HubPage() {
   const [tickerMessages, setTickerMessages] = useState<TickerItem[]>([]);
   const [tickerError, setTickerError] = useState<string | null>(null);
@@ -330,6 +367,45 @@ export default function HubPage() {
     }
   };
 
+  // helper so badges stay consistent
+  const Tile = ({
+    href,
+    variant,
+    icon,
+    title,
+    desc,
+  }: {
+    href: string;
+    variant: TileVariant;
+    icon: React.ReactNode;
+    title: string;
+    desc: string;
+  }) => {
+    const badgeText = BADGE[variant];
+    return (
+      <Link href={href} className="card-link" data-variant={variant}>
+        <div className="card-link__icon">{icon}</div>
+
+        <div className="card-link__body">
+          <div className="card-link__topline">
+            <h2>{title}</h2>
+            {badgeText && (
+              <span className={`pill pill--${badgeText.toLowerCase()}`}>
+                {badgeText}
+              </span>
+            )}
+          </div>
+          <p>{desc}</p>
+          <div className="card-link__meta">
+            <span className="meta-chip">{VARIANT_LABEL[variant]}</span>
+          </div>
+        </div>
+
+        <div className="card-link__chevron">›</div>
+      </Link>
+    );
+  };
+
   return (
     <main className="wrap">
       <div className="banner">
@@ -368,16 +444,8 @@ export default function HubPage() {
 
       <div className="shell">
         <header className="header">
-          <div className="header-top">
-            <div>
-              <h1>Mourne-oids Hub</h1>
-              <p className="subtitle">“Climbing New Peaks, One Shift at a Time.” ⛰️🍕</p>
-            </div>
-
-            <button onClick={handleLogout} className="pill-btn danger" type="button">
-              🚪 Log out
-            </button>
-          </div>
+          <h1>Mourne-oids Hub</h1>
+          <p className="subtitle">“Climbing New Peaks, One Shift at a Time.” ⛰️🍕</p>
 
           <div className="purpose-bar" role="note">
             One source of truth for service, standards, and leadership.
@@ -446,12 +514,16 @@ export default function HubPage() {
                     <span className="highlight-pill">Vs prev 7 days</span>
                   </div>
                   <div className="highlight-main">
-                    <div className="highlight-name">{mostImprovedStore ? mostImprovedStore.name : "No data"}</div>
+                    <div className="highlight-name">
+                      {mostImprovedStore ? mostImprovedStore.name : "No data"}
+                    </div>
                     <div className="highlight-metrics">
                       <span>
                         DOT uplift:{" "}
                         <b>
-                          {mostImprovedStore ? (mostImprovedStore.dotDelta * 100).toFixed(1) + "pp" : "—"}
+                          {mostImprovedStore
+                            ? (mostImprovedStore.dotDelta * 100).toFixed(1) + "pp"
+                            : "—"}
                         </b>
                       </span>
                       <span>
@@ -468,96 +540,84 @@ export default function HubPage() {
           </div>
         </header>
 
+        <div className="top-actions">
+          <button onClick={handleLogout} className="btn-logout" type="button">
+            🚪 Log out
+          </button>
+        </div>
+
         <section className="grid">
-          <Link href="/dashboard/service" className="tile" data-variant="service">
-            <div className="tile-icon">📊</div>
-            <div className="tile-body">
-              <h2>Service Dashboard</h2>
-              <p>Live snapshots, sales, service metrics.</p>
-              <span className="tile-cta">Open</span>
-            </div>
-            <div className="tile-arrow">›</div>
-          </Link>
+          <Tile
+            href="/dashboard/service"
+            variant="service"
+            icon="📊"
+            title="Service Dashboard"
+            desc="Live snapshots, sales, service metrics."
+          />
 
-          <Link href="/walkthrough" className="tile" data-variant="standards">
-            <div className="tile-icon">🧾</div>
-            <div className="tile-body">
-              <h2>Standards Walkthrough</h2>
-              <p>Store readiness + photos + automatic summary.</p>
-              <span className="tile-cta">Open</span>
-            </div>
-            <div className="tile-arrow">›</div>
-          </Link>
+          <Tile
+            href="/walkthrough"
+            variant="standards"
+            icon="🧾"
+            title="Standards Walkthrough"
+            desc="Store readiness + photos + automatic summary."
+          />
 
-          <Link href="/admin" className="tile" data-variant="reports">
-            <div className="tile-icon">📈</div>
-            <div className="tile-body">
-              <h2>Standards Completion report</h2>
-              <p>Review store performance and submissions.</p>
-              <span className="tile-cta">Open</span>
-            </div>
-            <div className="tile-arrow">›</div>
-          </Link>
+          <Tile
+            href="/admin"
+            variant="reports"
+            icon="📈"
+            title="Standards Completion report"
+            desc="Review store performance and submissions."
+          />
 
-          <Link href="/osa" className="tile" data-variant="osa">
-            <div className="tile-icon">⭐</div>
-            <div className="tile-body">
-              <h2>Internal OSA Scorecard</h2>
-              <p>Scorecards, results, and rankings.</p>
-              <span className="tile-cta">Open</span>
-            </div>
-            <div className="tile-arrow">›</div>
-          </Link>
+          <Tile
+            href="/osa"
+            variant="osa"
+            icon="⭐"
+            title="Internal OSA Scorecard"
+            desc="Scorecards, results, and rankings."
+          />
 
-          <Link href="/profile" className="tile" data-variant="profile">
-            <div className="tile-icon">👤</div>
-            <div className="tile-body">
-              <h2>My Profile</h2>
-              <p>Update details & password.</p>
-              <span className="tile-cta">Open</span>
-            </div>
-            <div className="tile-arrow">›</div>
-          </Link>
+          <Tile
+            href="/profile"
+            variant="profile"
+            icon="👤"
+            title="My Profile"
+            desc="Update details & password."
+          />
 
-          <Link href="/deep-clean" className="tile" data-variant="deepclean">
-            <div className="tile-icon">🧽</div>
-            <div className="tile-body">
-              <h2>Autumn Deep Clean</h2>
-              <p>Track progress across all stores.</p>
-              <span className="tile-cta">Open</span>
-            </div>
-            <div className="tile-arrow">›</div>
-          </Link>
+          <Tile
+            href="/deep-clean"
+            variant="deepclean"
+            icon="🧽"
+            title="Autumn Deep Clean"
+            desc="Track progress across all stores."
+          />
 
-          <Link href="/memomailer" className="tile" data-variant="memomailer">
-            <div className="tile-icon">📬</div>
-            <div className="tile-body">
-              <h2>Weekly MemoMailer</h2>
-              <p>Latest PDF loaded from Supabase.</p>
-              <span className="tile-cta">Open</span>
-            </div>
-            <div className="tile-arrow">›</div>
-          </Link>
+          <Tile
+            href="/memomailer"
+            variant="memomailer"
+            icon="📬"
+            title="Weekly MemoMailer"
+            desc="Latest PDF loaded from Supabase."
+          />
 
-          <Link href="/pizza-of-the-week" className="tile" data-variant="promo">
-            <div className="tile-icon">🍕</div>
-            <div className="tile-body">
-              <h2>Pizza of the Week</h2>
-              <p>Current promo assets for team briefings.</p>
-              <span className="tile-cta">Open</span>
-            </div>
-            <div className="tile-arrow">›</div>
-          </Link>
+          <Tile
+            href="/pizza-of-the-week"
+            variant="promo"
+            icon="🍕"
+            title="Pizza of the Week"
+            desc="Current promo assets for team briefings."
+          />
 
-          <Link href="/admin/ticker" className="tile" data-variant="admin">
-            <div className="tile-icon">⚙️</div>
-            <div className="tile-body">
-              <h2>Admin</h2>
-              <p>Manage ticker, service uploads, memomailer.</p>
-              <span className="tile-cta">Open</span>
-            </div>
-            <div className="tile-arrow">›</div>
-          </Link>
+          <Tile
+            href="/admin/ticker"
+            variant="admin"
+            icon="⚙️"
+            title="Admin"
+            desc="Manage ticker, service uploads, memomailer."
+          />
         </section>
 
         <div className="status-bottom" aria-label="Data status">
@@ -596,8 +656,11 @@ export default function HubPage() {
 
       <style jsx>{`
         :root {
+          --bg: #0f172a;
+          --paper: rgba(255, 255, 255, 0.08);
+          --paper-solid: #ffffff;
           --text: #0f172a;
-          --muted: #64748b;
+          --muted: #475569;
           --brand: #006491;
           --brand-dark: #004b75;
           --shadow-card: 0 16px 40px rgba(0, 0, 0, 0.05);
@@ -697,38 +760,29 @@ export default function HubPage() {
           border: 1px solid rgba(255, 255, 255, 0.2);
           border-radius: 1.5rem;
           box-shadow: var(--shadow-card);
-          padding: 28px 26px 34px;
+          padding: 30px 26px 34px;
         }
 
         .header {
-          text-align: left;
-          margin-bottom: 14px;
-        }
-
-        .header-top {
-          display: flex;
-          justify-content: space-between;
-          gap: 12px;
-          align-items: flex-start;
-          flex-wrap: wrap;
+          text-align: center;
+          margin-bottom: 12px;
         }
 
         .header h1 {
           font-size: clamp(2.1rem, 3vw, 2.4rem);
           font-weight: 900;
           letter-spacing: -0.015em;
-          margin: 0;
         }
 
         .subtitle {
-          color: var(--muted);
+          color: #64748b;
           font-size: 0.95rem;
-          margin: 6px 0 0;
+          margin-top: 6px;
         }
 
         .purpose-bar {
           display: inline-flex;
-          margin: 14px 0 0;
+          margin: 12px auto 0;
           padding: 8px 14px;
           border-radius: 999px;
           background: rgba(0, 100, 145, 0.08);
@@ -739,45 +793,10 @@ export default function HubPage() {
           letter-spacing: 0.01em;
         }
 
-        /* integrated pill buttons (logout) */
-        .pill-btn {
-          border-radius: 999px;
-          border: 1px solid rgba(15, 23, 42, 0.1);
-          background: rgba(255, 255, 255, 0.92);
-          color: #0f172a;
-          font-weight: 900;
-          font-size: 14px;
-          padding: 10px 14px;
-          cursor: pointer;
-          box-shadow: 0 10px 22px rgba(2, 6, 23, 0.06);
-          transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease,
-            background 0.14s ease;
-        }
-
-        .pill-btn:hover {
-          transform: translateY(-2px);
-          border-color: rgba(0, 100, 145, 0.26);
-          background: rgba(255, 255, 255, 0.98);
-          box-shadow: 0 16px 36px rgba(2, 6, 23, 0.1);
-        }
-
-        .pill-btn:focus-visible {
-          outline: none;
-          box-shadow: 0 0 0 4px rgba(0, 100, 145, 0.22), 0 12px 26px rgba(2, 6, 23, 0.08);
-        }
-
-        .pill-btn.danger {
-          border-color: rgba(227, 24, 55, 0.22);
-        }
-
-        .pill-btn.danger:hover {
-          border-color: rgba(227, 24, 55, 0.45);
-        }
-
-        /* Highlights (unchanged structure, just keeping your styling) */
         .highlights {
-          margin: 18px 0 0;
+          margin: 18px auto 0;
           width: min(980px, 100%);
+          text-align: left;
         }
 
         .highlights-head {
@@ -873,195 +892,250 @@ export default function HubPage() {
           font-weight: 800;
         }
 
-        /* ✅ Upgraded tiles (this is the “buttons” makeover) */
+        .top-actions {
+          display: flex;
+          justify-content: flex-end;
+          margin: 6px 0 16px;
+        }
+
+        .btn-logout {
+          background: rgba(255, 255, 255, 0.92);
+          color: #0f172a;
+          border: 1px solid rgba(15, 23, 42, 0.1);
+          border-radius: 14px;
+          font-weight: 900;
+          font-size: 14px;
+          padding: 9px 14px;
+          cursor: pointer;
+          box-shadow: 0 10px 22px rgba(2, 6, 23, 0.06);
+          transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease,
+            background 0.14s ease;
+        }
+
+        .btn-logout:hover {
+          transform: translateY(-2px);
+          border-color: rgba(0, 100, 145, 0.26);
+          background: rgba(255, 255, 255, 0.98);
+          box-shadow: 0 16px 36px rgba(2, 6, 23, 0.1);
+        }
+
+        .btn-logout:focus-visible {
+          outline: none;
+          box-shadow: 0 0 0 4px rgba(0, 100, 145, 0.22), 0 12px 26px rgba(2, 6, 23, 0.08);
+        }
+
         .grid {
-          margin-top: 16px;
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+          grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
           gap: 14px;
         }
 
-        .tile {
+        .card-link {
           position: relative;
           display: flex;
-          align-items: center;
           gap: 14px;
-          padding: 16px 16px 14px;
-
-          text-decoration: none;
+          align-items: center;
+          background: rgba(255, 255, 255, 0.92);
           border-radius: 18px;
-
-          background: rgba(255, 255, 255, 0.94);
+          text-decoration: none;
+          padding: 16px 16px;
           border: 1px solid rgba(15, 23, 42, 0.08);
-
-          box-shadow: 0 10px 22px rgba(2, 6, 23, 0.06), 0 1px 0 rgba(255, 255, 255, 0.7) inset;
-
+          box-shadow: 0 10px 22px rgba(2, 6, 23, 0.06), 0 1px 0 rgba(255, 255, 255, 0.65) inset;
           transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease,
             background 0.14s ease;
           overflow: hidden;
         }
 
-        /* Left colour rail */
-        .tile::after {
+        .card-link::after {
           content: "";
           position: absolute;
           left: 0;
-          top: 12px;
-          bottom: 12px;
-          width: 7px;
+          top: 10px;
+          bottom: 10px;
+          width: 6px;
           border-radius: 999px;
-          background: rgba(0, 100, 145, 0.35);
-          box-shadow: 0 10px 22px rgba(2, 6, 23, 0.1);
+          background: rgba(0, 100, 145, 0.3);
+          box-shadow: 0 8px 16px rgba(2, 6, 23, 0.08);
         }
 
-        /* subtle glow */
-        .tile::before {
+        .card-link::before {
           content: "";
           position: absolute;
           inset: 0;
-          background: radial-gradient(900px 220px at 20% 0%, rgba(0, 100, 145, 0.11), transparent 55%),
-            radial-gradient(700px 260px at 90% 20%, rgba(227, 24, 55, 0.06), transparent 55%);
-          opacity: 1;
+          background: radial-gradient(800px 240px at 15% 0%, rgba(0, 100, 145, 0.1), transparent 55%),
+            radial-gradient(700px 260px at 90% 10%, rgba(227, 24, 55, 0.07), transparent 55%);
+          opacity: 0.9;
           pointer-events: none;
         }
 
-        .tile:hover {
-          transform: translateY(-3px);
-          border-color: rgba(0, 100, 145, 0.22);
-          background: rgba(255, 255, 255, 0.99);
-          box-shadow: 0 18px 46px rgba(2, 6, 23, 0.12), 0 1px 0 rgba(255, 255, 255, 0.8) inset;
-        }
-
-        .tile:focus-visible {
+        .card-link:focus-visible {
           outline: none;
-          border-color: rgba(0, 100, 145, 0.35);
-          box-shadow: 0 0 0 4px rgba(0, 100, 145, 0.22), 0 18px 46px rgba(2, 6, 23, 0.12),
-            0 1px 0 rgba(255, 255, 255, 0.8) inset;
+          box-shadow: 0 0 0 4px rgba(0, 100, 145, 0.22), 0 12px 26px rgba(2, 6, 23, 0.08),
+            0 1px 0 rgba(255, 255, 255, 0.65) inset;
+          border-color: rgba(0, 100, 145, 0.38);
         }
 
-        .tile-icon {
+        .card-link:hover {
+          transform: translateY(-3px);
+          border-color: rgba(0, 100, 145, 0.26);
+          background: rgba(255, 255, 255, 0.98);
+          box-shadow: 0 18px 42px rgba(2, 6, 23, 0.1), 0 1px 0 rgba(255, 255, 255, 0.75) inset;
+        }
+
+        .card-link__icon {
           position: relative;
           z-index: 1;
-          width: 54px;
-          height: 54px;
-          border-radius: 18px;
+          width: 52px;
+          height: 52px;
+          border-radius: 16px;
           display: grid;
           place-items: center;
-          font-size: 1.6rem;
+          font-size: 1.55rem;
           color: #fff;
-          background: linear-gradient(135deg, #006491 0%, #004b75 55%, #0f172a 100%);
-          box-shadow: 0 12px 26px rgba(0, 75, 117, 0.22), 0 1px 0 rgba(255, 255, 255, 0.2) inset;
-          border: 1px solid rgba(255, 255, 255, 0.18);
-          flex: 0 0 54px;
+          background: linear-gradient(135deg, #006491 0%, #004b75 40%, #0f172a 100%);
+          border: 1px solid rgba(255, 255, 255, 0.22);
+          box-shadow: 0 10px 22px rgba(0, 75, 117, 0.22), 0 1px 0 rgba(255, 255, 255, 0.2) inset;
+          flex: 0 0 52px;
         }
 
-        .tile-body {
+        .card-link__icon::after {
+          content: "";
+          position: absolute;
+          inset: 1px;
+          border-radius: 15px;
+          background: radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.26), transparent 55%);
+          pointer-events: none;
+        }
+
+        .card-link__body {
           position: relative;
           z-index: 1;
           min-width: 0;
           width: 100%;
         }
 
-        .tile-body h2 {
-          margin: 0;
-          font-size: 1rem;
-          font-weight: 950;
+        .card-link__topline {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          justify-content: space-between;
+        }
+
+        .card-link__body h2 {
+          font-size: 0.98rem;
+          font-weight: 900;
           letter-spacing: -0.01em;
           color: #0f172a;
+          margin: 0;
           line-height: 1.2;
         }
 
-        .tile-body p {
-          margin: 6px 0 10px;
+        .card-link__body p {
+          font-size: 0.82rem;
           color: #64748b;
-          font-size: 0.84rem;
-          font-weight: 700;
+          margin: 5px 0 0;
           line-height: 1.35;
         }
 
-        /* CTA pill inside tile */
-        .tile-cta {
-          display: inline-flex;
-          align-items: center;
+        .card-link__meta {
+          margin-top: 8px;
+          display: flex;
           gap: 8px;
-          padding: 6px 10px;
-          border-radius: 999px;
-          font-weight: 900;
-          font-size: 12px;
-          color: #004b75;
-          background: rgba(0, 100, 145, 0.1);
-          border: 1px solid rgba(0, 100, 145, 0.18);
+          flex-wrap: wrap;
         }
 
-        .tile-arrow {
+        .meta-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          font-weight: 900;
+          padding: 4px 10px;
+          border-radius: 999px;
+          background: rgba(2, 6, 23, 0.04);
+          border: 1px solid rgba(15, 23, 42, 0.06);
+          color: rgba(15, 23, 42, 0.78);
+        }
+
+        .pill {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 999px;
+          padding: 5px 10px;
+          font-size: 11px;
+          font-weight: 950;
+          letter-spacing: 0.02em;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          background: rgba(255, 255, 255, 0.85);
+          color: #0f172a;
+          box-shadow: 0 10px 18px rgba(2, 6, 23, 0.06);
+          white-space: nowrap;
+          flex: 0 0 auto;
+        }
+
+        .pill--new {
+          background: linear-gradient(180deg, rgba(14, 165, 233, 0.2), rgba(0, 100, 145, 0.12));
+          border-color: rgba(0, 100, 145, 0.24);
+          color: #004b75;
+        }
+
+        .pill--hot {
+          background: linear-gradient(180deg, rgba(239, 68, 68, 0.22), rgba(227, 24, 55, 0.12));
+          border-color: rgba(227, 24, 55, 0.26);
+          color: #8a1020;
+        }
+
+        .card-link__chevron {
           position: relative;
           z-index: 1;
           margin-left: auto;
-          width: 36px;
-          height: 36px;
+          width: 34px;
+          height: 34px;
           border-radius: 999px;
           display: grid;
           place-items: center;
           font-size: 1.25rem;
+          line-height: 1;
           color: rgba(15, 23, 42, 0.55);
           background: rgba(2, 6, 23, 0.04);
           border: 1px solid rgba(15, 23, 42, 0.06);
           transition: transform 0.14s ease, background 0.14s ease, color 0.14s ease;
+          flex: 0 0 auto;
         }
 
-        .tile:hover .tile-arrow {
+        .card-link:hover .card-link__chevron {
           transform: translateX(2px);
-          background: rgba(0, 100, 145, 0.12);
-          color: rgba(0, 75, 117, 0.95);
+          background: rgba(0, 100, 145, 0.1);
+          color: rgba(0, 75, 117, 0.9);
         }
 
-        /* Variant rails (and icon tint) */
-        .tile[data-variant="service"]::after {
+        .card-link[data-variant="service"]::after {
           background: linear-gradient(180deg, #006491 0%, #004b75 100%);
         }
-        .tile[data-variant="standards"]::after {
+        .card-link[data-variant="standards"]::after {
           background: linear-gradient(180deg, #16a34a 0%, #166534 100%);
         }
-        .tile[data-variant="reports"]::after {
+        .card-link[data-variant="reports"]::after {
           background: linear-gradient(180deg, #f59e0b 0%, #b45309 100%);
         }
-        .tile[data-variant="osa"]::after {
+        .card-link[data-variant="osa"]::after {
           background: linear-gradient(180deg, #7c3aed 0%, #4c1d95 100%);
         }
-        .tile[data-variant="profile"]::after {
+        .card-link[data-variant="profile"]::after {
           background: linear-gradient(180deg, #0ea5e9 0%, #0369a1 100%);
         }
-        .tile[data-variant="deepclean"]::after {
+        .card-link[data-variant="deepclean"]::after {
           background: linear-gradient(180deg, #22c55e 0%, #15803d 100%);
         }
-        .tile[data-variant="memomailer"]::after {
+        .card-link[data-variant="memomailer"]::after {
           background: linear-gradient(180deg, #ef4444 0%, #991b1b 100%);
         }
-        .tile[data-variant="promo"]::after {
+        .card-link[data-variant="promo"]::after {
           background: linear-gradient(180deg, #e31837 0%, #8a1020 100%);
         }
-        .tile[data-variant="admin"]::after {
+        .card-link[data-variant="admin"]::after {
           background: linear-gradient(180deg, #0f172a 0%, #334155 100%);
-        }
-
-        /* Give each icon a subtle tint by variant (still premium, but more integrated) */
-        .tile[data-variant="standards"] .tile-icon {
-          background: linear-gradient(135deg, #16a34a 0%, #166534 60%, #052e16 100%);
-        }
-        .tile[data-variant="reports"] .tile-icon {
-          background: linear-gradient(135deg, #f59e0b 0%, #b45309 60%, #451a03 100%);
-        }
-        .tile[data-variant="osa"] .tile-icon {
-          background: linear-gradient(135deg, #7c3aed 0%, #4c1d95 60%, #1e1b4b 100%);
-        }
-        .tile[data-variant="memomailer"] .tile-icon {
-          background: linear-gradient(135deg, #ef4444 0%, #991b1b 60%, #450a0a 100%);
-        }
-        .tile[data-variant="promo"] .tile-icon {
-          background: linear-gradient(135deg, #e31837 0%, #8a1020 60%, #3b0a12 100%);
-        }
-        .tile[data-variant="admin"] .tile-icon {
-          background: linear-gradient(135deg, #0f172a 0%, #334155 60%, #020617 100%);
         }
 
         .status-bottom {
@@ -1170,14 +1244,14 @@ export default function HubPage() {
             grid-template-columns: 1fr;
             gap: 12px;
           }
-          .tile {
-            padding: 14px 14px 12px;
+          .card-link {
+            padding: 14px 14px;
           }
-          .tile-icon {
-            width: 52px;
-            height: 52px;
-            border-radius: 17px;
-            flex: 0 0 52px;
+          .card-link__icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 15px;
+            flex: 0 0 50px;
           }
           .ticker-shell {
             border-radius: 1.2rem;
