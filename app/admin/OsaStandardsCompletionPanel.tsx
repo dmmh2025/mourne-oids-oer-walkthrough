@@ -21,6 +21,8 @@ type Row = {
 
 const STORES = ["Downpatrick", "Kilkeel", "Newcastle", "Ballynahinch"] as const;
 
+type RangeMode = "today" | "this_week" | "custom";
+
 function fmtTime(iso: string) {
   try {
     const d = new Date(iso);
@@ -30,23 +32,110 @@ function fmtTime(iso: string) {
   }
 }
 
-function startOfTodayLocalISO() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
+function fmtDateLabel(d: Date) {
+  try {
+    return d.toLocaleDateString("en-GB", {
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+    });
+  } catch {
+    return "";
+  }
 }
 
-function startOfTomorrowLocalISO() {
+function startOfTodayLocal() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function startOfTomorrowLocal() {
+  const d = startOfTodayLocal();
   d.setDate(d.getDate() + 1);
-  return d.toISOString();
+  return d;
+}
+
+// Monday 00:00 local (week starts Monday)
+function startOfThisWeekLocal() {
+  const now = new Date();
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay(); // 0=Sun..6=Sat
+  const diff = (day + 6) % 7; // days since Monday
+  d.setDate(d.getDate() - diff);
+  return d;
+}
+
+function startOfNextWeekLocal() {
+  const d = startOfThisWeekLocal();
+  d.setDate(d.getDate() + 7);
+  return d;
+}
+
+function toYYYYMMDDLocal(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const da = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${da}`;
+}
+
+// Turn YYYY-MM-DD (local) into ISO boundaries that work with timestamptz
+function startOfLocalDateISO(yyyyMMdd: string) {
+  const [y, m, d] = yyyyMMdd.split("-").map(Number);
+  const dt = new Date(y, (m || 1) - 1, d || 1, 0, 0, 0, 0);
+  return dt.toISOString();
+}
+function startOfNextLocalDateISO(yyyyMMdd: string) {
+  const [y, m, d] = yyyyMMdd.split("-").map(Number);
+  const dt = new Date(y, (m || 1) - 1, d || 1, 0, 0, 0, 0);
+  dt.setDate(dt.getDate() + 1);
+  return dt.toISOString();
 }
 
 export default function OsaStandardsCompletionPanel() {
   const [loading, setLoading] = React.useState(true);
   const [rows, setRows] = React.useState<Row[]>([]);
   const [error, setError] = React.useState<string>("");
+
+  // NEW: Date mode + custom dates
+  const [rangeMode, setRangeMode] = React.useState<RangeMode>("today");
+  const [customFrom, setCustomFrom] = React.useState<string>(() =>
+    toYYYYMMDDLocal(startOfTodayLocal())
+  );
+  const [customTo, setCustomTo] = React.useState<string>(() =>
+    toYYYYMMDDLocal(startOfTodayLocal())
+  );
+
+  // Compute current query window (inclusive start, exclusive end)
+  const window = React.useMemo(() => {
+    if (rangeMode === "today") {
+      const from = startOfTodayLocal().toISOString();
+      const to = startOfTomorrowLocal().toISOString();
+      return { from, to, label: "Today" };
+    }
+
+    if (rangeMode === "this_week") {
+      const fromD = startOfThisWeekLocal();
+      const toD = startOfNextWeekLocal();
+      return {
+        from: fromD.toISOString(),
+        to: toD.toISOString(),
+        label: `This week (${fmtDateLabel(fromD)} → ${fmtDateLabel(
+          new Date(toD.getTime() - 1)
+        )})`,
+      };
+    }
+
+    // custom (inclusive dates)
+    const from = startOfLocalDateISO(customFrom);
+    const to = startOfNextLocalDateISO(customTo);
+    return {
+      from,
+      to,
+      label: `Custom (${customFrom} → ${customTo})`,
+    };
+  }, [rangeMode, customFrom, customTo]);
 
   async function load() {
     try {
@@ -55,15 +144,13 @@ export default function OsaStandardsCompletionPanel() {
 
       if (!supabase) throw new Error("Supabase client not available");
 
-      // Filter: Today (local) using completed_at (your table’s actual completion timestamp)
-      const fromISO = startOfTodayLocalISO();
-      const toISO = startOfTomorrowLocalISO();
-
       const { data, error } = await supabase
         .from("osa_standards_walkthroughs")
-        .select("store, walkthrough_type, completed_at, completed_by, is_admin_override")
-        .gte("completed_at", fromISO)
-        .lt("completed_at", toISO)
+        .select(
+          "store, walkthrough_type, completed_at, completed_by, is_admin_override"
+        )
+        .gte("completed_at", window.from)
+        .lt("completed_at", window.to)
         .order("completed_at", { ascending: false });
 
       if (error) throw error;
@@ -82,9 +169,9 @@ export default function OsaStandardsCompletionPanel() {
     const t = setInterval(load, 60_000); // refresh every minute
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [window.from, window.to]);
 
-  // Build per-store status (latest entry today for each type)
+  // Build per-store status (latest entry in range for each type)
   const byStore = React.useMemo(() => {
     const map: Record<
       string,
@@ -116,7 +203,7 @@ export default function OsaStandardsCompletionPanel() {
     <div className="osaCard">
       <div className="osaHeader">
         <div>
-          <div className="osaTitle">OSA Standards Walkthrough — Today</div>
+          <div className="osaTitle">OSA Standards Walkthrough — {window.label}</div>
           <div className="osaSub">
             Completion tracker for <b>Pre-Open</b> and <b>Handover</b>.
           </div>
@@ -124,6 +211,61 @@ export default function OsaStandardsCompletionPanel() {
         <button className="osaBtn" type="button" onClick={load}>
           Refresh
         </button>
+      </div>
+
+      {/* NEW: Range selector */}
+      <div className="rangeBar" role="group" aria-label="Date range">
+        <div className="chips">
+          <button
+            type="button"
+            className={`chip ${rangeMode === "today" ? "chipActive" : ""}`}
+            onClick={() => setRangeMode("today")}
+          >
+            Today
+          </button>
+          <button
+            type="button"
+            className={`chip ${rangeMode === "this_week" ? "chipActive" : ""}`}
+            onClick={() => setRangeMode("this_week")}
+          >
+            This week
+          </button>
+          <button
+            type="button"
+            className={`chip ${rangeMode === "custom" ? "chipActive" : ""}`}
+            onClick={() => setRangeMode("custom")}
+          >
+            Custom
+          </button>
+        </div>
+
+        {rangeMode === "custom" && (
+          <div className="customDates">
+            <label className="field">
+              <span>From</span>
+              <input
+                type="date"
+                value={customFrom}
+                max={customTo}
+                onChange={(e) => setCustomFrom(e.target.value)}
+              />
+            </label>
+
+            <label className="field">
+              <span>To</span>
+              <input
+                type="date"
+                value={customTo}
+                min={customFrom}
+                onChange={(e) => setCustomTo(e.target.value)}
+              />
+            </label>
+
+            <button className="osaBtn secondary" type="button" onClick={load}>
+              Apply
+            </button>
+          </div>
+        )}
       </div>
 
       {error && <div className="osaError">Error: {error}</div>}
@@ -163,8 +305,10 @@ export default function OsaStandardsCompletionPanel() {
                     {last
                       ? `${last.walkthrough_type === "pre_open" ? "Pre-Open" : "Handover"} · ${fmtTime(
                           last.completed_at
-                        )} · ${last.completed_by}${last.is_admin_override ? " (override)" : ""}`
-                      : "No submissions today"}
+                        )} · ${last.completed_by}${
+                          last.is_admin_override ? " (override)" : ""
+                        }`
+                      : "No submissions in this period"}
                   </span>
                 </div>
               </div>
@@ -179,7 +323,8 @@ export default function OsaStandardsCompletionPanel() {
           border-radius: 14px;
           padding: 14px;
           background: #fff;
-          box-shadow: 0 10px 18px rgba(2, 6, 23, 0.06), 0 1px 3px rgba(2, 6, 23, 0.06);
+          box-shadow: 0 10px 18px rgba(2, 6, 23, 0.06),
+            0 1px 3px rgba(2, 6, 23, 0.06);
           margin: 14px 0;
         }
         .osaHeader {
@@ -207,6 +352,77 @@ export default function OsaStandardsCompletionPanel() {
           font-weight: 800;
           cursor: pointer;
         }
+        .osaBtn.secondary {
+          border-color: #c7d2fe;
+        }
+
+        /* NEW: range controls */
+        .rangeBar {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin: 6px 0 10px;
+          padding: 10px 12px;
+          border-radius: 14px;
+          border: 1px solid #e5e7eb;
+          background: linear-gradient(180deg, #ffffff, #f8fbff);
+        }
+
+        .chips {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .chip {
+          border: 1px solid rgba(0, 0, 0, 0.06);
+          background: #fff;
+          border-radius: 999px;
+          padding: 7px 12px;
+          font-weight: 900;
+          font-size: 13px;
+          cursor: pointer;
+          color: #0e1116;
+          transition: transform 0.12s ease, background 0.12s ease, border 0.12s ease;
+        }
+
+        .chip:hover {
+          transform: translateY(-1px);
+          border-color: rgba(0, 100, 145, 0.25);
+        }
+
+        .chipActive {
+          background: rgba(0, 100, 145, 0.1);
+          border-color: rgba(0, 100, 145, 0.25);
+          color: #004b75;
+        }
+
+        .customDates {
+          display: flex;
+          gap: 10px;
+          align-items: flex-end;
+          flex-wrap: wrap;
+        }
+
+        .field {
+          display: grid;
+          gap: 4px;
+          font-size: 12px;
+          font-weight: 900;
+          color: #334155;
+        }
+
+        input[type="date"] {
+          border: 1px solid #cbd5e1;
+          border-radius: 10px;
+          padding: 7px 9px;
+          font-size: 13px;
+          font-weight: 800;
+          background: #fff;
+        }
+
         .osaError {
           background: #fff1f2;
           border: 1px solid #fecdd3;
