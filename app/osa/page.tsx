@@ -17,9 +17,16 @@ type OsaRow = Record<string, any>;
 type ManagerAgg = {
   name: string;
   audits: number;
+
+  // totals
   totalPointsLost: number;
+  starsList: number[];
+
+  // averages (over period)
+  avgPointsLost: number; // points lost per audit
   avgStars: number; // 0..5
-  lastAuditAt: string | null;
+
+  lastShiftAt: string | null; // uses shift_date if available, else created_at
 };
 
 const toNumber = (v: any): number | null => {
@@ -35,11 +42,17 @@ const cleanName = (v: any): string | null => {
   if (v === null || v === undefined) return null;
   const s = String(v).trim();
   if (!s) return null;
-  // remove double spaces
   return s.replace(/\s+/g, " ");
 };
 
-// Picks the first column name that exists in rows AND looks like a "manager" field.
+const clampStars = (n: number) => {
+  if (!isFinite(n)) return 0;
+  if (n < 0) return 0;
+  if (n > 5) return 5;
+  return n;
+};
+
+// Detect manager name key
 const detectManagerKey = (rows: OsaRow[]): string | null => {
   if (!rows.length) return null;
 
@@ -63,7 +76,6 @@ const detectManagerKey = (rows: OsaRow[]): string | null => {
   const keys = new Set(Object.keys(rows[0] || {}));
   for (const c of candidates) if (keys.has(c)) return c;
 
-  // Fallback: pick any key containing "manager" or "submitted"
   const fallback = Array.from(keys).find(
     (k) =>
       k.toLowerCase().includes("manager") ||
@@ -80,8 +92,8 @@ const detectPointsLostKey = (rows: OsaRow[]): string | null => {
   const keys = new Set(Object.keys(rows[0] || {}));
   for (const c of candidates) if (keys.has(c)) return c;
 
-  const fallback = Array.from(keys).find((k) =>
-    k.toLowerCase().includes("points") && k.toLowerCase().includes("lost")
+  const fallback = Array.from(keys).find(
+    (k) => k.toLowerCase().includes("points") && k.toLowerCase().includes("lost")
   );
   return fallback || null;
 };
@@ -92,9 +104,30 @@ const detectStarsKey = (rows: OsaRow[]): string | null => {
   const keys = new Set(Object.keys(rows[0] || {}));
   for (const c of candidates) if (keys.has(c)) return c;
 
-  const fallback = Array.from(keys).find((k) =>
-    k.toLowerCase().includes("star") || k.toLowerCase().includes("rating")
+  const fallback = Array.from(keys).find(
+    (k) => k.toLowerCase().includes("star") || k.toLowerCase().includes("rating")
   );
+  return fallback || null;
+};
+
+// Detect shift date key (preferred date for this page)
+const detectShiftDateKey = (rows: OsaRow[]): string | null => {
+  if (!rows.length) return null;
+
+  const candidates = [
+    "shift_date",
+    "shiftDate",
+    "audit_date",
+    "auditDate",
+    "visit_date",
+    "visitDate",
+    "date",
+  ];
+
+  const keys = new Set(Object.keys(rows[0] || {}));
+  for (const c of candidates) if (keys.has(c)) return c;
+
+  const fallback = Array.from(keys).find((k) => k.toLowerCase().includes("date"));
   return fallback || null;
 };
 
@@ -111,92 +144,200 @@ const formatStamp = (iso: string | null) => {
   });
 };
 
+const formatShortDate = (isoDate: string) => {
+  // isoDate: YYYY-MM-DD
+  const d = new Date(isoDate + "T00:00:00");
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+const isYYYYMMDD = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v);
+
+const formatShiftDateAny = (v: any) => {
+  if (v === null || v === undefined) return "—";
+  const s = String(v).trim();
+  if (!s) return "—";
+  // date-only
+  if (isYYYYMMDD(s)) return formatShortDate(s);
+  // timestamp-ish
+  return formatStamp(s);
+};
+
 export default function InternalOsaScorecardPage() {
+  const todayISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const defaultFromISO = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 28);
+    return d.toISOString().slice(0, 10);
+  }, []);
+
+  // Date filter (inclusive)
+  const [fromDate, setFromDate] = useState<string>(defaultFromISO);
+  const [toDate, setToDate] = useState<string>(todayISO);
+
   const [rows, setRows] = useState<OsaRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [dateMode, setDateMode] = useState<"shift_date" | "created_at">("shift_date");
 
-  // Load data (last 28 days by created_at)
+  // Load data for date range:
+  // 1) Try shift_date filtering (preferred)
+  // 2) If shift_date column doesn’t exist, fall back to created_at filtering
   useEffect(() => {
     const load = async () => {
       if (!supabase) {
         setError("Supabase client not available");
         return;
       }
+      if (!fromDate || !toDate) return;
+
+      setLoading(true);
+      setError(null);
+
       try {
-        setError(null);
+        // For inclusive end date:
+        // We build an exclusive upper bound = next day at 00:00
+        const toNext = new Date(toDate + "T00:00:00.000Z");
+        toNext.setDate(toNext.getDate() + 1);
+        const toNextISODate = toNext.toISOString().slice(0, 10);
 
-        const now = new Date();
-        const from = new Date(now);
-        from.setDate(now.getDate() - 28);
-        const fromIso = from.toISOString();
+        // --- Attempt 1: filter by shift_date (date or timestamp) ---
+        const attemptShift = await supabase
+          .from("osa_internal_results")
+          .select("*")
+          .gte("shift_date", fromDate)
+          .lt("shift_date", toNextISODate)
+          .order("shift_date", { ascending: false });
 
-        const { data, error } = await supabase
+        if (!attemptShift.error) {
+          setDateMode("shift_date");
+          setRows((attemptShift.data || []) as OsaRow[]);
+          setLoading(false);
+          return;
+        }
+
+        // If the error is about missing column, fall back; otherwise bubble
+        const msg = attemptShift.error.message || "";
+        const looksLikeMissingShiftDate =
+          msg.toLowerCase().includes("shift_date") &&
+          (msg.toLowerCase().includes("does not exist") ||
+            msg.toLowerCase().includes("column") ||
+            msg.toLowerCase().includes("schema cache"));
+
+        if (!looksLikeMissingShiftDate) {
+          throw attemptShift.error;
+        }
+
+        // --- Attempt 2: filter by created_at ---
+        const fromIso = new Date(fromDate + "T00:00:00.000Z").toISOString();
+        const toExclusiveIso = new Date(toDate + "T00:00:00.000Z");
+        toExclusiveIso.setDate(toExclusiveIso.getDate() + 1);
+        const toIsoExclusive = toExclusiveIso.toISOString();
+
+        const attemptCreated = await supabase
           .from("osa_internal_results")
           .select("*")
           .gte("created_at", fromIso)
+          .lt("created_at", toIsoExclusive)
           .order("created_at", { ascending: false });
 
-        if (error) throw error;
-        setRows((data || []) as OsaRow[]);
+        if (attemptCreated.error) throw attemptCreated.error;
+
+        setDateMode("created_at");
+        setRows((attemptCreated.data || []) as OsaRow[]);
       } catch (e: any) {
         setError(e?.message || "Could not load OSA results");
         setRows([]);
+      } finally {
+        setLoading(false);
       }
     };
 
     load();
-  }, []);
+  }, [fromDate, toDate]);
 
-  // Aggregate by manager
+  // Aggregate by manager using averages over selected date period
+  // "Shift date" in output uses shift_date if available, else created_at.
   const managerAgg = useMemo(() => {
-    if (!rows.length) return { items: [] as ManagerAgg[], debug: { managerKey: null as string | null, plKey: null as string | null, starsKey: null as string | null } };
+    if (!rows.length) {
+      return {
+        items: [] as ManagerAgg[],
+        debug: {
+          managerKey: null as string | null,
+          plKey: null as string | null,
+          starsKey: null as string | null,
+          shiftDateKey: null as string | null,
+        },
+      };
+    }
 
     const managerKey = detectManagerKey(rows);
     const plKey = detectPointsLostKey(rows);
     const starsKey = detectStarsKey(rows);
+    const shiftDateKey = detectShiftDateKey(rows); // for display + lastShiftAt
+    const useShiftKey = shiftDateKey || null;
 
-    // If we can’t find keys, we still try best-effort.
     const bucket: Record<
       string,
       { audits: number; pointsLost: number; stars: number[]; last: string | null }
     > = {};
 
     for (const r of rows) {
-      const nameRaw = managerKey ? r[managerKey] : null;
-      const name = cleanName(nameRaw) || "Unknown";
+      const name = cleanName(managerKey ? r[managerKey] : null) || "Unknown";
 
-      // If points_lost exists but is null/blank, exclude row from leaderboard (prevents “ghost wins”)
       const pl = plKey ? toNumber(r[plKey]) : null;
+      // keep averages honest: if points lost exists but is null, skip the row
       if (plKey && pl === null) continue;
 
-      const stars = starsKey ? toNumber(r[starsKey]) : null;
-      const createdAt = cleanName(r.created_at) || null;
+      const st = starsKey ? toNumber(r[starsKey]) : null;
+      const stars = st === null ? null : clampStars(st);
+
+      // Prefer shift_date (or similar) for "audit date", else created_at
+      const bestDate =
+        (useShiftKey ? cleanName(r[useShiftKey]) : null) ||
+        cleanName(r.created_at) ||
+        null;
 
       if (!bucket[name]) bucket[name] = { audits: 0, pointsLost: 0, stars: [], last: null };
       bucket[name].audits += 1;
       bucket[name].pointsLost += pl ?? 0;
       if (stars !== null) bucket[name].stars.push(stars);
-      if (!bucket[name].last || (createdAt && createdAt > bucket[name].last!)) bucket[name].last = createdAt;
+
+      // last date comparison - string compare works for ISO + YYYY-MM-DD
+      if (!bucket[name].last || (bestDate && bestDate > bucket[name].last!)) {
+        bucket[name].last = bestDate;
+      }
     }
 
     const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
 
-    const items: ManagerAgg[] = Object.entries(bucket).map(([name, v]) => ({
-      name,
-      audits: v.audits,
-      totalPointsLost: v.pointsLost,
-      avgStars: avg(v.stars),
-      lastAuditAt: v.last,
-    }));
+    const items: ManagerAgg[] = Object.entries(bucket).map(([name, v]) => {
+      const audits = v.audits || 0;
+      const avgPointsLost = audits ? v.pointsLost / audits : 0;
+      const avgStars = avg(v.stars);
+      return {
+        name,
+        audits,
+        totalPointsLost: v.pointsLost,
+        starsList: v.stars,
+        avgPointsLost,
+        avgStars,
+        lastShiftAt: v.last,
+      };
+    });
 
-    // Rank: LOWEST points lost is best, tie-break higher stars, then more audits
+    // Rank: LOWEST avg points lost best, tie-break HIGHER avg stars, then MORE audits
     items.sort((a, b) => {
-      if (a.totalPointsLost !== b.totalPointsLost) return a.totalPointsLost - b.totalPointsLost;
+      if (a.avgPointsLost !== b.avgPointsLost) return a.avgPointsLost - b.avgPointsLost;
       if (b.avgStars !== a.avgStars) return b.avgStars - a.avgStars;
       return b.audits - a.audits;
     });
 
-    return { items, debug: { managerKey, plKey, starsKey } };
+    return { items, debug: { managerKey, plKey, starsKey, shiftDateKey } };
   }, [rows]);
 
   const podium = managerAgg.items.slice(0, 3);
@@ -214,16 +355,87 @@ export default function InternalOsaScorecardPage() {
       <div className="shell">
         <header className="header">
           <h1>Internal OSA Scorecard</h1>
-          <p className="subtitle">Manager leaderboard • last 28 days</p>
+          <p className="subtitle">
+            Manager leaderboard • averages over selected dates • date source:{" "}
+            <b>{dateMode === "shift_date" ? "shift_date" : "created_at"}</b>
+          </p>
         </header>
+
+        {/* Date filters */}
+        <section className="filters">
+          <div className="filter-card">
+            <div className="filter-left">
+              <div className="filter-title">Date filter</div>
+              <div className="filter-sub">
+                Showing results from <b>{formatShortDate(fromDate)}</b> to{" "}
+                <b>{formatShortDate(toDate)}</b>
+              </div>
+            </div>
+
+            <div className="filter-controls">
+              <label className="field">
+                <span>From</span>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  max={toDate}
+                />
+              </label>
+
+              <label className="field">
+                <span>To</span>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  min={fromDate}
+                  max={new Date().toISOString().slice(0, 10)}
+                />
+              </label>
+
+              <button
+                className="quick"
+                onClick={() => {
+                  const d = new Date();
+                  const to = d.toISOString().slice(0, 10);
+                  d.setDate(d.getDate() - 7);
+                  const from = d.toISOString().slice(0, 10);
+                  setFromDate(from);
+                  setToDate(to);
+                }}
+                type="button"
+              >
+                Last 7 days
+              </button>
+
+              <button
+                className="quick"
+                onClick={() => {
+                  const d = new Date();
+                  const to = d.toISOString().slice(0, 10);
+                  d.setDate(d.getDate() - 28);
+                  const from = d.toISOString().slice(0, 10);
+                  setFromDate(from);
+                  setToDate(to);
+                }}
+                type="button"
+              >
+                Last 28 days
+              </button>
+            </div>
+          </div>
+        </section>
 
         {error ? (
           <div className="alert">
             <b>Could not load OSA results:</b> {error}
           </div>
+        ) : loading ? (
+          <div className="alert muted">Loading results…</div>
         ) : rows.length === 0 ? (
           <div className="alert muted">
-            No results found in <code>osa_internal_results</code> for the last 28 days.
+            No results found in <code>osa_internal_results</code> for this date range.
           </div>
         ) : (
           <>
@@ -232,7 +444,7 @@ export default function InternalOsaScorecardPage() {
               <div className="podium-head">
                 <h2>Top 3 Managers</h2>
                 <p>
-                  Ranked by <b>lowest total points lost</b> (tie-break: higher stars)
+                  Ranked by <b>lowest avg points lost</b> (tie-break: higher avg stars)
                 </p>
               </div>
 
@@ -245,10 +457,12 @@ export default function InternalOsaScorecardPage() {
                         <span className="medal">{medal}</span>
                         <span className="rank-label">Rank #{idx + 1}</span>
                       </div>
-                      <div className="podium-name" title={p.name}>{p.name}</div>
+                      <div className="podium-name" title={p.name}>
+                        {p.name}
+                      </div>
                       <div className="podium-metrics">
                         <div>
-                          Points lost: <b>{p.totalPointsLost.toFixed(0)}</b>
+                          Avg points lost: <b>{p.avgPointsLost.toFixed(1)}</b>
                         </div>
                         <div>
                           Avg stars: <b>{p.avgStars.toFixed(2)}</b>
@@ -257,7 +471,7 @@ export default function InternalOsaScorecardPage() {
                           Audits: <b>{p.audits}</b>
                         </div>
                         <div className="muted">
-                          Last: <b>{formatStamp(p.lastAuditAt)}</b>
+                          Latest shift: <b>{formatShiftDateAny(p.lastShiftAt)}</b>
                         </div>
                       </div>
                     </div>
@@ -266,7 +480,7 @@ export default function InternalOsaScorecardPage() {
               </div>
             </section>
 
-            {/* Leaderboard table */}
+            {/* Leaderboard */}
             <section className="board">
               <div className="board-head">
                 <h2>Leaderboard</h2>
@@ -279,10 +493,10 @@ export default function InternalOsaScorecardPage() {
                     <tr>
                       <th style={{ width: 70 }}>Rank</th>
                       <th>Manager</th>
-                      <th style={{ width: 140 }}>Points Lost</th>
-                      <th style={{ width: 120 }}>Avg Stars</th>
+                      <th style={{ width: 160 }}>Avg Points Lost</th>
+                      <th style={{ width: 140 }}>Avg Stars</th>
                       <th style={{ width: 100 }}>Audits</th>
-                      <th style={{ width: 190 }}>Last Audit</th>
+                      <th style={{ width: 190 }}>Latest Shift</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -290,23 +504,24 @@ export default function InternalOsaScorecardPage() {
                       <tr key={`${m.name}-${i}`}>
                         <td className="rank">{i + 1}</td>
                         <td className="name">{m.name}</td>
-                        <td className="num">{m.totalPointsLost.toFixed(0)}</td>
+                        <td className="num">{m.avgPointsLost.toFixed(1)}</td>
                         <td className="num">{m.avgStars.toFixed(2)}</td>
                         <td className="num">{m.audits}</td>
-                        <td className="date">{formatStamp(m.lastAuditAt)}</td>
+                        <td className="date">{formatShiftDateAny(m.lastShiftAt)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
 
-              {/* Tiny debug helper (only shows if "Unknown" appears) */}
+              {/* Debug helper if Unknown appears */}
               {table.some((x) => x.name === "Unknown") && (
                 <div className="debug">
                   Heads-up: some rows have a blank manager field. Detected keys →{" "}
                   <b>manager:</b> {managerAgg.debug.managerKey || "not found"},{" "}
                   <b>points lost:</b> {managerAgg.debug.plKey || "not found"},{" "}
-                  <b>stars:</b> {managerAgg.debug.starsKey || "not found"}.
+                  <b>stars:</b> {managerAgg.debug.starsKey || "not found"},{" "}
+                  <b>shift date:</b> {managerAgg.debug.shiftDateKey || "not found"}.
                 </div>
               )}
             </section>
@@ -323,7 +538,6 @@ export default function InternalOsaScorecardPage() {
           --text: #0f172a;
           --muted: #64748b;
           --brand: #006491;
-          --brand-dark: #004b75;
           --shadow: 0 16px 40px rgba(0, 0, 0, 0.05);
         }
 
@@ -368,7 +582,7 @@ export default function InternalOsaScorecardPage() {
 
         .header {
           text-align: center;
-          margin-bottom: 10px;
+          margin-bottom: 12px;
         }
 
         .header h1 {
@@ -385,8 +599,79 @@ export default function InternalOsaScorecardPage() {
           font-size: 0.95rem;
         }
 
+        /* Filters */
+        .filters {
+          margin-top: 14px;
+        }
+
+        .filter-card {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 14px;
+          padding: 12px 14px;
+          border-radius: 16px;
+          background: rgba(255, 255, 255, 0.9);
+          border: 1px solid rgba(0, 100, 145, 0.14);
+          box-shadow: 0 12px 28px rgba(2, 6, 23, 0.05);
+          flex-wrap: wrap;
+        }
+
+        .filter-title {
+          font-weight: 900;
+          font-size: 13px;
+          letter-spacing: 0.02em;
+          text-transform: uppercase;
+        }
+
+        .filter-sub {
+          margin-top: 4px;
+          font-weight: 800;
+          color: #334155;
+          font-size: 13px;
+        }
+
+        .filter-controls {
+          display: flex;
+          align-items: flex-end;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .field {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          font-size: 12px;
+          font-weight: 900;
+          color: #334155;
+        }
+
+        input[type="date"] {
+          border-radius: 12px;
+          border: 1px solid rgba(15, 23, 42, 0.14);
+          padding: 8px 10px;
+          font-weight: 800;
+          background: #fff;
+        }
+
+        .quick {
+          border-radius: 12px;
+          border: 2px solid var(--brand);
+          background: #fff;
+          color: var(--brand);
+          font-weight: 900;
+          padding: 8px 10px;
+          cursor: pointer;
+        }
+
+        .quick:hover {
+          background: var(--brand);
+          color: #fff;
+        }
+
         .alert {
-          margin-top: 16px;
+          margin-top: 14px;
           background: rgba(254, 242, 242, 0.9);
           border: 1px solid rgba(239, 68, 68, 0.25);
           border-radius: 14px;
@@ -444,27 +729,22 @@ export default function InternalOsaScorecardPage() {
           border: 1px solid rgba(0, 100, 145, 0.14);
           box-shadow: 0 12px 28px rgba(2, 6, 23, 0.05);
           padding: 12px 14px;
-          position: relative;
-          overflow: hidden;
         }
 
         .podium-card.rank-1 {
           border-color: rgba(245, 158, 11, 0.35);
         }
-
         .podium-card.rank-2 {
           border-color: rgba(148, 163, 184, 0.45);
         }
-
         .podium-card.rank-3 {
           border-color: rgba(249, 115, 22, 0.35);
         }
 
         .podium-top {
           display: flex;
-          align-items: center;
           justify-content: space-between;
-          gap: 10px;
+          align-items: center;
           margin-bottom: 8px;
         }
 
@@ -475,7 +755,6 @@ export default function InternalOsaScorecardPage() {
         .rank-label {
           font-size: 12px;
           font-weight: 900;
-          color: #0f172a;
           opacity: 0.85;
         }
 
@@ -536,7 +815,8 @@ export default function InternalOsaScorecardPage() {
           border-collapse: collapse;
         }
 
-        th, td {
+        th,
+        td {
           padding: 12px 12px;
           text-align: left;
           font-size: 13px;
@@ -544,7 +824,6 @@ export default function InternalOsaScorecardPage() {
 
         th {
           background: rgba(0, 100, 145, 0.08);
-          color: #0f172a;
           font-weight: 900;
           letter-spacing: 0.02em;
         }
@@ -557,22 +836,16 @@ export default function InternalOsaScorecardPage() {
           text-align: right;
           font-variant-numeric: tabular-nums;
           font-weight: 900;
-          color: #0f172a;
         }
 
-        td.rank {
-          font-weight: 900;
-          color: #0f172a;
-        }
-
+        td.rank,
         td.name {
           font-weight: 900;
-          color: #0f172a;
         }
 
         td.date {
-          color: #334155;
           font-weight: 800;
+          color: #334155;
         }
 
         .debug {
@@ -597,7 +870,8 @@ export default function InternalOsaScorecardPage() {
           .podium-grid {
             grid-template-columns: 1fr;
           }
-          .podium-head, .board-head {
+          .podium-head,
+          .board-head {
             flex-direction: column;
             align-items: flex-start;
           }
