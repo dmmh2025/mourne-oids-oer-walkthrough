@@ -1,6 +1,15 @@
 "use client";
 
 import * as React from "react";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase =
+  typeof window !== "undefined"
+    ? createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
+    : null;
 
 type Row = {
   store: string;
@@ -8,11 +17,6 @@ type Row = {
   completed_at: string;
   completed_by: string;
   is_admin_override?: boolean;
-};
-
-type StatusResponse = {
-  ok: boolean;
-  data: Row[];
 };
 
 const STORES = ["Downpatrick", "Kilkeel", "Newcastle", "Ballynahinch"] as const;
@@ -26,6 +30,19 @@ function fmtTime(iso: string) {
   }
 }
 
+function startOfTodayLocalISO() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
+function startOfTomorrowLocalISO() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 1);
+  return d.toISOString();
+}
+
 export default function OsaStandardsCompletionPanel() {
   const [loading, setLoading] = React.useState(true);
   const [rows, setRows] = React.useState<Row[]>([]);
@@ -36,16 +53,25 @@ export default function OsaStandardsCompletionPanel() {
       setError("");
       setLoading(true);
 
-      const res = await fetch("/api/osa-standards/status", { cache: "no-store" });
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(txt || res.statusText);
-      }
+      if (!supabase) throw new Error("Supabase client not available");
 
-      const json = (await res.json()) as StatusResponse;
-      setRows(Array.isArray(json.data) ? json.data : []);
+      // Filter: Today (local) using completed_at (your table’s actual completion timestamp)
+      const fromISO = startOfTodayLocalISO();
+      const toISO = startOfTomorrowLocalISO();
+
+      const { data, error } = await supabase
+        .from("osa_standards_walkthroughs")
+        .select("store, walkthrough_type, completed_at, completed_by, is_admin_override")
+        .gte("completed_at", fromISO)
+        .lt("completed_at", toISO)
+        .order("completed_at", { ascending: false });
+
+      if (error) throw error;
+
+      setRows((data || []) as Row[]);
     } catch (e: any) {
       setError(e?.message || "Failed to load status");
+      setRows([]);
     } finally {
       setLoading(false);
     }
@@ -55,6 +81,7 @@ export default function OsaStandardsCompletionPanel() {
     load();
     const t = setInterval(load, 60_000); // refresh every minute
     return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Build per-store status (latest entry today for each type)
@@ -72,9 +99,10 @@ export default function OsaStandardsCompletionPanel() {
 
     for (const r of rows) {
       if (!map[r.store]) map[r.store] = {};
+
       const slot = r.walkthrough_type === "pre_open" ? "pre_open" : "handover";
 
-      // rows come ordered desc in API (we asked for it), so first hit is latest
+      // rows are ordered newest first, so first hit is latest
       if (!map[r.store][slot]) map[r.store][slot] = r;
       if (!map[r.store].last) map[r.store].last = r;
     }
