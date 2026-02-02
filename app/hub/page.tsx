@@ -223,7 +223,10 @@ export default function HubPage() {
   }, [svcRows]);
 
   const computeRanked = (rows: ServiceRowMini[], key: "store" | "manager") => {
-    const bucket: Record<string, { dot: number[]; labour: number[]; shifts: number }> = {};
+    const bucket: Record<
+      string,
+      { dot: number[]; labour: number[]; shifts: number }
+    > = {};
 
     for (const r of rows) {
       const name =
@@ -262,7 +265,10 @@ export default function HubPage() {
 
   const computeImproved = (recent: ServiceRowMini[], prev: ServiceRowMini[]) => {
     const makeBucket = (rows: ServiceRowMini[]) => {
-      const bucket: Record<string, { dot: number[]; labour: number[]; shifts: number }> = {};
+      const bucket: Record<
+        string,
+        { dot: number[]; labour: number[]; shifts: number }
+      > = {};
       for (const r of rows) {
         const name = (r.store || "").trim();
         if (!name) continue;
@@ -352,7 +358,8 @@ export default function HubPage() {
             ) : tickerMessages.length === 0 ? (
               <span className="ticker-item muted">
                 <span className="cat-pill" style={{ background: "#ffffff" }} />
-                📰 No news items found in Supabase (table: <code>news_ticker</code>)
+                📰 No news items found in Supabase (table:{" "}
+                <code>news_ticker</code>)
               </span>
             ) : (
               tickerMessages.map((item, i) => (
@@ -410,7 +417,8 @@ export default function HubPage() {
                     </div>
                     <div className="highlight-metrics">
                       <span>
-                        DOT: <b>{topStore ? formatPct(topStore.avgDOT, 0) : "—"}</b>
+                        DOT:{" "}
+                        <b>{topStore ? formatPct(topStore.avgDOT, 0) : "—"}</b>
                       </span>
                       <span>
                         Labour:{" "}
@@ -434,11 +442,14 @@ export default function HubPage() {
                     </div>
                     <div className="highlight-metrics">
                       <span>
-                        DOT: <b>{topManager ? formatPct(topManager.avgDOT, 0) : "—"}</b>
+                        DOT:{" "}
+                        <b>{topManager ? formatPct(topManager.avgDOT, 0) : "—"}</b>
                       </span>
                       <span>
                         Labour:{" "}
-                        <b>{topManager ? formatPct(topManager.avgLabour, 1) : "—"}</b>
+                        <b>
+                          {topManager ? formatPct(topManager.avgLabour, 1) : "—"}
+                        </b>
                       </span>
                       <span>
                         Shifts: <b>{topManager ? topManager.shifts : "—"}</b>
@@ -490,13 +501,13 @@ export default function HubPage() {
         </header>
 
         <div className="top-actions">
-          <button onClick={handleLogout} className="btn-logout">
+          <button onClick={handleLogout} className="btn-logout" type="button">
             🚪 Log out
           </button>
         </div>
 
         <section className="grid">
-          <Link href="/dashboard/service" className="card-link">
+          <Link href="/dashboard/service" className="card-link" data-variant="service">
             <div className="card-link__icon">📊</div>
             <div className="card-link__body">
               <h2>Service Dashboard</h2>
@@ -505,7 +516,7 @@ export default function HubPage() {
             <div className="card-link__chevron">›</div>
           </Link>
 
-          <Link href="/walkthrough" className="card-link">
+          <Link href="/walkthrough" className="card-link" data-variant="standards">
             <div className="card-link__icon">🧾</div>
             <div className="card-link__body">
               <h2>Standards Walkthrough</h2>
@@ -514,7 +525,7 @@ export default function HubPage() {
             <div className="card-link__chevron">›</div>
           </Link>
 
-          <Link href="/admin" className="card-link">
+          <Link href="/admin" className="card-link" data-variant="reports">
             <div className="card-link__icon">📈</div>
             <div className="card-link__body">
               <h2>Standards Completion report</h2>
@@ -523,8 +534,7 @@ export default function HubPage() {
             <div className="card-link__chevron">›</div>
           </Link>
 
-          {/* ✅ Internal OSA Scorecard */}
-          <Link href="/osa" className="card-link">
+          <Link href="/osa" className="card-link" data-variant="osa">
             <div className="card-link__icon">⭐</div>
             <div className="card-link__body">
               <h2>Internal OSA Scorecard</h2>
@@ -533,7 +543,7 @@ export default function HubPage() {
             <div className="card-link__chevron">›</div>
           </Link>
 
-          <Link href="/profile" className="card-link">
+          <Link href="/profile" className="card-link" data-variant="profile">
             <div className="card-link__icon">👤</div>
             <div className="card-link__body">
               <h2>My Profile</h2>
@@ -542,7 +552,7 @@ export default function HubPage() {
             <div className="card-link__chevron">›</div>
           </Link>
 
-          <Link href="/deep-clean" className="card-link">
+          <Link href="/deep-clean" className="card-link" data-variant="deepclean">
             <div className="card-link__icon">🧽</div>
             <div className="card-link__body">
               <h2>Autumn Deep Clean</h2>
@@ -551,7 +561,7 @@ export default function HubPage() {
             <div className="card-link__chevron">›</div>
           </Link>
 
-          <Link href="/memomailer" className="card-link">
+          <Link href="/memomailer" className="card-link" data-variant="memomailer">
             <div className="card-link__icon">📬</div>
             <div className="card-link__body">
               <h2>Weekly MemoMailer</h2>
@@ -560,7 +570,7 @@ export default function HubPage() {
             <div className="card-link__chevron">›</div>
           </Link>
 
-          <Link href="/pizza-of-the-week" className="card-link">
+          <Link href="/pizza-of-the-week" className="card-link" data-variant="promo">
             <div className="card-link__icon">🍕</div>
             <div className="card-link__body">
               <h2>Pizza of the Week</h2>
@@ -569,7 +579,7 @@ export default function HubPage() {
             <div className="card-link__chevron">›</div>
           </Link>
 
-          <Link href="/admin/ticker" className="card-link">
+          <Link href="/admin/ticker" className="card-link" data-variant="admin">
             <div className="card-link__icon">⚙️</div>
             <div className="card-link__body">
               <h2>Admin</h2>
@@ -579,7 +589,6 @@ export default function HubPage() {
           </Link>
         </section>
 
-        {/* ✅ Latest uploads at the bottom */}
         <div className="status-bottom" aria-label="Data status">
           <div className="status-bottom-head">
             <h3>Latest uploads</h3>
@@ -590,13 +599,17 @@ export default function HubPage() {
             <div className="status-item">
               <span className="status-dot ok" />
               <span className="status-label">Service data:</span>
-              <span className="status-value">{formatStamp(status.serviceLastUpdated)}</span>
+              <span className="status-value">
+                {formatStamp(status.serviceLastUpdated)}
+              </span>
             </div>
 
             <div className="status-item">
               <span className="status-dot ok" />
               <span className="status-label">Internal OSA:</span>
-              <span className="status-value">{formatStamp(status.osaLastUpdated)}</span>
+              <span className="status-value">
+                {formatStamp(status.osaLastUpdated)}
+              </span>
             </div>
 
             {status.error && (
@@ -628,7 +641,11 @@ export default function HubPage() {
 
         .wrap {
           min-height: 100dvh;
-          background: radial-gradient(circle at top, rgba(0, 100, 145, 0.08), transparent 45%),
+          background: radial-gradient(
+              circle at top,
+              rgba(0, 100, 145, 0.08),
+              transparent 45%
+            ),
             linear-gradient(180deg, #e3edf4 0%, #f2f5f9 30%, #f2f5f9 100%);
           display: flex;
           flex-direction: column;
@@ -704,8 +721,12 @@ export default function HubPage() {
         }
 
         @keyframes scroll {
-          0% { transform: translateX(100%); }
-          100% { transform: translateX(-100%); }
+          0% {
+            transform: translateX(100%);
+          }
+          100% {
+            transform: translateX(-100%);
+          }
         }
 
         .shell {
@@ -854,79 +875,218 @@ export default function HubPage() {
           margin: 6px 0 16px;
         }
 
+        /* Logout matches new tile style */
         .btn-logout {
-          background: #fff;
-          color: var(--brand);
-          border: 2px solid var(--brand);
+          background: rgba(255, 255, 255, 0.92);
+          color: #0f172a;
+          border: 1px solid rgba(15, 23, 42, 0.1);
           border-radius: 14px;
-          font-weight: 800;
+          font-weight: 900;
           font-size: 14px;
-          padding: 8px 14px;
+          padding: 9px 14px;
           cursor: pointer;
-          box-shadow: 0 6px 14px rgba(0, 100, 145, 0.12);
-          transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+          box-shadow: 0 10px 22px rgba(2, 6, 23, 0.06);
+          transition: transform 0.14s ease, box-shadow 0.14s ease,
+            border-color 0.14s ease, background 0.14s ease;
         }
 
         .btn-logout:hover {
-          background: var(--brand);
-          color: #fff;
-          transform: translateY(-1px);
+          transform: translateY(-2px);
+          border-color: rgba(0, 100, 145, 0.26);
+          background: rgba(255, 255, 255, 0.98);
+          box-shadow: 0 16px 36px rgba(2, 6, 23, 0.1);
         }
 
+        .btn-logout:focus-visible {
+          outline: none;
+          box-shadow: 0 0 0 4px rgba(0, 100, 145, 0.22),
+            0 12px 26px rgba(2, 6, 23, 0.08);
+        }
+
+        /* Tiles (upgraded + category accent) */
         .grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-          gap: 16px;
+          grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+          gap: 14px;
         }
 
         .card-link {
+          position: relative;
           display: flex;
           gap: 14px;
           align-items: center;
-          background: #ffffff;
-          border-radius: 1.25rem;
+
+          background: rgba(255, 255, 255, 0.92);
+          border-radius: 18px;
           text-decoration: none;
-          padding: 14px 16px 14px 14px;
-          border: 1px solid rgba(0, 100, 145, 0.12);
-          box-shadow: 0 10px 25px rgba(15, 23, 42, 0.03);
-          transition: transform 0.12s ease-out, box-shadow 0.12s ease-out, border 0.12s ease-out;
+
+          padding: 16px 16px;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          box-shadow: 0 10px 22px rgba(2, 6, 23, 0.06),
+            0 1px 0 rgba(255, 255, 255, 0.65) inset;
+
+          transition: transform 0.14s ease, box-shadow 0.14s ease,
+            border-color 0.14s ease, background 0.14s ease;
+          overflow: hidden;
         }
 
-        .card-link__icon {
-          width: 46px;
-          height: 46px;
-          border-radius: 1.2rem;
-          background: radial-gradient(circle, #006491 0%, #1f2937 100%);
-          display: grid;
-          place-items: center;
-          font-size: 1.6rem;
-          color: #fff;
-          flex: 0 0 46px;
+        /* category accent bar */
+        .card-link::after {
+          content: "";
+          position: absolute;
+          left: 0;
+          top: 10px;
+          bottom: 10px;
+          width: 6px;
+          border-radius: 999px;
+          background: rgba(0, 100, 145, 0.3);
+          box-shadow: 0 8px 16px rgba(2, 6, 23, 0.08);
         }
 
-        .card-link__body h2 {
-          font-size: 1rem;
-          font-weight: 700;
-          color: #0f172a;
+        /* soft sheen */
+        .card-link::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background: radial-gradient(
+              800px 240px at 15% 0%,
+              rgba(0, 100, 145, 0.1),
+              transparent 55%
+            ),
+            radial-gradient(
+              700px 260px at 90% 10%,
+              rgba(227, 24, 55, 0.07),
+              transparent 55%
+            );
+          opacity: 0.9;
+          pointer-events: none;
         }
 
-        .card-link__body p {
-          font-size: 0.78rem;
-          color: #6b7280;
-          margin-top: 2px;
-        }
-
-        .card-link__chevron {
-          margin-left: auto;
-          font-size: 1.6rem;
-          line-height: 1;
-          color: rgba(15, 23, 42, 0.38);
+        .card-link:focus-visible {
+          outline: none;
+          box-shadow: 0 0 0 4px rgba(0, 100, 145, 0.22),
+            0 12px 26px rgba(2, 6, 23, 0.08),
+            0 1px 0 rgba(255, 255, 255, 0.65) inset;
+          border-color: rgba(0, 100, 145, 0.38);
         }
 
         .card-link:hover {
-          transform: translateY(-2px);
-          border: 1px solid rgba(0, 100, 145, 0.28);
-          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.04);
+          transform: translateY(-3px);
+          border-color: rgba(0, 100, 145, 0.26);
+          background: rgba(255, 255, 255, 0.98);
+          box-shadow: 0 18px 42px rgba(2, 6, 23, 0.1),
+            0 1px 0 rgba(255, 255, 255, 0.75) inset;
+        }
+
+        .card-link__icon {
+          position: relative;
+          z-index: 1;
+          width: 52px;
+          height: 52px;
+          border-radius: 16px;
+
+          display: grid;
+          place-items: center;
+
+          font-size: 1.55rem;
+          color: #fff;
+
+          background: linear-gradient(135deg, #006491 0%, #004b75 40%, #0f172a 100%);
+          border: 1px solid rgba(255, 255, 255, 0.22);
+          box-shadow: 0 10px 22px rgba(0, 75, 117, 0.22),
+            0 1px 0 rgba(255, 255, 255, 0.2) inset;
+          flex: 0 0 52px;
+        }
+
+        .card-link__icon::after {
+          content: "";
+          position: absolute;
+          inset: 1px;
+          border-radius: 15px;
+          background: radial-gradient(
+            circle at 30% 25%,
+            rgba(255, 255, 255, 0.26),
+            transparent 55%
+          );
+          pointer-events: none;
+        }
+
+        .card-link__body {
+          position: relative;
+          z-index: 1;
+          min-width: 0;
+        }
+
+        .card-link__body h2 {
+          font-size: 0.98rem;
+          font-weight: 900;
+          letter-spacing: -0.01em;
+          color: #0f172a;
+          margin: 0;
+          line-height: 1.2;
+        }
+
+        .card-link__body p {
+          font-size: 0.82rem;
+          color: #64748b;
+          margin: 5px 0 0;
+          line-height: 1.35;
+        }
+
+        .card-link__chevron {
+          position: relative;
+          z-index: 1;
+          margin-left: auto;
+          width: 34px;
+          height: 34px;
+          border-radius: 999px;
+
+          display: grid;
+          place-items: center;
+
+          font-size: 1.25rem;
+          line-height: 1;
+          color: rgba(15, 23, 42, 0.55);
+
+          background: rgba(2, 6, 23, 0.04);
+          border: 1px solid rgba(15, 23, 42, 0.06);
+          transition: transform 0.14s ease, background 0.14s ease,
+            color 0.14s ease;
+        }
+
+        .card-link:hover .card-link__chevron {
+          transform: translateX(2px);
+          background: rgba(0, 100, 145, 0.1);
+          color: rgba(0, 75, 117, 0.9);
+        }
+
+        /* Category colours via data-variant (accent bar + subtle icon tint) */
+        .card-link[data-variant="service"]::after {
+          background: linear-gradient(180deg, #006491 0%, #004b75 100%);
+        }
+        .card-link[data-variant="standards"]::after {
+          background: linear-gradient(180deg, #16a34a 0%, #166534 100%);
+        }
+        .card-link[data-variant="reports"]::after {
+          background: linear-gradient(180deg, #f59e0b 0%, #b45309 100%);
+        }
+        .card-link[data-variant="osa"]::after {
+          background: linear-gradient(180deg, #7c3aed 0%, #4c1d95 100%);
+        }
+        .card-link[data-variant="profile"]::after {
+          background: linear-gradient(180deg, #0ea5e9 0%, #0369a1 100%);
+        }
+        .card-link[data-variant="deepclean"]::after {
+          background: linear-gradient(180deg, #22c55e 0%, #15803d 100%);
+        }
+        .card-link[data-variant="memomailer"]::after {
+          background: linear-gradient(180deg, #ef4444 0%, #991b1b 100%);
+        }
+        .card-link[data-variant="promo"]::after {
+          background: linear-gradient(180deg, #e31837 0%, #8a1020 100%);
+        }
+        .card-link[data-variant="admin"]::after {
+          background: linear-gradient(180deg, #0f172a 0%, #334155 100%);
         }
 
         .status-bottom {
@@ -989,8 +1149,12 @@ export default function HubPage() {
           display: inline-block;
         }
 
-        .status-dot.ok { background: #22c55e; }
-        .status-dot.bad { background: #ef4444; }
+        .status-dot.ok {
+          background: #22c55e;
+        }
+        .status-dot.bad {
+          background: #ef4444;
+        }
 
         .status-label {
           color: #475569;
@@ -1010,16 +1174,42 @@ export default function HubPage() {
         }
 
         @media (max-width: 980px) {
-          .highlights-grid { grid-template-columns: 1fr; }
-          .highlights-head { flex-direction: column; align-items: flex-start; }
-          .status-bottom-head { flex-direction: column; align-items: flex-start; }
+          .highlights-grid {
+            grid-template-columns: 1fr;
+          }
+          .highlights-head {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+          .status-bottom-head {
+            flex-direction: column;
+            align-items: flex-start;
+          }
         }
 
         @media (max-width: 720px) {
-          .shell { padding: 24px 16px 28px; }
-          .card-link { border-radius: 1rem; }
-          .ticker-shell { border-radius: 1.2rem; }
-          .purpose-bar { border-radius: 14px; }
+          .shell {
+            padding: 24px 16px 28px;
+          }
+          .grid {
+            grid-template-columns: 1fr;
+            gap: 12px;
+          }
+          .card-link {
+            padding: 14px 14px;
+          }
+          .card-link__icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 15px;
+            flex: 0 0 50px;
+          }
+          .ticker-shell {
+            border-radius: 1.2rem;
+          }
+          .purpose-bar {
+            border-radius: 14px;
+          }
         }
       `}</style>
     </main>
