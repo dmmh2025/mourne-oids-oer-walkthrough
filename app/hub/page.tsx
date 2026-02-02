@@ -66,7 +66,7 @@ type Tile = {
   desc: string;
   variant: TileVariant;
   pill: string;
-  icon: string; // subtle icon in a small dot
+  icon: string;
   badge?: "NEW" | null;
 };
 
@@ -154,6 +154,31 @@ const TILES: Tile[] = [
   },
 ];
 
+function accent(variant: TileVariant) {
+  switch (variant) {
+    case "service":
+      return { a: "#006491", b: "#004b75" };
+    case "standards":
+      return { a: "#16A34A", b: "#166534" };
+    case "reports":
+      return { a: "#F59E0B", b: "#B45309" };
+    case "osa":
+      return { a: "#7C3AED", b: "#4C1D95" };
+    case "profile":
+      return { a: "#0EA5E9", b: "#0369A1" };
+    case "deepclean":
+      return { a: "#22C55E", b: "#15803D" };
+    case "memomailer":
+      return { a: "#EF4444", b: "#991B1B" };
+    case "promo":
+      return { a: "#E31837", b: "#8A1020" };
+    case "admin":
+      return { a: "#0F172A", b: "#334155" };
+    default:
+      return { a: "#006491", b: "#004b75" };
+  }
+}
+
 export default function HubPage() {
   const [tickerMessages, setTickerMessages] = useState<TickerItem[]>([]);
   const [tickerError, setTickerError] = useState<string | null>(null);
@@ -194,31 +219,6 @@ export default function HubPage() {
     if (c === "ops") return "#F59E0B";
     if (c === "warning") return "#7C3AED";
     return "#ffffff";
-  };
-
-  const accent = (variant: TileVariant) => {
-    switch (variant) {
-      case "service":
-        return { ring: "rgba(0,100,145,.22)", soft: "rgba(0,100,145,.08)", solid: "#006491" };
-      case "standards":
-        return { ring: "rgba(22,163,74,.22)", soft: "rgba(22,163,74,.09)", solid: "#16A34A" };
-      case "reports":
-        return { ring: "rgba(245,158,11,.22)", soft: "rgba(245,158,11,.10)", solid: "#F59E0B" };
-      case "osa":
-        return { ring: "rgba(124,58,237,.22)", soft: "rgba(124,58,237,.10)", solid: "#7C3AED" };
-      case "profile":
-        return { ring: "rgba(14,165,233,.22)", soft: "rgba(14,165,233,.10)", solid: "#0EA5E9" };
-      case "deepclean":
-        return { ring: "rgba(34,197,94,.22)", soft: "rgba(34,197,94,.10)", solid: "#22C55E" };
-      case "memomailer":
-        return { ring: "rgba(239,68,68,.22)", soft: "rgba(239,68,68,.10)", solid: "#EF4444" };
-      case "promo":
-        return { ring: "rgba(227,24,55,.22)", soft: "rgba(227,24,55,.10)", solid: "#E31837" };
-      case "admin":
-        return { ring: "rgba(15,23,42,.22)", soft: "rgba(15,23,42,.08)", solid: "#0F172A" };
-      default:
-        return { ring: "rgba(0,100,145,.22)", soft: "rgba(0,100,145,.08)", solid: "#006491" };
-    }
   };
 
   // Load ticker
@@ -606,41 +606,42 @@ export default function HubPage() {
           </button>
         </div>
 
-        {/* ✅ Dashboard-style tiles (same look as highlight cards) */}
-        <section className="dashTiles" aria-label="Hub navigation tiles">
+        {/* ✅ Touchscreen-style panels */}
+        <section className="panelGrid" aria-label="Hub navigation panels">
           {TILES.map((t) => {
             const a = accent(t.variant);
             return (
               <Link
                 key={t.href}
                 href={t.href}
-                className="dashTile"
+                className="panelBtn"
                 style={
                   {
-                    ["--ring" as any]: a.ring,
-                    ["--soft" as any]: a.soft,
-                    ["--solid" as any]: a.solid,
+                    ["--a" as any]: a.a,
+                    ["--b" as any]: a.b,
                   } as React.CSSProperties
                 }
               >
-                <div className="dashTileTop">
-                  <span className="dashTileTitle">{t.title}</span>
-                  <div className="dashTileBadges">
-                    <span className="dashTilePill">{t.pill}</span>
-                    {t.badge ? <span className="dashTileNew">{t.badge}</span> : null}
+                <div className="panelTop">
+                  <div className="panelLeft">
+                    <span className="panelIcon" aria-hidden="true">
+                      {t.icon}
+                    </span>
+                    <div className="panelTitles">
+                      <div className="panelTitle">{t.title}</div>
+                      <div className="panelDesc">{t.desc}</div>
+                    </div>
+                  </div>
+
+                  <div className="panelBadges">
+                    <span className="panelPill">{t.pill}</span>
+                    {t.badge ? <span className="panelNew">{t.badge}</span> : null}
                   </div>
                 </div>
 
-                <div className="dashTileBody">
-                  <span className="dashTileIcon" aria-hidden="true">
-                    {t.icon}
-                  </span>
-                  <p className="dashTileDesc">{t.desc}</p>
-                </div>
-
-                <div className="dashTileFoot">
-                  <span className="dashTileOpen">Open</span>
-                  <span className="dashTileChevron" aria-hidden="true">
+                <div className="panelFoot">
+                  <span className="panelHint">Tap to open</span>
+                  <span className="panelChevron" aria-hidden="true">
                     →
                   </span>
                 </div>
@@ -950,165 +951,244 @@ export default function HubPage() {
             0 12px 26px rgba(2, 6, 23, 0.08);
         }
 
-        /* ✅ Dashboard-like navigation tiles */
-        .dashTiles {
-          margin-top: 6px;
+        /* ===========================
+           ✅ Touchscreen panel buttons
+           =========================== */
+        .panelGrid {
+          margin-top: 8px;
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 12px;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
         }
 
-        @media (max-width: 980px) {
-          .dashTiles {
-            grid-template-columns: 1fr;
-          }
-          .highlights-grid {
-            grid-template-columns: 1fr;
-          }
-          .highlights-head {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-        }
+        .panelBtn {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
 
-        .dashTile {
+          min-height: 140px;
+          padding: 18px 18px 16px;
+
+          border-radius: 22px;
           text-decoration: none;
           color: inherit;
 
-          background: rgba(255, 255, 255, 0.92);
-          border-radius: 16px;
-          border: 1px solid rgba(0, 100, 145, 0.14);
-          box-shadow: 0 12px 28px rgba(2, 6, 23, 0.05);
-          padding: 12px 14px;
+          /* "stand-alone panel" base */
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 251, 255, 0.94));
+          border: 1px solid rgba(15, 23, 42, 0.10);
 
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
+          /* deep kiosk shadow + subtle lift */
+          box-shadow:
+            0 26px 54px rgba(2, 6, 23, 0.14),
+            0 10px 18px rgba(2, 6, 23, 0.08),
+            0 1px 0 rgba(255, 255, 255, 0.80) inset;
 
-          transition: transform 0.14s ease, box-shadow 0.14s ease,
-            border-color 0.14s ease, background 0.14s ease;
+          overflow: hidden;
+          transform: translateZ(0);
+          transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
         }
 
-        .dashTile:hover {
-          transform: translateY(-2px);
+        /* reflective rim / gradient border illusion */
+        .panelBtn::before {
+          content: "";
+          position: absolute;
+          inset: -2px;
+          border-radius: 24px;
+          padding: 2px;
+          background: linear-gradient(
+            135deg,
+            rgba(255, 255, 255, 0.85),
+            rgba(255, 255, 255, 0.15) 30%,
+            rgba(255, 255, 255, 0.55) 55%,
+            rgba(255, 255, 255, 0.12) 75%,
+            rgba(255, 255, 255, 0.7)
+          );
+          -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          -webkit-mask-composite: xor;
+          mask-composite: exclude;
+          pointer-events: none;
+          opacity: 0.9;
+        }
+
+        /* soft glass sheen + variant tint */
+        .panelBtn::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          border-radius: 22px;
+          background:
+            radial-gradient(900px 280px at 15% 0%, rgba(255, 255, 255, 0.55), transparent 55%),
+            radial-gradient(900px 360px at 100% 10%, rgba(0, 0, 0, 0.04), transparent 55%),
+            radial-gradient(800px 340px at 80% 0%, color-mix(in srgb, var(--a) 14%, transparent), transparent 60%);
+          pointer-events: none;
+          opacity: 0.85;
+        }
+
+        /* left accent bar */
+        .panelBtn .panelTop::before {
+          content: "";
+          position: absolute;
+          left: 10px;
+          top: 16px;
+          bottom: 16px;
+          width: 7px;
+          border-radius: 999px;
+          background: linear-gradient(180deg, var(--a), var(--b));
+          box-shadow: 0 12px 18px rgba(2, 6, 23, 0.10);
+        }
+
+        .panelBtn:hover {
+          transform: translateY(-3px);
           border-color: rgba(0, 100, 145, 0.22);
-          background: rgba(255, 255, 255, 0.98);
-          box-shadow: 0 16px 34px rgba(2, 6, 23, 0.09);
+          box-shadow:
+            0 34px 70px rgba(2, 6, 23, 0.18),
+            0 12px 20px rgba(2, 6, 23, 0.10),
+            0 1px 0 rgba(255, 255, 255, 0.86) inset;
         }
 
-        .dashTile:focus-visible {
+        .panelBtn:focus-visible {
           outline: none;
-          box-shadow: 0 0 0 4px var(--ring), 0 16px 34px rgba(2, 6, 23, 0.09);
-          border-color: rgba(0, 100, 145, 0.28);
+          box-shadow:
+            0 0 0 4px color-mix(in srgb, var(--a) 20%, transparent),
+            0 34px 70px rgba(2, 6, 23, 0.18),
+            0 12px 20px rgba(2, 6, 23, 0.10),
+            0 1px 0 rgba(255, 255, 255, 0.86) inset;
         }
 
-        .dashTileTop {
+        .panelTop {
+          position: relative;
           display: flex;
           justify-content: space-between;
-          align-items: center;
-          gap: 10px;
+          gap: 12px;
+          padding-left: 16px; /* room for accent bar */
+          z-index: 1;
         }
 
-        .dashTileTitle {
-          font-size: 12px;
-          font-weight: 900;
+        .panelLeft {
+          display: flex;
+          gap: 12px;
+          align-items: flex-start;
+          min-width: 0;
+        }
+
+        .panelIcon {
+          width: 54px;
+          height: 54px;
+          border-radius: 18px;
+          display: grid;
+          place-items: center;
+          font-size: 22px;
+
+          background: linear-gradient(135deg, var(--a), var(--b));
+          color: #fff;
+          border: 1px solid rgba(255, 255, 255, 0.22);
+          box-shadow:
+            0 16px 26px color-mix(in srgb, var(--a) 22%, transparent),
+            0 1px 0 rgba(255, 255, 255, 0.20) inset;
+          flex: 0 0 54px;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .panelIcon::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background: radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.30), transparent 60%);
+          pointer-events: none;
+        }
+
+        .panelTitles {
+          min-width: 0;
+        }
+
+        .panelTitle {
+          font-weight: 950;
+          font-size: 16px;
+          letter-spacing: -0.01em;
           color: #0f172a;
-          letter-spacing: 0.02em;
-          text-transform: uppercase;
+          line-height: 1.2;
         }
 
-        .dashTileBadges {
-          display: inline-flex;
-          gap: 8px;
-          align-items: center;
-        }
-
-        .dashTilePill {
-          font-size: 11px;
+        .panelDesc {
+          margin-top: 6px;
+          font-size: 13px;
           font-weight: 800;
-          padding: 4px 10px;
+          color: #475569;
+          line-height: 1.35;
+        }
+
+        .panelBadges {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+
+        .panelPill {
+          font-size: 11px;
+          font-weight: 900;
+          padding: 6px 12px;
           border-radius: 999px;
-          background: var(--soft);
-          border: 1px solid rgba(15, 23, 42, 0.06);
+          background: color-mix(in srgb, var(--a) 10%, #ffffff);
+          border: 1px solid rgba(15, 23, 42, 0.08);
           color: #0f172a;
+          box-shadow: 0 10px 20px rgba(2, 6, 23, 0.06);
           white-space: nowrap;
         }
 
-        .dashTileNew {
+        .panelNew {
           font-size: 11px;
-          font-weight: 900;
-          padding: 4px 10px;
+          font-weight: 950;
+          padding: 6px 12px;
           border-radius: 999px;
-          background: rgba(0, 100, 145, 0.1);
+          background: rgba(0, 100, 145, 0.10);
           border: 1px solid rgba(0, 100, 145, 0.16);
           color: #004b75;
           white-space: nowrap;
         }
 
-        .dashTileBody {
-          display: flex;
-          gap: 10px;
-          align-items: flex-start;
-        }
-
-        .dashTileIcon {
-          width: 28px;
-          height: 28px;
-          border-radius: 999px;
-          display: grid;
-          place-items: center;
-          background: rgba(2, 6, 23, 0.04);
-          border: 1px solid rgba(15, 23, 42, 0.06);
-          flex: 0 0 28px;
-          font-size: 14px;
-        }
-
-        .dashTileDesc {
-          margin: 0;
-          font-size: 13px;
-          color: #334155;
-          font-weight: 800;
-          line-height: 1.35;
-        }
-
-        .dashTileFoot {
+        .panelFoot {
+          z-index: 1;
           display: flex;
           justify-content: space-between;
           align-items: center;
+          margin-top: auto;
+
+          padding-top: 12px;
           border-top: 1px solid rgba(15, 23, 42, 0.06);
-          padding-top: 10px;
-          margin-top: 2px;
         }
 
-        .dashTileOpen {
+        .panelHint {
           font-size: 12px;
-          font-weight: 800;
-          color: #475569;
-          padding: 6px 10px;
-          border-radius: 999px;
-          background: rgba(2, 6, 23, 0.03);
-          border: 1px solid rgba(15, 23, 42, 0.06);
+          font-weight: 900;
+          color: #64748b;
         }
 
-        .dashTileChevron {
-          width: 30px;
-          height: 30px;
+        .panelChevron {
+          width: 42px;
+          height: 42px;
           border-radius: 999px;
           display: grid;
           place-items: center;
-          font-weight: 900;
-          color: #0f172a;
+          font-size: 18px;
+          font-weight: 950;
+
           background: rgba(2, 6, 23, 0.04);
-          border: 1px solid rgba(15, 23, 42, 0.06);
-          transition: transform 0.14s ease, background 0.14s ease, border-color 0.14s ease;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          box-shadow: 0 12px 18px rgba(2, 6, 23, 0.08);
+          transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease;
         }
 
-        .dashTile:hover .dashTileChevron {
-          transform: translateX(2px);
-          background: var(--soft);
-          border-color: rgba(0, 100, 145, 0.14);
+        .panelBtn:hover .panelChevron {
+          transform: translateX(3px);
+          background: color-mix(in srgb, var(--a) 10%, #ffffff);
+          border-color: color-mix(in srgb, var(--a) 25%, transparent);
         }
 
+        /* ===== Status ===== */
         .status-bottom {
           margin-top: 22px;
           padding-top: 14px;
@@ -1191,6 +1271,19 @@ export default function HubPage() {
           margin-top: 24px;
           color: #94a3b8;
           font-size: 0.8rem;
+        }
+
+        @media (max-width: 980px) {
+          .highlights-grid {
+            grid-template-columns: 1fr;
+          }
+          .highlights-head {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+          .panelGrid {
+            grid-template-columns: 1fr;
+          }
         }
 
         @media (max-width: 720px) {
