@@ -15,15 +15,13 @@ const supabase =
 // ---- Types ----
 type OsaRow = Record<string, any>;
 
-type ManagerAgg = {
+type LeaderAgg = {
   name: string;
   audits: number;
 
-  // totals
   totalPointsLost: number;
   starsList: number[];
 
-  // averages (over period)
   avgPointsLost: number; // points lost per audit
   avgStars: number; // 0..5
 
@@ -84,6 +82,17 @@ const detectManagerKey = (rows: OsaRow[]): string | null => {
       k.toLowerCase().includes("assessor") ||
       k.toLowerCase().includes("auditor")
   );
+  return fallback || null;
+};
+
+const detectStoreKey = (rows: OsaRow[]): string | null => {
+  if (!rows.length) return null;
+
+  const candidates = ["store", "store_name", "storename", "location", "branch"];
+  const keys = new Set(Object.keys(rows[0] || {}));
+  for (const c of candidates) if (keys.has(c)) return c;
+
+  const fallback = Array.from(keys).find((k) => k.toLowerCase().includes("store"));
   return fallback || null;
 };
 
@@ -167,6 +176,81 @@ const formatShiftDateAny = (v: any) => {
   // timestamp-ish
   return formatStamp(s);
 };
+
+const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
+
+const pillClassFromStars = (stars: number) => {
+  if (stars >= 4.5) return "pill green";
+  if (stars >= 4.0) return "pill amber";
+  return "pill red";
+};
+
+const pillClassFromPointsLost = (pl: number) => {
+  if (pl <= 10) return "pill green";
+  if (pl <= 20) return "pill amber";
+  return "pill red";
+};
+
+function buildAgg(
+  rows: OsaRow[],
+  nameKey: string | null,
+  plKey: string | null,
+  starsKey: string | null,
+  dateKey: string | null,
+  unknownLabel: string
+): { items: LeaderAgg[] } {
+  const bucket: Record<
+    string,
+    { audits: number; pointsLost: number; stars: number[]; last: string | null }
+  > = {};
+
+  for (const r of rows) {
+    const name = cleanName(nameKey ? r[nameKey] : null) || unknownLabel;
+
+    const pl = plKey ? toNumber(r[plKey]) : null;
+    if (plKey && pl === null) continue;
+
+    const st = starsKey ? toNumber(r[starsKey]) : null;
+    const stars = st === null ? null : clampStars(st);
+
+    const bestDate =
+      (dateKey ? cleanName(r[dateKey]) : null) || cleanName(r.created_at) || null;
+
+    if (!bucket[name]) bucket[name] = { audits: 0, pointsLost: 0, stars: [], last: null };
+    bucket[name].audits += 1;
+    bucket[name].pointsLost += pl ?? 0;
+    if (stars !== null) bucket[name].stars.push(stars);
+
+    if (!bucket[name].last || (bestDate && bestDate > bucket[name].last!)) {
+      bucket[name].last = bestDate;
+    }
+  }
+
+  const items: LeaderAgg[] = Object.entries(bucket).map(([name, v]) => {
+    const audits = v.audits || 0;
+    const avgPointsLost = audits ? v.pointsLost / audits : 0;
+    const avgStars = avg(v.stars);
+
+    return {
+      name,
+      audits,
+      totalPointsLost: v.pointsLost,
+      starsList: v.stars,
+      avgPointsLost,
+      avgStars,
+      lastShiftAt: v.last,
+    };
+  });
+
+  // Rank: LOWEST avg points lost best, tie-break HIGHER avg stars, then MORE audits
+  items.sort((a, b) => {
+    if (a.avgPointsLost !== b.avgPointsLost) return a.avgPointsLost - b.avgPointsLost;
+    if (b.avgStars !== a.avgStars) return b.avgStars - a.avgStars;
+    return b.audits - a.audits;
+  });
+
+  return { items };
+}
 
 export default function InternalOsaScorecardPage() {
   const router = useRouter();
@@ -262,84 +346,62 @@ export default function InternalOsaScorecardPage() {
     load();
   }, [fromDate, toDate]);
 
-  // Aggregate by manager using averages over selected date period
-  const managerAgg = useMemo(() => {
-    if (!rows.length) {
-      return {
-        items: [] as ManagerAgg[],
-        debug: {
-          managerKey: null as string | null,
-          plKey: null as string | null,
-          starsKey: null as string | null,
-          shiftDateKey: null as string | null,
-        },
-      };
-    }
+  const debugKeys = useMemo(() => {
+    if (!rows.length)
+      return { managerKey: null, storeKey: null, plKey: null, starsKey: null, shiftDateKey: null };
 
     const managerKey = detectManagerKey(rows);
+    const storeKey = detectStoreKey(rows);
     const plKey = detectPointsLostKey(rows);
     const starsKey = detectStarsKey(rows);
     const shiftDateKey = detectShiftDateKey(rows);
-    const useShiftKey = shiftDateKey || null;
 
-    const bucket: Record<
-      string,
-      { audits: number; pointsLost: number; stars: number[]; last: string | null }
-    > = {};
-
-    for (const r of rows) {
-      const name = cleanName(managerKey ? r[managerKey] : null) || "Unknown";
-
-      const pl = plKey ? toNumber(r[plKey]) : null;
-      if (plKey && pl === null) continue; // skip rows that can't be averaged
-
-      const st = starsKey ? toNumber(r[starsKey]) : null;
-      const stars = st === null ? null : clampStars(st);
-
-      const bestDate =
-        (useShiftKey ? cleanName(r[useShiftKey]) : null) ||
-        cleanName(r.created_at) ||
-        null;
-
-      if (!bucket[name]) bucket[name] = { audits: 0, pointsLost: 0, stars: [], last: null };
-      bucket[name].audits += 1;
-      bucket[name].pointsLost += pl ?? 0;
-      if (stars !== null) bucket[name].stars.push(stars);
-
-      if (!bucket[name].last || (bestDate && bestDate > bucket[name].last!)) {
-        bucket[name].last = bestDate;
-      }
-    }
-
-    const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
-
-    const items: ManagerAgg[] = Object.entries(bucket).map(([name, v]) => {
-      const audits = v.audits || 0;
-      const avgPointsLost = audits ? v.pointsLost / audits : 0;
-      const avgStars = avg(v.stars);
-      return {
-        name,
-        audits,
-        totalPointsLost: v.pointsLost,
-        starsList: v.stars,
-        avgPointsLost,
-        avgStars,
-        lastShiftAt: v.last,
-      };
-    });
-
-    // Rank: LOWEST avg points lost best, tie-break HIGHER avg stars, then MORE audits
-    items.sort((a, b) => {
-      if (a.avgPointsLost !== b.avgPointsLost) return a.avgPointsLost - b.avgPointsLost;
-      if (b.avgStars !== a.avgStars) return b.avgStars - a.avgStars;
-      return b.audits - a.audits;
-    });
-
-    return { items, debug: { managerKey, plKey, starsKey, shiftDateKey } };
+    return { managerKey, storeKey, plKey, starsKey, shiftDateKey };
   }, [rows]);
 
-  const podium = managerAgg.items.slice(0, 3);
-  const table = managerAgg.items;
+  const effectiveDateKey = useMemo(() => {
+    // Use whichever date column exists (prefer shift_date-style)
+    return debugKeys.shiftDateKey || null;
+  }, [debugKeys.shiftDateKey]);
+
+  // Manager agg
+  const managerAgg = useMemo(() => {
+    if (!rows.length)
+      return { items: [] as LeaderAgg[] };
+
+    return buildAgg(
+      rows,
+      debugKeys.managerKey,
+      debugKeys.plKey,
+      debugKeys.starsKey,
+      effectiveDateKey,
+      "Unknown"
+    );
+  }, [rows, debugKeys, effectiveDateKey]);
+
+  // Store agg
+  const storeAgg = useMemo(() => {
+    if (!rows.length)
+      return { items: [] as LeaderAgg[] };
+
+    return buildAgg(
+      rows,
+      debugKeys.storeKey,
+      debugKeys.plKey,
+      debugKeys.starsKey,
+      effectiveDateKey,
+      "Unknown store"
+    );
+  }, [rows, debugKeys, effectiveDateKey]);
+
+  const mgrPodium = managerAgg.items.slice(0, 3);
+  const mgrTable = managerAgg.items;
+
+  const storePodium = storeAgg.items.slice(0, 3);
+  const storeTable = storeAgg.items;
+
+  const showUnknownManagers = mgrTable.some((x) => x.name === "Unknown");
+  const showUnknownStores = storeTable.some((x) => x.name === "Unknown store");
 
   return (
     <main className="wrap">
@@ -351,13 +413,17 @@ export default function InternalOsaScorecardPage() {
       </div>
 
       <div className="shell">
-        {/* ✅ NEW: Home / Back buttons */}
+        {/* Home / Back */}
         <div className="topbar">
           <button className="navbtn" onClick={() => router.back()} type="button">
             ← Back
           </button>
           <div className="topbar-spacer" />
-          <button className="navbtn solid" onClick={() => router.push("/")} type="button">
+          <button
+            className="navbtn solid"
+            onClick={() => router.push("/")}
+            type="button"
+          >
             🏠 Home
           </button>
         </div>
@@ -365,7 +431,7 @@ export default function InternalOsaScorecardPage() {
         <header className="header">
           <h1>Internal OSA Scorecard</h1>
           <p className="subtitle">
-            Manager leaderboard • averages over selected dates • date source:{" "}
+            Averages over selected dates • date source:{" "}
             <b>{dateMode === "shift_date" ? "shift_date" : "created_at"}</b>
           </p>
         </header>
@@ -444,21 +510,36 @@ export default function InternalOsaScorecardPage() {
           <div className="alert muted">Loading results…</div>
         ) : rows.length === 0 ? (
           <div className="alert muted">
-            No results found in <code>osa_internal_results</code> for this date range.
+            No results found in <code>osa_internal_results</code> for this date
+            range.
           </div>
         ) : (
           <>
-            {/* Podium */}
-            <section className="podium">
-              <div className="podium-head">
-                <h2>Top 3 Managers</h2>
-                <p>
-                  Ranked by <b>lowest avg points lost</b> (tie-break: higher avg stars)
-                </p>
+            {/* =========================
+                MANAGER SCORECARD
+            ========================== */}
+            <section className="section">
+              <div className="section-head">
+                <div>
+                  <h2>Manager scorecard</h2>
+                  <p>
+                    Ranked by <b>lowest avg points lost</b> (tie-break: higher avg
+                    stars)
+                  </p>
+                </div>
+                <div className="kpi-mini">
+                  <span className="kpi-chip">
+                    <b>{mgrTable.length}</b> managers
+                  </span>
+                  <span className="kpi-chip">
+                    <b>{rows.length}</b> audits
+                  </span>
+                </div>
               </div>
 
+              {/* Podium */}
               <div className="podium-grid">
-                {podium.map((p, idx) => {
+                {mgrPodium.map((p, idx) => {
                   const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : "🥉";
                   return (
                     <div key={p.name} className={`podium-card rank-${idx + 1}`}>
@@ -466,55 +547,66 @@ export default function InternalOsaScorecardPage() {
                         <span className="medal">{medal}</span>
                         <span className="rank-label">Rank #{idx + 1}</span>
                       </div>
+
                       <div className="podium-name" title={p.name}>
                         {p.name}
                       </div>
+
                       <div className="podium-metrics">
-                        <div>
-                          Avg points lost: <b>{p.avgPointsLost.toFixed(1)}</b>
+                        <div className="metric-row">
+                          <span>Avg points lost</span>
+                          <span className={pillClassFromPointsLost(p.avgPointsLost)}>
+                            {p.avgPointsLost.toFixed(1)}
+                          </span>
                         </div>
-                        <div>
-                          Avg stars: <b>{p.avgStars.toFixed(2)}</b>
+                        <div className="metric-row">
+                          <span>Avg stars</span>
+                          <span className={pillClassFromStars(p.avgStars)}>
+                            {p.avgStars.toFixed(2)}
+                          </span>
                         </div>
-                        <div>
-                          Audits: <b>{p.audits}</b>
+                        <div className="metric-row">
+                          <span>Audits</span>
+                          <b>{p.audits}</b>
                         </div>
-                        <div className="muted">
-                          Latest shift: <b>{formatShiftDateAny(p.lastShiftAt)}</b>
+                        <div className="metric-row muted">
+                          <span>Latest shift</span>
+                          <b>{formatShiftDateAny(p.lastShiftAt)}</b>
                         </div>
                       </div>
                     </div>
                   );
                 })}
               </div>
-            </section>
 
-            {/* Leaderboard */}
-            <section className="board">
-              <div className="board-head">
-                <h2>Leaderboard</h2>
-                <p>All managers in period</p>
-              </div>
-
+              {/* Table */}
               <div className="table-wrap">
                 <table className="table">
                   <thead>
                     <tr>
                       <th style={{ width: 70 }}>Rank</th>
                       <th>Manager</th>
-                      <th style={{ width: 160 }}>Avg Points Lost</th>
+                      <th style={{ width: 170 }}>Avg Points Lost</th>
                       <th style={{ width: 140 }}>Avg Stars</th>
                       <th style={{ width: 100 }}>Audits</th>
                       <th style={{ width: 190 }}>Latest Shift</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {table.map((m, i) => (
+                    {mgrTable.map((m, i) => (
                       <tr key={`${m.name}-${i}`}>
                         <td className="rank">{i + 1}</td>
                         <td className="name">{m.name}</td>
-                        <td className="num">{m.avgPointsLost.toFixed(1)}</td>
-                        <td className="num">{m.avgStars.toFixed(2)}</td>
+                        <td className="num">
+                          <span className={pillClassFromPointsLost(m.avgPointsLost)}>
+                            {m.avgPointsLost.toFixed(1)}
+                          </span>
+                        </td>
+                        <td className="num">
+                          <span className={pillClassFromStars(m.avgStars)}>
+                            {m.avgStars.toFixed(2)}
+                          </span>
+                        </td>
                         <td className="num">{m.audits}</td>
                         <td className="date">{formatShiftDateAny(m.lastShiftAt)}</td>
                       </tr>
@@ -523,13 +615,121 @@ export default function InternalOsaScorecardPage() {
                 </table>
               </div>
 
-              {table.some((x) => x.name === "Unknown") && (
+              {showUnknownManagers && (
                 <div className="debug">
                   Heads-up: some rows have a blank manager field. Detected keys →{" "}
-                  <b>manager:</b> {managerAgg.debug.managerKey || "not found"},{" "}
-                  <b>points lost:</b> {managerAgg.debug.plKey || "not found"},{" "}
-                  <b>stars:</b> {managerAgg.debug.starsKey || "not found"},{" "}
-                  <b>shift date:</b> {managerAgg.debug.shiftDateKey || "not found"}.
+                  <b>manager:</b> {debugKeys.managerKey || "not found"},{" "}
+                  <b>points lost:</b> {debugKeys.plKey || "not found"},{" "}
+                  <b>stars:</b> {debugKeys.starsKey || "not found"},{" "}
+                  <b>shift date:</b> {debugKeys.shiftDateKey || "not found"}.
+                </div>
+              )}
+            </section>
+
+            {/* =========================
+                STORE SCORECARD (NEW)
+            ========================== */}
+            <section className="section">
+              <div className="section-head">
+                <div>
+                  <h2>Store scorecard</h2>
+                  <p>
+                    Ranked by <b>lowest avg points lost</b> (tie-break: higher avg
+                    stars)
+                  </p>
+                </div>
+                <div className="kpi-mini">
+                  <span className="kpi-chip">
+                    <b>{storeTable.length}</b> stores
+                  </span>
+                </div>
+              </div>
+
+              {/* Podium */}
+              <div className="podium-grid">
+                {storePodium.map((p, idx) => {
+                  const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : "🥉";
+                  return (
+                    <div key={p.name} className={`podium-card rank-${idx + 1}`}>
+                      <div className="podium-top">
+                        <span className="medal">{medal}</span>
+                        <span className="rank-label">Rank #{idx + 1}</span>
+                      </div>
+
+                      <div className="podium-name" title={p.name}>
+                        {p.name}
+                      </div>
+
+                      <div className="podium-metrics">
+                        <div className="metric-row">
+                          <span>Avg points lost</span>
+                          <span className={pillClassFromPointsLost(p.avgPointsLost)}>
+                            {p.avgPointsLost.toFixed(1)}
+                          </span>
+                        </div>
+                        <div className="metric-row">
+                          <span>Avg stars</span>
+                          <span className={pillClassFromStars(p.avgStars)}>
+                            {p.avgStars.toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="metric-row">
+                          <span>Audits</span>
+                          <b>{p.audits}</b>
+                        </div>
+                        <div className="metric-row muted">
+                          <span>Latest shift</span>
+                          <b>{formatShiftDateAny(p.lastShiftAt)}</b>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Table */}
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 70 }}>Rank</th>
+                      <th>Store</th>
+                      <th style={{ width: 170 }}>Avg Points Lost</th>
+                      <th style={{ width: 140 }}>Avg Stars</th>
+                      <th style={{ width: 100 }}>Audits</th>
+                      <th style={{ width: 190 }}>Latest Shift</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {storeTable.map((s, i) => (
+                      <tr key={`${s.name}-${i}`}>
+                        <td className="rank">{i + 1}</td>
+                        <td className="name">{s.name}</td>
+                        <td className="num">
+                          <span className={pillClassFromPointsLost(s.avgPointsLost)}>
+                            {s.avgPointsLost.toFixed(1)}
+                          </span>
+                        </td>
+                        <td className="num">
+                          <span className={pillClassFromStars(s.avgStars)}>
+                            {s.avgStars.toFixed(2)}
+                          </span>
+                        </td>
+                        <td className="num">{s.audits}</td>
+                        <td className="date">{formatShiftDateAny(s.lastShiftAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {showUnknownStores && (
+                <div className="debug">
+                  Heads-up: some rows have a blank store field. Detected keys →{" "}
+                  <b>store:</b> {debugKeys.storeKey || "not found"},{" "}
+                  <b>points lost:</b> {debugKeys.plKey || "not found"},{" "}
+                  <b>stars:</b> {debugKeys.starsKey || "not found"},{" "}
+                  <b>shift date:</b> {debugKeys.shiftDateKey || "not found"}.
                 </div>
               )}
             </section>
@@ -551,8 +751,7 @@ export default function InternalOsaScorecardPage() {
 
         .wrap {
           min-height: 100dvh;
-          background:
-            radial-gradient(circle at top, rgba(0, 100, 145, 0.08), transparent 45%),
+          background: radial-gradient(circle at top, rgba(0, 100, 145, 0.08), transparent 45%),
             linear-gradient(180deg, #e3edf4 0%, #f2f5f9 30%, #f2f5f9 100%);
           display: flex;
           flex-direction: column;
@@ -588,7 +787,7 @@ export default function InternalOsaScorecardPage() {
           padding: 18px 22px 26px;
         }
 
-        /* ✅ Top nav */
+        /* Top nav */
         .topbar {
           display: flex;
           align-items: center;
@@ -740,36 +939,58 @@ export default function InternalOsaScorecardPage() {
           color: var(--muted);
         }
 
-        /* Podium */
-        .podium {
+        /* Sections */
+        .section {
           margin-top: 16px;
         }
 
-        .podium-head {
+        .section-head {
           display: flex;
           justify-content: space-between;
           align-items: flex-end;
           gap: 10px;
           margin-bottom: 10px;
+          flex-wrap: wrap;
         }
 
-        .podium-head h2 {
+        .section-head h2 {
           margin: 0;
           font-size: 15px;
           font-weight: 900;
         }
 
-        .podium-head p {
-          margin: 0;
+        .section-head p {
+          margin: 4px 0 0;
           font-size: 12px;
           color: var(--muted);
           font-weight: 800;
         }
 
+        .kpi-mini {
+          display: inline-flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: flex-end;
+        }
+
+        .kpi-chip {
+          font-size: 12px;
+          font-weight: 900;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(0, 100, 145, 0.08);
+          border: 1px solid rgba(0, 100, 145, 0.14);
+          color: #004b75;
+          white-space: nowrap;
+        }
+
+        /* Podium */
         .podium-grid {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 12px;
+          margin-bottom: 12px;
         }
 
         .podium-card {
@@ -810,7 +1031,7 @@ export default function InternalOsaScorecardPage() {
         .podium-name {
           font-size: 16px;
           font-weight: 900;
-          margin-bottom: 6px;
+          margin-bottom: 10px;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -819,38 +1040,53 @@ export default function InternalOsaScorecardPage() {
         .podium-metrics {
           display: flex;
           flex-direction: column;
-          gap: 4px;
+          gap: 8px;
           font-size: 13px;
           color: #334155;
           font-weight: 800;
         }
 
-        /* Table */
-        .board {
-          margin-top: 18px;
-        }
-
-        .board-head {
+        .metric-row {
           display: flex;
           justify-content: space-between;
-          align-items: flex-end;
+          align-items: center;
           gap: 10px;
-          margin-bottom: 10px;
         }
 
-        .board-head h2 {
-          margin: 0;
-          font-size: 15px;
+        /* Pills */
+        .pill {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 76px;
+          padding: 4px 10px;
+          border-radius: 999px;
           font-weight: 900;
+          font-variant-numeric: tabular-nums;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          background: rgba(2, 6, 23, 0.04);
+          color: rgba(15, 23, 42, 0.8);
         }
 
-        .board-head p {
-          margin: 0;
-          font-size: 12px;
-          color: var(--muted);
-          font-weight: 800;
+        .pill.green {
+          background: rgba(34, 197, 94, 0.12);
+          border-color: rgba(34, 197, 94, 0.22);
+          color: #166534;
         }
 
+        .pill.amber {
+          background: rgba(249, 115, 22, 0.12);
+          border-color: rgba(249, 115, 22, 0.22);
+          color: #9a3412;
+        }
+
+        .pill.red {
+          background: rgba(239, 68, 68, 0.12);
+          border-color: rgba(239, 68, 68, 0.22);
+          color: #991b1b;
+        }
+
+        /* Table */
         .table-wrap {
           overflow-x: auto;
           border-radius: 16px;
@@ -919,8 +1155,7 @@ export default function InternalOsaScorecardPage() {
           .podium-grid {
             grid-template-columns: 1fr;
           }
-          .podium-head,
-          .board-head {
+          .section-head {
             flex-direction: column;
             align-items: flex-start;
           }
