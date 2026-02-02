@@ -21,7 +21,7 @@ type Row = {
 
 const STORES = ["Downpatrick", "Kilkeel", "Newcastle", "Ballynahinch"] as const;
 
-type RangeMode = "today" | "this_week" | "custom";
+type RangeMode = "today" | "previous_day" | "this_week" | "custom";
 
 function fmtTime(iso: string) {
   try {
@@ -53,6 +53,12 @@ function startOfTodayLocal() {
 function startOfTomorrowLocal() {
   const d = startOfTodayLocal();
   d.setDate(d.getDate() + 1);
+  return d;
+}
+
+function startOfYesterdayLocal() {
+  const d = startOfTodayLocal();
+  d.setDate(d.getDate() - 1);
   return d;
 }
 
@@ -98,7 +104,7 @@ export default function OsaStandardsCompletionPanel() {
   const [rows, setRows] = React.useState<Row[]>([]);
   const [error, setError] = React.useState<string>("");
 
-  // NEW: Date mode + custom dates
+  // Date mode + custom dates
   const [rangeMode, setRangeMode] = React.useState<RangeMode>("today");
   const [customFrom, setCustomFrom] = React.useState<string>(() =>
     toYYYYMMDDLocal(startOfTodayLocal())
@@ -110,9 +116,23 @@ export default function OsaStandardsCompletionPanel() {
   // Compute current query window (inclusive start, exclusive end)
   const window = React.useMemo(() => {
     if (rangeMode === "today") {
-      const from = startOfTodayLocal().toISOString();
-      const to = startOfTomorrowLocal().toISOString();
-      return { from, to, label: "Today" };
+      const fromD = startOfTodayLocal();
+      const toD = startOfTomorrowLocal();
+      return {
+        from: fromD.toISOString(),
+        to: toD.toISOString(),
+        label: "Today",
+      };
+    }
+
+    if (rangeMode === "previous_day") {
+      const fromD = startOfYesterdayLocal();
+      const toD = startOfTodayLocal();
+      return {
+        from: fromD.toISOString(),
+        to: toD.toISOString(),
+        label: `Previous day (${fmtDateLabel(fromD)})`,
+      };
     }
 
     if (rangeMode === "this_week") {
@@ -213,7 +233,7 @@ export default function OsaStandardsCompletionPanel() {
         </button>
       </div>
 
-      {/* NEW: Range selector */}
+      {/* Range selector */}
       <div className="rangeBar" role="group" aria-label="Date range">
         <div className="chips">
           <button
@@ -223,6 +243,15 @@ export default function OsaStandardsCompletionPanel() {
           >
             Today
           </button>
+
+          <button
+            type="button"
+            className={`chip ${rangeMode === "previous_day" ? "chipActive" : ""}`}
+            onClick={() => setRangeMode("previous_day")}
+          >
+            Previous day
+          </button>
+
           <button
             type="button"
             className={`chip ${rangeMode === "this_week" ? "chipActive" : ""}`}
@@ -230,6 +259,7 @@ export default function OsaStandardsCompletionPanel() {
           >
             This week
           </button>
+
           <button
             type="button"
             className={`chip ${rangeMode === "custom" ? "chipActive" : ""}`}
@@ -356,7 +386,7 @@ export default function OsaStandardsCompletionPanel() {
           border-color: #c7d2fe;
         }
 
-        /* NEW: range controls */
+        /* range controls */
         .rangeBar {
           display: flex;
           justify-content: space-between;
@@ -385,7 +415,8 @@ export default function OsaStandardsCompletionPanel() {
           font-size: 13px;
           cursor: pointer;
           color: #0e1116;
-          transition: transform 0.12s ease, background 0.12s ease, border 0.12s ease;
+          transition: transform 0.12s ease, background 0.12s ease,
+            border 0.12s ease;
         }
 
         .chip:hover {
