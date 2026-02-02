@@ -65,7 +65,8 @@ type Tile = {
   title: string;
   desc: string;
   variant: TileVariant;
-  icon: string; // small glyph in a muted pill, not a big block
+  pill: string;
+  icon: string; // subtle icon in a small dot
   badge?: "NEW" | null;
 };
 
@@ -75,6 +76,7 @@ const TILES: Tile[] = [
     title: "Service Dashboard",
     desc: "Live snapshots, sales, service metrics.",
     variant: "service",
+    pill: "Service",
     icon: "📊",
     badge: null,
   },
@@ -83,6 +85,7 @@ const TILES: Tile[] = [
     title: "Standards Walkthrough",
     desc: "Store readiness + photos + automatic summary.",
     variant: "standards",
+    pill: "Standards",
     icon: "🧾",
     badge: "NEW",
   },
@@ -91,6 +94,7 @@ const TILES: Tile[] = [
     title: "Standards Completion report",
     desc: "Review store performance and submissions.",
     variant: "reports",
+    pill: "Reports",
     icon: "📈",
     badge: "NEW",
   },
@@ -99,6 +103,7 @@ const TILES: Tile[] = [
     title: "Internal OSA Scorecard",
     desc: "Scorecards, results, and rankings.",
     variant: "osa",
+    pill: "OSA",
     icon: "⭐",
     badge: "NEW",
   },
@@ -107,6 +112,7 @@ const TILES: Tile[] = [
     title: "My Profile",
     desc: "Update details & password.",
     variant: "profile",
+    pill: "Account",
     icon: "👤",
     badge: null,
   },
@@ -115,6 +121,7 @@ const TILES: Tile[] = [
     title: "Autumn Deep Clean",
     desc: "Track progress across all stores.",
     variant: "deepclean",
+    pill: "Checklist",
     icon: "🧽",
     badge: null,
   },
@@ -123,6 +130,7 @@ const TILES: Tile[] = [
     title: "Weekly MemoMailer",
     desc: "Latest PDF loaded from Supabase.",
     variant: "memomailer",
+    pill: "MemoMailer",
     icon: "📬",
     badge: null,
   },
@@ -131,6 +139,7 @@ const TILES: Tile[] = [
     title: "Pizza of the Week",
     desc: "Current promo assets for team briefings.",
     variant: "promo",
+    pill: "Promo",
     icon: "🍕",
     badge: null,
   },
@@ -139,6 +148,7 @@ const TILES: Tile[] = [
     title: "Admin",
     desc: "Manage ticker, service uploads, memomailer.",
     variant: "admin",
+    pill: "Admin",
     icon: "⚙️",
     badge: null,
   },
@@ -184,6 +194,31 @@ export default function HubPage() {
     if (c === "ops") return "#F59E0B";
     if (c === "warning") return "#7C3AED";
     return "#ffffff";
+  };
+
+  const accent = (variant: TileVariant) => {
+    switch (variant) {
+      case "service":
+        return { ring: "rgba(0,100,145,.22)", soft: "rgba(0,100,145,.08)", solid: "#006491" };
+      case "standards":
+        return { ring: "rgba(22,163,74,.22)", soft: "rgba(22,163,74,.09)", solid: "#16A34A" };
+      case "reports":
+        return { ring: "rgba(245,158,11,.22)", soft: "rgba(245,158,11,.10)", solid: "#F59E0B" };
+      case "osa":
+        return { ring: "rgba(124,58,237,.22)", soft: "rgba(124,58,237,.10)", solid: "#7C3AED" };
+      case "profile":
+        return { ring: "rgba(14,165,233,.22)", soft: "rgba(14,165,233,.10)", solid: "#0EA5E9" };
+      case "deepclean":
+        return { ring: "rgba(34,197,94,.22)", soft: "rgba(34,197,94,.10)", solid: "#22C55E" };
+      case "memomailer":
+        return { ring: "rgba(239,68,68,.22)", soft: "rgba(239,68,68,.10)", solid: "#EF4444" };
+      case "promo":
+        return { ring: "rgba(227,24,55,.22)", soft: "rgba(227,24,55,.10)", solid: "#E31837" };
+      case "admin":
+        return { ring: "rgba(15,23,42,.22)", soft: "rgba(15,23,42,.08)", solid: "#0F172A" };
+      default:
+        return { ring: "rgba(0,100,145,.22)", soft: "rgba(0,100,145,.08)", solid: "#006491" };
+    }
   };
 
   // Load ticker
@@ -371,7 +406,7 @@ export default function HubPage() {
       return bucket;
     };
 
-    const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+    const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
 
     const rB = makeBucket(recent);
     const pB = makeBucket(prev);
@@ -422,31 +457,6 @@ export default function HubPage() {
       window.location.href = "/login";
     } catch (e) {
       console.error(e);
-    }
-  };
-
-  const accentFor = (variant: TileVariant) => {
-    switch (variant) {
-      case "service":
-        return "linear-gradient(180deg, #006491 0%, #004b75 100%)";
-      case "standards":
-        return "linear-gradient(180deg, #16a34a 0%, #166534 100%)";
-      case "reports":
-        return "linear-gradient(180deg, #f59e0b 0%, #b45309 100%)";
-      case "osa":
-        return "linear-gradient(180deg, #7c3aed 0%, #4c1d95 100%)";
-      case "profile":
-        return "linear-gradient(180deg, #0ea5e9 0%, #0369a1 100%)";
-      case "deepclean":
-        return "linear-gradient(180deg, #22c55e 0%, #15803d 100%)";
-      case "memomailer":
-        return "linear-gradient(180deg, #ef4444 0%, #991b1b 100%)";
-      case "promo":
-        return "linear-gradient(180deg, #e31837 0%, #8a1020 100%)";
-      case "admin":
-        return "linear-gradient(180deg, #0f172a 0%, #334155 100%)";
-      default:
-        return "linear-gradient(180deg, #006491 0%, #004b75 100%)";
     }
   };
 
@@ -596,37 +606,47 @@ export default function HubPage() {
           </button>
         </div>
 
-        {/* ✅ Modern, integrated tiles */}
-        <section className="tileGrid" aria-label="Hub navigation">
-          {TILES.map((t) => (
-            <Link
-              key={t.href}
-              href={t.href}
-              className="tile"
-              data-variant={t.variant}
-              style={{ ["--accent" as any]: accentFor(t.variant) }}
-            >
-              <div className="tileHead">
-                <span className="tileIcon" aria-hidden="true">
-                  {t.icon}
-                </span>
-                <div className="tileTitleWrap">
-                  <div className="tileTitleRow">
-                    <h2 className="tileTitle">{t.title}</h2>
-                    {t.badge ? <span className="tileBadge">{t.badge}</span> : null}
+        {/* ✅ Dashboard-style tiles (same look as highlight cards) */}
+        <section className="dashTiles" aria-label="Hub navigation tiles">
+          {TILES.map((t) => {
+            const a = accent(t.variant);
+            return (
+              <Link
+                key={t.href}
+                href={t.href}
+                className="dashTile"
+                style={
+                  {
+                    ["--ring" as any]: a.ring,
+                    ["--soft" as any]: a.soft,
+                    ["--solid" as any]: a.solid,
+                  } as React.CSSProperties
+                }
+              >
+                <div className="dashTileTop">
+                  <span className="dashTileTitle">{t.title}</span>
+                  <div className="dashTileBadges">
+                    <span className="dashTilePill">{t.pill}</span>
+                    {t.badge ? <span className="dashTileNew">{t.badge}</span> : null}
                   </div>
-                  <p className="tileDesc">{t.desc}</p>
                 </div>
-              </div>
 
-              <div className="tileFoot">
-                <span className="tileMeta">Open</span>
-                <span className="tileChevron" aria-hidden="true">
-                  →
-                </span>
-              </div>
-            </Link>
-          ))}
+                <div className="dashTileBody">
+                  <span className="dashTileIcon" aria-hidden="true">
+                    {t.icon}
+                  </span>
+                  <p className="dashTileDesc">{t.desc}</p>
+                </div>
+
+                <div className="dashTileFoot">
+                  <span className="dashTileOpen">Open</span>
+                  <span className="dashTileChevron" aria-hidden="true">
+                    →
+                  </span>
+                </div>
+              </Link>
+            );
+          })}
         </section>
 
         <div className="status-bottom" aria-label="Data status">
@@ -668,7 +688,6 @@ export default function HubPage() {
           --text: #0f172a;
           --muted: #64748b;
           --brand: #006491;
-          --brand-dark: #004b75;
           --shadow-card: 0 16px 40px rgba(0, 0, 0, 0.05);
         }
 
@@ -931,167 +950,163 @@ export default function HubPage() {
             0 12px 26px rgba(2, 6, 23, 0.08);
         }
 
-        /* ✅ New integrated tile grid */
-        .tileGrid {
+        /* ✅ Dashboard-like navigation tiles */
+        .dashTiles {
           margin-top: 6px;
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+          grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 12px;
         }
 
-        .tile {
-          --accent: linear-gradient(180deg, #006491, #004b75);
+        @media (max-width: 980px) {
+          .dashTiles {
+            grid-template-columns: 1fr;
+          }
+          .highlights-grid {
+            grid-template-columns: 1fr;
+          }
+          .highlights-head {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+        }
+
+        .dashTile {
           text-decoration: none;
           color: inherit;
 
-          background: rgba(255, 255, 255, 0.9);
-          border: 1px solid rgba(15, 23, 42, 0.08);
+          background: rgba(255, 255, 255, 0.92);
           border-radius: 16px;
-          box-shadow: 0 10px 22px rgba(2, 6, 23, 0.06);
+          border: 1px solid rgba(0, 100, 145, 0.14);
+          box-shadow: 0 12px 28px rgba(2, 6, 23, 0.05);
+          padding: 12px 14px;
 
-          padding: 14px 14px 12px;
           display: flex;
           flex-direction: column;
           gap: 10px;
-
-          position: relative;
-          overflow: hidden;
 
           transition: transform 0.14s ease, box-shadow 0.14s ease,
             border-color 0.14s ease, background 0.14s ease;
         }
 
-        /* subtle accent stripe (not loud) */
-        .tile::before {
-          content: "";
-          position: absolute;
-          left: 0;
-          top: 10px;
-          bottom: 10px;
-          width: 4px;
-          border-radius: 999px;
-          background: var(--accent);
-          opacity: 0.9;
-        }
-
-        /* soft highlight */
-        .tile::after {
-          content: "";
-          position: absolute;
-          inset: 0;
-          background: radial-gradient(
-            900px 260px at 15% 0%,
-            rgba(0, 100, 145, 0.08),
-            transparent 55%
-          );
-          pointer-events: none;
-        }
-
-        .tile:hover {
+        .dashTile:hover {
           transform: translateY(-2px);
-          border-color: rgba(0, 100, 145, 0.18);
-          background: rgba(255, 255, 255, 0.96);
+          border-color: rgba(0, 100, 145, 0.22);
+          background: rgba(255, 255, 255, 0.98);
           box-shadow: 0 16px 34px rgba(2, 6, 23, 0.09);
         }
 
-        .tile:focus-visible {
+        .dashTile:focus-visible {
           outline: none;
-          box-shadow: 0 0 0 4px rgba(0, 100, 145, 0.22),
-            0 16px 34px rgba(2, 6, 23, 0.09);
+          box-shadow: 0 0 0 4px var(--ring), 0 16px 34px rgba(2, 6, 23, 0.09);
           border-color: rgba(0, 100, 145, 0.28);
         }
 
-        .tileHead {
-          display: grid;
-          grid-template-columns: 34px 1fr;
+        .dashTileTop {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
           gap: 10px;
-          align-items: start;
-          padding-left: 6px; /* room for accent */
-          position: relative;
-          z-index: 1;
         }
 
-        .tileIcon {
-          width: 34px;
-          height: 34px;
-          border-radius: 12px;
+        .dashTileTitle {
+          font-size: 12px;
+          font-weight: 900;
+          color: #0f172a;
+          letter-spacing: 0.02em;
+          text-transform: uppercase;
+        }
+
+        .dashTileBadges {
+          display: inline-flex;
+          gap: 8px;
+          align-items: center;
+        }
+
+        .dashTilePill {
+          font-size: 11px;
+          font-weight: 800;
+          padding: 4px 10px;
+          border-radius: 999px;
+          background: var(--soft);
+          border: 1px solid rgba(15, 23, 42, 0.06);
+          color: #0f172a;
+          white-space: nowrap;
+        }
+
+        .dashTileNew {
+          font-size: 11px;
+          font-weight: 900;
+          padding: 4px 10px;
+          border-radius: 999px;
+          background: rgba(0, 100, 145, 0.1);
+          border: 1px solid rgba(0, 100, 145, 0.16);
+          color: #004b75;
+          white-space: nowrap;
+        }
+
+        .dashTileBody {
+          display: flex;
+          gap: 10px;
+          align-items: flex-start;
+        }
+
+        .dashTileIcon {
+          width: 28px;
+          height: 28px;
+          border-radius: 999px;
           display: grid;
           place-items: center;
           background: rgba(2, 6, 23, 0.04);
           border: 1px solid rgba(15, 23, 42, 0.06);
-          font-size: 16px;
+          flex: 0 0 28px;
+          font-size: 14px;
         }
 
-        .tileTitleRow {
-          display: flex;
-          gap: 10px;
-          align-items: center;
-          justify-content: space-between;
-        }
-
-        .tileTitle {
+        .dashTileDesc {
           margin: 0;
-          font-size: 15px;
-          font-weight: 900;
-          letter-spacing: -0.01em;
-          color: #0f172a;
-          line-height: 1.2;
-        }
-
-        .tileDesc {
-          margin: 6px 0 0;
           font-size: 13px;
-          font-weight: 700;
-          color: #64748b;
+          color: #334155;
+          font-weight: 800;
           line-height: 1.35;
         }
 
-        .tileBadge {
-          flex: 0 0 auto;
-          font-size: 11px;
-          font-weight: 900;
-          letter-spacing: 0.02em;
-          padding: 4px 9px;
-          border-radius: 999px;
-          background: rgba(0, 100, 145, 0.1);
-          border: 1px solid rgba(0, 100, 145, 0.18);
-          color: #004b75;
-        }
-
-        .tileFoot {
+        .dashTileFoot {
           display: flex;
-          align-items: center;
           justify-content: space-between;
-          padding-left: 6px;
-          position: relative;
-          z-index: 1;
+          align-items: center;
+          border-top: 1px solid rgba(15, 23, 42, 0.06);
+          padding-top: 10px;
+          margin-top: 2px;
         }
 
-        .tileMeta {
+        .dashTileOpen {
           font-size: 12px;
           font-weight: 800;
-          color: rgba(15, 23, 42, 0.7);
+          color: #475569;
           padding: 6px 10px;
           border-radius: 999px;
           background: rgba(2, 6, 23, 0.03);
           border: 1px solid rgba(15, 23, 42, 0.06);
         }
 
-        .tileChevron {
+        .dashTileChevron {
           width: 30px;
           height: 30px;
           border-radius: 999px;
           display: grid;
           place-items: center;
           font-weight: 900;
-          color: rgba(0, 75, 117, 0.9);
-          background: rgba(0, 100, 145, 0.08);
-          border: 1px solid rgba(0, 100, 145, 0.12);
-          transition: transform 0.14s ease;
+          color: #0f172a;
+          background: rgba(2, 6, 23, 0.04);
+          border: 1px solid rgba(15, 23, 42, 0.06);
+          transition: transform 0.14s ease, background 0.14s ease, border-color 0.14s ease;
         }
 
-        .tile:hover .tileChevron {
+        .dashTile:hover .dashTileChevron {
           transform: translateX(2px);
+          background: var(--soft);
+          border-color: rgba(0, 100, 145, 0.14);
         }
 
         .status-bottom {
@@ -1178,20 +1193,6 @@ export default function HubPage() {
           font-size: 0.8rem;
         }
 
-        @media (max-width: 980px) {
-          .highlights-grid {
-            grid-template-columns: 1fr;
-          }
-          .highlights-head {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-          .status-bottom-head {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-        }
-
         @media (max-width: 720px) {
           .shell {
             padding: 24px 16px 28px;
@@ -1201,9 +1202,6 @@ export default function HubPage() {
           }
           .purpose-bar {
             border-radius: 14px;
-          }
-          .tileGrid {
-            grid-template-columns: 1fr;
           }
         }
       `}</style>
