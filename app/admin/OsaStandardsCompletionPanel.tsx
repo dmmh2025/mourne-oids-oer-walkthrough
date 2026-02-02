@@ -21,7 +21,7 @@ type Row = {
 
 const STORES = ["Downpatrick", "Kilkeel", "Newcastle", "Ballynahinch"] as const;
 
-type RangeMode = "today" | "previous_day" | "this_week" | "custom";
+type DateRange = "today" | "yesterday" | "wtd" | "custom";
 
 function fmtTime(iso: string) {
   try {
@@ -32,51 +32,8 @@ function fmtTime(iso: string) {
   }
 }
 
-function fmtDateLabel(d: Date) {
-  try {
-    return d.toLocaleDateString("en-GB", {
-      weekday: "short",
-      day: "2-digit",
-      month: "short",
-    });
-  } catch {
-    return "";
-  }
-}
-
-function startOfTodayLocal() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function startOfTomorrowLocal() {
-  const d = startOfTodayLocal();
-  d.setDate(d.getDate() + 1);
-  return d;
-}
-
-function startOfYesterdayLocal() {
-  const d = startOfTodayLocal();
-  d.setDate(d.getDate() - 1);
-  return d;
-}
-
-// Monday 00:00 local (week starts Monday)
-function startOfThisWeekLocal() {
-  const now = new Date();
-  const d = new Date(now);
-  d.setHours(0, 0, 0, 0);
-  const day = d.getDay(); // 0=Sun..6=Sat
-  const diff = (day + 6) % 7; // days since Monday
-  d.setDate(d.getDate() - diff);
-  return d;
-}
-
-function startOfNextWeekLocal() {
-  const d = startOfThisWeekLocal();
-  d.setDate(d.getDate() + 7);
-  return d;
+function isYYYYMMDD(v: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(v);
 }
 
 function toYYYYMMDDLocal(d: Date) {
@@ -86,17 +43,45 @@ function toYYYYMMDDLocal(d: Date) {
   return `${y}-${m}-${da}`;
 }
 
-// Turn YYYY-MM-DD (local) into ISO boundaries that work with timestamptz
+// convert local YYYY-MM-DD to ISO boundary (timestamptz-safe)
 function startOfLocalDateISO(yyyyMMdd: string) {
+  if (!isYYYYMMDD(yyyyMMdd)) return new Date().toISOString();
   const [y, m, d] = yyyyMMdd.split("-").map(Number);
   const dt = new Date(y, (m || 1) - 1, d || 1, 0, 0, 0, 0);
   return dt.toISOString();
 }
 function startOfNextLocalDateISO(yyyyMMdd: string) {
+  if (!isYYYYMMDD(yyyyMMdd)) return new Date().toISOString();
   const [y, m, d] = yyyyMMdd.split("-").map(Number);
   const dt = new Date(y, (m || 1) - 1, d || 1, 0, 0, 0, 0);
   dt.setDate(dt.getDate() + 1);
   return dt.toISOString();
+}
+
+function startOfTodayLocal() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// Monday 00:00 local (week starts Monday)
+function startOfWeekLocal(d: Date) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  const day = x.getDay(); // 0=Sun..6=Sat
+  const diff = (day + 6) % 7; // days since Monday
+  x.setDate(x.getDate() - diff);
+  return x;
+}
+
+function formatShortDate(yyyyMMdd: string) {
+  try {
+    if (!isYYYYMMDD(yyyyMMdd)) return "—";
+    const d = new Date(yyyyMMdd + "T00:00:00");
+    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  } catch {
+    return "—";
+  }
 }
 
 export default function OsaStandardsCompletionPanel() {
@@ -104,60 +89,73 @@ export default function OsaStandardsCompletionPanel() {
   const [rows, setRows] = React.useState<Row[]>([]);
   const [error, setError] = React.useState<string>("");
 
-  // Date mode + custom dates
-  const [rangeMode, setRangeMode] = React.useState<RangeMode>("today");
-  const [customFrom, setCustomFrom] = React.useState<string>(() =>
-    toYYYYMMDDLocal(startOfTodayLocal())
-  );
-  const [customTo, setCustomTo] = React.useState<string>(() =>
-    toYYYYMMDDLocal(startOfTodayLocal())
-  );
+  // Dashboard-style date range controls
+  const [dateRange, setDateRange] = React.useState<DateRange>("wtd");
+  const [customFrom, setCustomFrom] = React.useState<string>(() => {
+    const d = startOfTodayLocal();
+    d.setDate(d.getDate() - 7);
+    return toYYYYMMDDLocal(d);
+  });
+  const [customTo, setCustomTo] = React.useState<string>(() => toYYYYMMDDLocal(startOfTodayLocal()));
 
-  // Compute current query window (inclusive start, exclusive end)
   const window = React.useMemo(() => {
-    if (rangeMode === "today") {
-      const fromD = startOfTodayLocal();
-      const toD = startOfTomorrowLocal();
+    const now = new Date();
+
+    if (dateRange === "today") {
+      const from = startOfTodayLocal();
+      const to = new Date(from);
+      to.setDate(to.getDate() + 1);
       return {
-        from: fromD.toISOString(),
-        to: toD.toISOString(),
+        fromISO: from.toISOString(),
+        toISO: to.toISOString(),
         label: "Today",
+        fromLabel: toYYYYMMDDLocal(from),
+        toLabel: toYYYYMMDDLocal(from),
       };
     }
 
-    if (rangeMode === "previous_day") {
-      const fromD = startOfYesterdayLocal();
-      const toD = startOfTodayLocal();
+    if (dateRange === "yesterday") {
+      const to = startOfTodayLocal();
+      const from = new Date(to);
+      from.setDate(from.getDate() - 1);
       return {
-        from: fromD.toISOString(),
-        to: toD.toISOString(),
-        label: `Previous day (${fmtDateLabel(fromD)})`,
+        fromISO: from.toISOString(),
+        toISO: to.toISOString(),
+        label: "Yesterday",
+        fromLabel: toYYYYMMDDLocal(from),
+        toLabel: toYYYYMMDDLocal(from),
       };
     }
 
-    if (rangeMode === "this_week") {
-      const fromD = startOfThisWeekLocal();
-      const toD = startOfNextWeekLocal();
+    if (dateRange === "wtd") {
+      const monday = startOfWeekLocal(now);
+      const to = new Date(now);
+      // make "to" exclusive boundary = start of tomorrow local
+      const toExcl = startOfTodayLocal();
+      toExcl.setDate(toExcl.getDate() + 1);
+
       return {
-        from: fromD.toISOString(),
-        to: toD.toISOString(),
-        label: `This week (${fmtDateLabel(fromD)} → ${fmtDateLabel(
-          new Date(toD.getTime() - 1)
-        )})`,
+        fromISO: monday.toISOString(),
+        toISO: toExcl.toISOString(),
+        label: "Week to date",
+        fromLabel: toYYYYMMDDLocal(monday),
+        toLabel: toYYYYMMDDLocal(now),
       };
     }
 
-    // custom (inclusive dates)
-    const from = startOfLocalDateISO(customFrom);
-    const to = startOfNextLocalDateISO(customTo);
+    // custom (inclusive end day)
+    const fromISO = startOfLocalDateISO(customFrom);
+    const toISO = startOfNextLocalDateISO(customTo);
     return {
-      from,
-      to,
-      label: `Custom (${customFrom} → ${customTo})`,
+      fromISO,
+      toISO,
+      label: "Custom",
+      fromLabel: customFrom,
+      toLabel: customTo,
     };
-  }, [rangeMode, customFrom, customTo]);
+  }, [dateRange, customFrom, customTo]);
 
-  async function load() {
+  const load = React.useCallback(async () => {
     try {
       setError("");
       setLoading(true);
@@ -166,15 +164,12 @@ export default function OsaStandardsCompletionPanel() {
 
       const { data, error } = await supabase
         .from("osa_standards_walkthroughs")
-        .select(
-          "store, walkthrough_type, completed_at, completed_by, is_admin_override"
-        )
-        .gte("completed_at", window.from)
-        .lt("completed_at", window.to)
+        .select("store, walkthrough_type, completed_at, completed_by, is_admin_override")
+        .gte("completed_at", window.fromISO)
+        .lt("completed_at", window.toISO)
         .order("completed_at", { ascending: false });
 
       if (error) throw error;
-
       setRows((data || []) as Row[]);
     } catch (e: any) {
       setError(e?.message || "Failed to load status");
@@ -182,14 +177,13 @@ export default function OsaStandardsCompletionPanel() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [window.fromISO, window.toISO]);
 
   React.useEffect(() => {
     load();
-    const t = setInterval(load, 60_000); // refresh every minute
+    const t = setInterval(load, 60_000);
     return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [window.from, window.to]);
+  }, [load]);
 
   // Build per-store status (latest entry in range for each type)
   const byStore = React.useMemo(() => {
@@ -206,11 +200,8 @@ export default function OsaStandardsCompletionPanel() {
 
     for (const r of rows) {
       if (!map[r.store]) map[r.store] = {};
-
       const slot = r.walkthrough_type === "pre_open" ? "pre_open" : "handover";
-
-      // rows are ordered newest first, so first hit is latest
-      if (!map[r.store][slot]) map[r.store][slot] = r;
+      if (!map[r.store][slot]) map[r.store][slot] = r; // newest first
       if (!map[r.store].last) map[r.store].last = r;
     }
 
@@ -219,83 +210,98 @@ export default function OsaStandardsCompletionPanel() {
 
   const badge = (ok: boolean) => (ok ? "🟢 Complete" : "🔴 Missing");
 
+  const periodLabel = React.useMemo(() => {
+    if (dateRange === "custom") {
+      return `Custom (${formatShortDate(window.fromLabel)} → ${formatShortDate(window.toLabel)})`;
+    }
+    if (dateRange === "wtd") {
+      return `Week to date (${formatShortDate(window.fromLabel)} → ${formatShortDate(window.toLabel)})`;
+    }
+    return window.label;
+  }, [dateRange, window.fromLabel, window.toLabel, window.label]);
+
   return (
     <div className="osaCard">
-      <div className="osaHeader">
-        <div>
-          <div className="osaTitle">OSA Standards Walkthrough — {window.label}</div>
-          <div className="osaSub">
-            Completion tracker for <b>Pre-Open</b> and <b>Handover</b>.
+      {/* DASHBOARD-STYLE FILTER PANEL */}
+      <div className="filters-panel card soft">
+        <div className="filters-block">
+          <p className="filters-title">Period</p>
+          <div className="filters">
+            <button
+              type="button"
+              onClick={() => setDateRange("today")}
+              className={`chip small ${dateRange === "today" ? "chip--active" : ""}`}
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => setDateRange("yesterday")}
+              className={`chip small ${dateRange === "yesterday" ? "chip--active" : ""}`}
+            >
+              Previous day
+            </button>
+            <button
+              type="button"
+              onClick={() => setDateRange("wtd")}
+              className={`chip small ${dateRange === "wtd" ? "chip--active" : ""}`}
+            >
+              This week
+            </button>
+            <button
+              type="button"
+              onClick={() => setDateRange("custom")}
+              className={`chip small ${dateRange === "custom" ? "chip--active" : ""}`}
+            >
+              Custom
+            </button>
           </div>
         </div>
-        <button className="osaBtn" type="button" onClick={load}>
-          Refresh
-        </button>
-      </div>
 
-      {/* Range selector */}
-      <div className="rangeBar" role="group" aria-label="Date range">
-        <div className="chips">
-          <button
-            type="button"
-            className={`chip ${rangeMode === "today" ? "chipActive" : ""}`}
-            onClick={() => setRangeMode("today")}
-          >
-            Today
-          </button>
-
-          <button
-            type="button"
-            className={`chip ${rangeMode === "previous_day" ? "chipActive" : ""}`}
-            onClick={() => setRangeMode("previous_day")}
-          >
-            Previous day
-          </button>
-
-          <button
-            type="button"
-            className={`chip ${rangeMode === "this_week" ? "chipActive" : ""}`}
-            onClick={() => setRangeMode("this_week")}
-          >
-            This week
-          </button>
-
-          <button
-            type="button"
-            className={`chip ${rangeMode === "custom" ? "chipActive" : ""}`}
-            onClick={() => setRangeMode("custom")}
-          >
-            Custom
-          </button>
-        </div>
-
-        {rangeMode === "custom" && (
-          <div className="customDates">
-            <label className="field">
-              <span>From</span>
+        {dateRange === "custom" && (
+          <div className="custom-row">
+            <div className="date-field">
+              <label>From</label>
               <input
                 type="date"
                 value={customFrom}
-                max={customTo}
                 onChange={(e) => setCustomFrom(e.target.value)}
+                max={customTo}
               />
-            </label>
-
-            <label className="field">
-              <span>To</span>
+            </div>
+            <div className="date-field">
+              <label>To</label>
               <input
                 type="date"
                 value={customTo}
-                min={customFrom}
                 onChange={(e) => setCustomTo(e.target.value)}
+                min={customFrom}
               />
-            </label>
-
-            <button className="osaBtn secondary" type="button" onClick={load}>
+            </div>
+            <button className="btn btn--brand" type="button" onClick={load}>
               Apply
             </button>
           </div>
         )}
+
+        <div className="filters-block" style={{ marginLeft: "auto" as any }}>
+          <p className="filters-title">Actions</p>
+          <div className="filters">
+            <button className="btn btn--ghost" type="button" onClick={load}>
+              Refresh
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* HEADER */}
+      <div className="osaHeader">
+        <div>
+          <div className="osaTitle">OSA Standards Walkthrough</div>
+          <div className="osaSub">
+            {periodLabel} • Completion tracker for <b>Pre-Open</b> and <b>Handover</b>.
+          </div>
+        </div>
       </div>
 
       {error && <div className="osaError">Error: {error}</div>}
@@ -335,9 +341,7 @@ export default function OsaStandardsCompletionPanel() {
                     {last
                       ? `${last.walkthrough_type === "pre_open" ? "Pre-Open" : "Handover"} · ${fmtTime(
                           last.completed_at
-                        )} · ${last.completed_by}${
-                          last.is_admin_override ? " (override)" : ""
-                        }`
+                        )} · ${last.completed_by}${last.is_admin_override ? " (override)" : ""}`
                       : "No submissions in this period"}
                   </span>
                 </div>
@@ -348,110 +352,176 @@ export default function OsaStandardsCompletionPanel() {
       )}
 
       <style jsx>{`
+        :root {
+          --bg: #f2f5f9;
+          --paper: #ffffff;
+          --text: #0f172a;
+          --muted: #475569;
+          --brand: #006491;
+          --brand-dark: #004b75;
+          --shadow-card: 0 10px 18px rgba(2, 6, 23, 0.08), 0 1px 3px rgba(2, 6, 23, 0.06);
+          --border: rgba(15, 23, 42, 0.06);
+        }
+
         .osaCard {
           border: 1px solid #e5e7eb;
-          border-radius: 14px;
+          border-radius: 18px;
           padding: 14px;
-          background: #fff;
-          box-shadow: 0 10px 18px rgba(2, 6, 23, 0.06),
-            0 1px 3px rgba(2, 6, 23, 0.06);
+          background: rgba(255, 255, 255, 0.65);
+          backdrop-filter: blur(6px);
+          box-shadow: var(--shadow-card);
           margin: 14px 0;
         }
-        .osaHeader {
+
+        /* Dashboard-style filters */
+        .card {
+          background: #fff;
+          border-radius: 18px;
+          box-shadow: var(--shadow-card);
+          border: 1px solid rgba(0, 0, 0, 0.02);
+        }
+        .card.soft {
+          box-shadow: none;
+          background: rgba(255, 255, 255, 0.6);
+          border: 1px solid rgba(0, 0, 0, 0.04);
+        }
+
+        .filters-panel {
           display: flex;
-          align-items: flex-start;
+          gap: 24px;
+          align-items: center;
           justify-content: space-between;
-          gap: 10px;
+          padding: 12px 14px;
+          flex-wrap: wrap;
           margin-bottom: 10px;
         }
-        .osaTitle {
-          font-weight: 900;
-          font-size: 16px;
-          color: #0e1116;
-        }
-        .osaSub {
-          margin-top: 2px;
-          font-size: 13px;
-          color: #4b5563;
-        }
-        .osaBtn {
-          background: #fff;
-          border: 2px solid #d7dbe3;
-          padding: 8px 12px;
-          border-radius: 12px;
-          font-weight: 800;
-          cursor: pointer;
-        }
-        .osaBtn.secondary {
-          border-color: #c7d2fe;
-        }
 
-        /* range controls */
-        .rangeBar {
+        .filters-block {
           display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 10px;
-          flex-wrap: wrap;
-          margin: 6px 0 10px;
-          padding: 10px 12px;
-          border-radius: 14px;
-          border: 1px solid #e5e7eb;
-          background: linear-gradient(180deg, #ffffff, #f8fbff);
+          flex-direction: column;
+          gap: 6px;
         }
 
-        .chips {
+        .filters-title {
+          font-size: 12px;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          color: var(--muted);
+          font-weight: 700;
+          margin: 0;
+        }
+
+        .filters {
           display: flex;
           gap: 8px;
           flex-wrap: wrap;
         }
 
         .chip {
-          border: 1px solid rgba(0, 0, 0, 0.06);
           background: #fff;
+          border: 1px solid rgba(0, 0, 0, 0.03);
           border-radius: 999px;
-          padding: 7px 12px;
-          font-weight: 900;
+          padding: 6px 14px;
           font-size: 13px;
+          font-weight: 800;
+          color: #0f172a;
           cursor: pointer;
-          color: #0e1116;
-          transition: transform 0.12s ease, background 0.12s ease,
-            border 0.12s ease;
+          transition: 0.15s ease;
+        }
+        .chip.small {
+          padding: 5px 11px;
+          font-size: 12px;
+        }
+        .chip--active {
+          background: var(--brand);
+          color: #fff;
+          border-color: #004b75;
+          box-shadow: 0 6px 10px rgba(0, 100, 145, 0.26);
         }
 
-        .chip:hover {
-          transform: translateY(-1px);
-          border-color: rgba(0, 100, 145, 0.25);
-        }
-
-        .chipActive {
-          background: rgba(0, 100, 145, 0.1);
-          border-color: rgba(0, 100, 145, 0.25);
-          color: #004b75;
-        }
-
-        .customDates {
+        .custom-row {
           display: flex;
-          gap: 10px;
+          gap: 12px;
           align-items: flex-end;
           flex-wrap: wrap;
         }
 
-        .field {
-          display: grid;
+        .date-field {
+          display: flex;
+          flex-direction: column;
           gap: 4px;
-          font-size: 12px;
-          font-weight: 900;
-          color: #334155;
         }
 
-        input[type="date"] {
-          border: 1px solid #cbd5e1;
+        .date-field label {
+          font-size: 12px;
+          color: var(--muted);
+          font-weight: 700;
+        }
+
+        .date-field input {
+          border: 1px solid rgba(15, 23, 42, 0.12);
           border-radius: 10px;
-          padding: 7px 9px;
+          padding: 6px 8px;
           font-size: 13px;
-          font-weight: 800;
+          font-weight: 700;
           background: #fff;
+        }
+
+        .btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          text-align: center;
+          padding: 10px 14px;
+          border-radius: 14px;
+          font-weight: 900;
+          font-size: 14px;
+          text-decoration: none;
+          border: 2px solid transparent;
+          transition: background 0.2s, transform 0.1s;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+
+        .btn--brand {
+          background: var(--brand);
+          border-color: var(--brand-dark);
+          color: #fff;
+        }
+        .btn--brand:hover {
+          background: var(--brand-dark);
+          transform: translateY(-1px);
+        }
+
+        .btn--ghost {
+          background: #fff;
+          border-color: rgba(0, 0, 0, 0.04);
+          color: #0f172a;
+        }
+        .btn--ghost:hover {
+          border-color: rgba(0, 100, 145, 0.25);
+          transform: translateY(-1px);
+        }
+
+        .osaHeader {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 6px;
+        }
+
+        .osaTitle {
+          font-weight: 900;
+          font-size: 16px;
+          color: #0e1116;
+        }
+
+        .osaSub {
+          margin-top: 2px;
+          font-size: 13px;
+          color: #4b5563;
+          font-weight: 700;
         }
 
         .osaError {
@@ -460,14 +530,16 @@ export default function OsaStandardsCompletionPanel() {
           color: #9f1239;
           padding: 10px 12px;
           border-radius: 12px;
-          font-weight: 700;
+          font-weight: 800;
           margin: 8px 0;
         }
+
         .osaLoading {
           color: #4b5563;
           padding: 10px 2px;
-          font-weight: 700;
+          font-weight: 800;
         }
+
         .osaGrid {
           display: grid;
           gap: 12px;
@@ -482,17 +554,20 @@ export default function OsaStandardsCompletionPanel() {
             grid-template-columns: repeat(3, minmax(0, 1fr));
           }
         }
+
         .osaTile {
           border: 1px solid #e5e7eb;
           border-radius: 14px;
           padding: 12px;
           background: linear-gradient(180deg, #ffffff, #f8fbff);
         }
+
         .osaStore {
           font-weight: 900;
           margin-bottom: 8px;
           color: #0e1116;
         }
+
         .osaRow {
           display: grid;
           grid-template-columns: 90px 1fr;
@@ -505,6 +580,7 @@ export default function OsaStandardsCompletionPanel() {
           border-top: none;
           padding-top: 0;
         }
+
         .osaKey {
           font-weight: 800;
           color: #0e1116;
@@ -519,6 +595,7 @@ export default function OsaStandardsCompletionPanel() {
           font-size: 12px;
           font-weight: 700;
         }
+
         .osaFooter {
           margin-top: 10px;
           border-top: 1px solid #edf0f5;
@@ -533,6 +610,12 @@ export default function OsaStandardsCompletionPanel() {
         }
         .osaFootVal {
           color: #4b5563;
+        }
+
+        @media (max-width: 720px) {
+          .filters-panel {
+            gap: 12px;
+          }
         }
       `}</style>
     </div>
