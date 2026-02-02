@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { useRouter } from "next/navigation";
 
 const supabase =
   typeof window !== "undefined"
@@ -168,6 +169,8 @@ const formatShiftDateAny = (v: any) => {
 };
 
 export default function InternalOsaScorecardPage() {
+  const router = useRouter();
+
   const todayISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const defaultFromISO = useMemo(() => {
     const d = new Date();
@@ -199,13 +202,12 @@ export default function InternalOsaScorecardPage() {
       setError(null);
 
       try {
-        // For inclusive end date:
-        // We build an exclusive upper bound = next day at 00:00
+        // inclusive end -> exclusive next day
         const toNext = new Date(toDate + "T00:00:00.000Z");
         toNext.setDate(toNext.getDate() + 1);
         const toNextISODate = toNext.toISOString().slice(0, 10);
 
-        // --- Attempt 1: filter by shift_date (date or timestamp) ---
+        // Attempt 1: shift_date
         const attemptShift = await supabase
           .from("osa_internal_results")
           .select("*")
@@ -220,7 +222,7 @@ export default function InternalOsaScorecardPage() {
           return;
         }
 
-        // If the error is about missing column, fall back; otherwise bubble
+        // Fall back only if shift_date missing
         const msg = attemptShift.error.message || "";
         const looksLikeMissingShiftDate =
           msg.toLowerCase().includes("shift_date") &&
@@ -232,7 +234,7 @@ export default function InternalOsaScorecardPage() {
           throw attemptShift.error;
         }
 
-        // --- Attempt 2: filter by created_at ---
+        // Attempt 2: created_at
         const fromIso = new Date(fromDate + "T00:00:00.000Z").toISOString();
         const toExclusiveIso = new Date(toDate + "T00:00:00.000Z");
         toExclusiveIso.setDate(toExclusiveIso.getDate() + 1);
@@ -261,7 +263,6 @@ export default function InternalOsaScorecardPage() {
   }, [fromDate, toDate]);
 
   // Aggregate by manager using averages over selected date period
-  // "Shift date" in output uses shift_date if available, else created_at.
   const managerAgg = useMemo(() => {
     if (!rows.length) {
       return {
@@ -278,7 +279,7 @@ export default function InternalOsaScorecardPage() {
     const managerKey = detectManagerKey(rows);
     const plKey = detectPointsLostKey(rows);
     const starsKey = detectStarsKey(rows);
-    const shiftDateKey = detectShiftDateKey(rows); // for display + lastShiftAt
+    const shiftDateKey = detectShiftDateKey(rows);
     const useShiftKey = shiftDateKey || null;
 
     const bucket: Record<
@@ -290,13 +291,11 @@ export default function InternalOsaScorecardPage() {
       const name = cleanName(managerKey ? r[managerKey] : null) || "Unknown";
 
       const pl = plKey ? toNumber(r[plKey]) : null;
-      // keep averages honest: if points lost exists but is null, skip the row
-      if (plKey && pl === null) continue;
+      if (plKey && pl === null) continue; // skip rows that can't be averaged
 
       const st = starsKey ? toNumber(r[starsKey]) : null;
       const stars = st === null ? null : clampStars(st);
 
-      // Prefer shift_date (or similar) for "audit date", else created_at
       const bestDate =
         (useShiftKey ? cleanName(r[useShiftKey]) : null) ||
         cleanName(r.created_at) ||
@@ -307,7 +306,6 @@ export default function InternalOsaScorecardPage() {
       bucket[name].pointsLost += pl ?? 0;
       if (stars !== null) bucket[name].stars.push(stars);
 
-      // last date comparison - string compare works for ISO + YYYY-MM-DD
       if (!bucket[name].last || (bestDate && bestDate > bucket[name].last!)) {
         bucket[name].last = bestDate;
       }
@@ -353,6 +351,17 @@ export default function InternalOsaScorecardPage() {
       </div>
 
       <div className="shell">
+        {/* ✅ NEW: Home / Back buttons */}
+        <div className="topbar">
+          <button className="navbtn" onClick={() => router.back()} type="button">
+            ← Back
+          </button>
+          <div className="topbar-spacer" />
+          <button className="navbtn solid" onClick={() => router.push("/")} type="button">
+            🏠 Home
+          </button>
+        </div>
+
         <header className="header">
           <h1>Internal OSA Scorecard</h1>
           <p className="subtitle">
@@ -514,7 +523,6 @@ export default function InternalOsaScorecardPage() {
                 </table>
               </div>
 
-              {/* Debug helper if Unknown appears */}
               {table.some((x) => x.name === "Unknown") && (
                 <div className="debug">
                   Heads-up: some rows have a blank manager field. Detected keys →{" "}
@@ -577,7 +585,48 @@ export default function InternalOsaScorecardPage() {
           border: 1px solid rgba(255, 255, 255, 0.22);
           border-radius: 1.5rem;
           box-shadow: var(--shadow);
-          padding: 26px 22px 26px;
+          padding: 18px 22px 26px;
+        }
+
+        /* ✅ Top nav */
+        .topbar {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+
+        .topbar-spacer {
+          flex: 1;
+        }
+
+        .navbtn {
+          border-radius: 14px;
+          border: 2px solid var(--brand);
+          background: #fff;
+          color: var(--brand);
+          font-weight: 900;
+          font-size: 14px;
+          padding: 8px 12px;
+          cursor: pointer;
+          box-shadow: 0 6px 14px rgba(0, 100, 145, 0.12);
+          transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+        }
+
+        .navbtn:hover {
+          background: var(--brand);
+          color: #fff;
+          transform: translateY(-1px);
+        }
+
+        .navbtn.solid {
+          background: var(--brand);
+          color: #fff;
+        }
+
+        .navbtn.solid:hover {
+          background: #004b75;
+          border-color: #004b75;
         }
 
         .header {
