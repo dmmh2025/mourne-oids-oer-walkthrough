@@ -16,7 +16,6 @@ type ShiftRow = {
   day_name: string | null;
   store: string;
 
-  // legacy / may still exist in table
   forecast_sales: number | null;
   actual_sales: number | null;
 
@@ -26,6 +25,9 @@ type ShiftRow = {
   opening_manager: string | null;
   closing_manager: string | null;
 
+  // newer schema sometimes uses this
+  manager?: string | null;
+
   instores_scheduled: number | null;
   actual_instores: number | null;
   drivers_scheduled: number | null;
@@ -33,7 +35,6 @@ type ShiftRow = {
 
   dot_pct: number | null;
 
-  // assumed to represent "Extremes >40 mins %"
   extremes_pct: number | null;
 
   sbr_pct: number | null;
@@ -55,11 +56,27 @@ export default function ServiceDashboardPage() {
 
   const normalisePct = (v: number | null) => {
     if (v == null) return null;
+    if (!Number.isFinite(v)) return null;
     return v > 1 ? v / 100 : v; // accept 78 or 0.78
   };
 
+  // ✅ Return null if no values (prevents weird blanks / NaN propagation)
   const avg = (arr: number[]) =>
-    arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+    arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+
+  // ✅ Prefer proper manager name chain (fixes "Unknown")
+  const getManagerName = (r: ShiftRow) => {
+    const c = (r.closing_manager || "").trim();
+    if (c) return c;
+
+    const m = ((r as any).manager || "").trim();
+    if (m) return m;
+
+    const o = (r.opening_manager || "").trim();
+    if (o) return o;
+
+    return "Unknown";
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -164,7 +181,7 @@ export default function ServiceDashboardPage() {
       const ext = normalisePct(r.extremes_pct);
       if (ext != null) extVals.push(ext);
 
-      if (typeof r.additional_hours === "number" && !Number.isNaN(r.additional_hours)) {
+      if (typeof r.additional_hours === "number" && Number.isFinite(r.additional_hours)) {
         totalAddHours += r.additional_hours;
       }
     }
@@ -179,20 +196,8 @@ export default function ServiceDashboardPage() {
 
   // STORE OVERVIEW (rank by DOT desc, Labour asc)
   const storeData = useMemo(() => {
-    return STORES.map((storeName) => {
+    const out = STORES.map((storeName) => {
       const rowsForStore = dateFilteredRows.filter((r) => r.store === storeName);
-
-      if (rowsForStore.length === 0) {
-        return {
-          store: storeName,
-          avgLabour: 0,
-          avgDOT: 0,
-          avgRnL: 0,
-          avgExtremes: 0,
-          totalAddHours: 0,
-          shifts: 0,
-        };
-      }
 
       const lab: number[] = [];
       const dot: number[] = [];
@@ -207,10 +212,10 @@ export default function ServiceDashboardPage() {
 
         if (l != null) lab.push(l);
         if (d != null) dot.push(d);
-        if (typeof r.rnl_minutes === "number" && !Number.isNaN(r.rnl_minutes)) rnl.push(r.rnl_minutes);
+        if (typeof r.rnl_minutes === "number" && Number.isFinite(r.rnl_minutes)) rnl.push(r.rnl_minutes);
         if (e != null) ext.push(e);
 
-        if (typeof r.additional_hours === "number" && !Number.isNaN(r.additional_hours)) {
+        if (typeof r.additional_hours === "number" && Number.isFinite(r.additional_hours)) {
           totalAddHours += r.additional_hours;
         }
       }
@@ -222,20 +227,28 @@ export default function ServiceDashboardPage() {
         avgRnL: avg(rnl),
         avgExtremes: avg(ext),
         totalAddHours,
-        shifts: rowsForStore.length,
       };
-    }).sort((a, b) => {
-      if (b.avgDOT !== a.avgDOT) return b.avgDOT - a.avgDOT; // higher DOT first
-      return a.avgLabour - b.avgLabour; // lower labour wins ties
     });
+
+    // rank: higher DOT first, tie-break lower labour
+    out.sort((a, b) => {
+      const aDot = a.avgDOT ?? -1;
+      const bDot = b.avgDOT ?? -1;
+      if (bDot !== aDot) return bDot - aDot;
+
+      const aLab = a.avgLabour ?? 999;
+      const bLab = b.avgLabour ?? 999;
+      return aLab - bLab;
+    });
+
+    return out;
   }, [dateFilteredRows]);
 
-  // MANAGER OVERVIEW (rank by DOT desc, Labour asc) — uses closing_manager
+  // MANAGER OVERVIEW (rank by DOT desc, Labour asc)
   const managerData = useMemo(() => {
     const bucket: Record<
       string,
       {
-        shifts: number;
         labour: number[];
         dot: number[];
         rnl: number[];
@@ -245,10 +258,10 @@ export default function ServiceDashboardPage() {
     > = {};
 
     for (const r of filteredRows) {
-      const name = (r.closing_manager || "Unknown").trim() || "Unknown";
+      const name = getManagerName(r);
+
       if (!bucket[name]) {
         bucket[name] = {
-          shifts: 0,
           labour: [],
           dot: [],
           rnl: [],
@@ -257,25 +270,22 @@ export default function ServiceDashboardPage() {
         };
       }
 
-      bucket[name].shifts += 1;
-
       const l = normalisePct(r.labour_pct);
       const d = normalisePct(r.dot_pct);
       const e = normalisePct(r.extremes_pct);
 
       if (l != null) bucket[name].labour.push(l);
       if (d != null) bucket[name].dot.push(d);
-      if (typeof r.rnl_minutes === "number" && !Number.isNaN(r.rnl_minutes)) bucket[name].rnl.push(r.rnl_minutes);
+      if (typeof r.rnl_minutes === "number" && Number.isFinite(r.rnl_minutes)) bucket[name].rnl.push(r.rnl_minutes);
       if (e != null) bucket[name].ext.push(e);
 
-      if (typeof r.additional_hours === "number" && !Number.isNaN(r.additional_hours)) {
+      if (typeof r.additional_hours === "number" && Number.isFinite(r.additional_hours)) {
         bucket[name].totalAddHours += r.additional_hours;
       }
     }
 
     const arr = Object.entries(bucket).map(([name, v]) => ({
       name,
-      shifts: v.shifts,
       avgLabour: avg(v.labour),
       avgDOT: avg(v.dot),
       avgRnL: avg(v.rnl),
@@ -284,8 +294,13 @@ export default function ServiceDashboardPage() {
     }));
 
     arr.sort((a, b) => {
-      if (b.avgDOT !== a.avgDOT) return b.avgDOT - a.avgDOT;
-      return a.avgLabour - b.avgLabour;
+      const aDot = a.avgDOT ?? -1;
+      const bDot = b.avgDOT ?? -1;
+      if (bDot !== aDot) return bDot - aDot;
+
+      const aLab = a.avgLabour ?? 999;
+      const bLab = b.avgLabour ?? 999;
+      return aLab - bLab;
     });
 
     return arr;
@@ -307,9 +322,12 @@ export default function ServiceDashboardPage() {
       : "Custom";
 
   const formatPct = (v: number | null, dp = 1) =>
-    v == null ? "—" : (v * 100).toFixed(dp) + "%";
+    v == null || !Number.isFinite(v) ? "—" : (v * 100).toFixed(dp) + "%";
 
   const formatHours = (n: number) => (Number.isFinite(n) ? n.toFixed(1) : "0.0");
+
+  const formatMinutes = (v: number | null, dp = 1) =>
+    v == null || !Number.isFinite(v) ? "—" : v.toFixed(dp) + "m";
 
   return (
     <main className="wrap">
@@ -348,9 +366,7 @@ export default function ServiceDashboardPage() {
             <div className="filters">
               <button
                 onClick={() => setSelectedStore("all")}
-                className={`chip ${
-                  selectedStore === "all" ? "chip--active" : ""
-                }`}
+                className={`chip ${selectedStore === "all" ? "chip--active" : ""}`}
               >
                 All stores
               </button>
@@ -358,9 +374,7 @@ export default function ServiceDashboardPage() {
                 <button
                   key={s}
                   onClick={() => setSelectedStore(s)}
-                  className={`chip ${
-                    selectedStore === s ? "chip--active" : ""
-                  }`}
+                  className={`chip ${selectedStore === s ? "chip--active" : ""}`}
                 >
                   {s}
                 </button>
@@ -373,9 +387,7 @@ export default function ServiceDashboardPage() {
             <div className="filters">
               <button
                 onClick={() => setDateRange("yesterday")}
-                className={`chip small ${
-                  dateRange === "yesterday" ? "chip--active" : ""
-                }`}
+                className={`chip small ${dateRange === "yesterday" ? "chip--active" : ""}`}
               >
                 Yesterday
               </button>
@@ -399,9 +411,7 @@ export default function ServiceDashboardPage() {
               </button>
               <button
                 onClick={() => setDateRange("custom")}
-                className={`chip small ${
-                  dateRange === "custom" ? "chip--active" : ""
-                }`}
+                className={`chip small ${dateRange === "custom" ? "chip--active" : ""}`}
               >
                 Custom
               </button>
@@ -447,35 +457,35 @@ export default function ServiceDashboardPage() {
             <div className="kpi-grid">
               <div
                 className={`card kpi ${
-                  areaKpis.avgDOT >= 0.8
+                  (areaKpis.avgDOT ?? 0) >= 0.8
                     ? "kpi--green"
-                    : areaKpis.avgDOT >= 0.75
+                    : (areaKpis.avgDOT ?? 0) >= 0.75
                     ? "kpi--amber"
                     : "kpi--red"
                 }`}
               >
                 <p className="kpi-title">Avg DOT %</p>
-                <p className="kpi-value">{formatPct(areaKpis.avgDOT, 0)}</p>
+                <p className="kpi-value">{formatPct(areaKpis.avgDOT, 1)}</p>
                 <p className="kpi-sub">Higher is better</p>
               </div>
 
               <div
                 className={`card kpi ${
-                  areaKpis.avgLabour <= 0.25
+                  (areaKpis.avgLabour ?? 999) <= 0.25
                     ? "kpi--green"
-                    : areaKpis.avgLabour <= 0.28
+                    : (areaKpis.avgLabour ?? 999) <= 0.28
                     ? "kpi--amber"
                     : "kpi--red"
                 }`}
               >
                 <p className="kpi-title">Avg Labour %</p>
-                <p className="kpi-value">{formatPct(areaKpis.avgLabour, 1)}</p>
+                <p className="kpi-value">{formatPct(areaKpis.avgLabour, 2)}</p>
                 <p className="kpi-sub">Lower is better</p>
               </div>
 
               <div className="card kpi">
                 <p className="kpi-title">Avg Extremes &gt;40 %</p>
-                <p className="kpi-value">{formatPct(areaKpis.avgExtremes, 1)}</p>
+                <p className="kpi-value">{formatPct(areaKpis.avgExtremes, 2)}</p>
                 <p className="kpi-sub">Lower is better</p>
               </div>
 
@@ -489,9 +499,7 @@ export default function ServiceDashboardPage() {
             {/* STORE OVERVIEW */}
             <div className="section-head mt">
               <h2>Store overview</h2>
-              <p className="section-sub">
-                {periodLabel} • ranked by DOT then labour
-              </p>
+              <p className="section-sub">{periodLabel} • ranked by DOT then labour</p>
             </div>
 
             <div className="store-grid">
@@ -507,38 +515,34 @@ export default function ServiceDashboardPage() {
 
                     <span
                       className={`pill ${
-                        st.avgDOT >= 0.8
+                        (st.avgDOT ?? 0) >= 0.8
                           ? "pill--green"
-                          : st.avgDOT >= 0.75
+                          : (st.avgDOT ?? 0) >= 0.75
                           ? "pill--amber"
                           : "pill--red"
                       }`}
                       title="Average DOT"
                     >
-                      {Math.round(st.avgDOT * 100)}% DOT
+                      {formatPct(st.avgDOT, 1)} DOT
                     </span>
                   </div>
 
                   <div className="store-rows">
                     <p className="metric">
                       <span>Avg Labour</span>
-                      <strong>{formatPct(st.avgLabour, 1)}</strong>
+                      <strong>{formatPct(st.avgLabour, 2)}</strong>
                     </p>
                     <p className="metric">
                       <span>Avg R&amp;L</span>
-                      <strong>{st.avgRnL ? st.avgRnL.toFixed(1) + "m" : "—"}</strong>
+                      <strong>{formatMinutes(st.avgRnL, 2)}</strong>
                     </p>
                     <p className="metric">
                       <span>Avg Extremes &gt;40</span>
-                      <strong>{formatPct(st.avgExtremes, 1)}</strong>
+                      <strong>{formatPct(st.avgExtremes, 2)}</strong>
                     </p>
                     <p className="metric">
                       <span>Additional hours</span>
                       <strong>{formatHours(st.totalAddHours)}</strong>
-                    </p>
-                    <p className="metric">
-                      <span>Shifts</span>
-                      <strong>{st.shifts}</strong>
                     </p>
                   </div>
                 </div>
@@ -548,9 +552,7 @@ export default function ServiceDashboardPage() {
             {/* MANAGER OVERVIEW */}
             <div className="section-head mt">
               <h2>Manager overview</h2>
-              <p className="section-sub">
-                {periodLabel} • ranked by DOT then labour
-              </p>
+              <p className="section-sub">{periodLabel} • ranked by DOT then labour</p>
             </div>
 
             <div className="manager-grid">
@@ -565,7 +567,7 @@ export default function ServiceDashboardPage() {
                 </div>
               ) : (
                 managerData.map((mgr, idx) => (
-                  <div key={mgr.name} className="card store-card">
+                  <div key={`${mgr.name}-${idx}`} className="card store-card">
                     <div className="store-card__header">
                       <div className="store-card__title">
                         <span className="rank-badge" title="Rank">
@@ -576,38 +578,34 @@ export default function ServiceDashboardPage() {
 
                       <span
                         className={`pill ${
-                          mgr.avgDOT >= 0.8
+                          (mgr.avgDOT ?? 0) >= 0.8
                             ? "pill--green"
-                            : mgr.avgDOT >= 0.75
+                            : (mgr.avgDOT ?? 0) >= 0.75
                             ? "pill--amber"
                             : "pill--red"
                         }`}
                         title="Average DOT"
                       >
-                        {Math.round(mgr.avgDOT * 100)}% DOT
+                        {formatPct(mgr.avgDOT, 1)} DOT
                       </span>
                     </div>
 
                     <div className="store-rows">
                       <p className="metric">
                         <span>Avg Labour</span>
-                        <strong>{formatPct(mgr.avgLabour, 1)}</strong>
+                        <strong>{formatPct(mgr.avgLabour, 2)}</strong>
                       </p>
                       <p className="metric">
                         <span>Avg R&amp;L</span>
-                        <strong>{mgr.avgRnL ? mgr.avgRnL.toFixed(1) + "m" : "—"}</strong>
+                        <strong>{formatMinutes(mgr.avgRnL, 2)}</strong>
                       </p>
                       <p className="metric">
                         <span>Avg Extremes &gt;40</span>
-                        <strong>{formatPct(mgr.avgExtremes, 1)}</strong>
+                        <strong>{formatPct(mgr.avgExtremes, 2)}</strong>
                       </p>
                       <p className="metric">
                         <span>Additional hours</span>
                         <strong>{formatHours(mgr.totalAddHours)}</strong>
-                      </p>
-                      <p className="metric">
-                        <span>Shifts</span>
-                        <strong>{mgr.shifts}</strong>
                       </p>
                     </div>
                   </div>
@@ -623,7 +621,7 @@ export default function ServiceDashboardPage() {
         <p>© 2025 Mourne-oids | Domino’s Pizza | Racz Group</p>
       </footer>
 
-      {/* styles */}
+      {/* styles (unchanged) */}
       <style jsx>{`
         :root {
           --bg: #f2f5f9;
