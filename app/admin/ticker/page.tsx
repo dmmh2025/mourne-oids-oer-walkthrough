@@ -358,7 +358,7 @@ export default function AdminPage() {
       starting_points: starting,
       points_lost: lost,
       overall_points: overall,
-      stars,
+      star_rating,
       is_elite: osaElite,
     };
 
