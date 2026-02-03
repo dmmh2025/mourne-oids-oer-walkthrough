@@ -352,7 +352,7 @@ export default function AdminPage() {
     setOsaSaving(true);
 
     const payload = {
-      osa_date: osaDate,
+      shift_date: osaDate,
       team_member_name: osaTeamMember.trim(),
       store: osaStore,
       starting_points: starting,
