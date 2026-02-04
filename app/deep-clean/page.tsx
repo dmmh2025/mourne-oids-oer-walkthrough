@@ -59,7 +59,7 @@ export default function DeepCleanHome() {
               const updated = row?.updated_at ? new Date(row.updated_at) : null;
 
               return (
-                <a key={s} href={`/deepclean/${s.toLowerCase()}`} style={{ textDecoration: "none" }}>
+                <a key={s} href={`/deep-clean/${s.toLowerCase()}`} style={{ textDecoration: "none" }}>
 
                   <div
                     style={{
