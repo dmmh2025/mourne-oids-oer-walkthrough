@@ -8,7 +8,7 @@ type Item = { label: string; done: boolean; by: string; photos: any[] };
 type Section = { title: string; items: Item[] };
 type Row = { store: string; items: Section[]; updated_at?: string };
 
-const STORES = ["Downpatrick", "Kilkeel", "Newcastle"] as const;
+const STORES = ["Ballynahinch" "Downpatrick", "Kilkeel", "Newcastle"] as const;
 
 function calcPct(items: Section[] | null | undefined) {
   if (!items) return 0;
@@ -59,7 +59,8 @@ export default function DeepCleanHome() {
               const updated = row?.updated_at ? new Date(row.updated_at) : null;
 
               return (
-                <a key={s} href={`/deep-clean/${s.toLowerCase()}`} style={{ textDecoration: "none" }}>
+                <a key={s} href={`/deepclean/${s.toLowerCase()}`} style={{ textDecoration: "none" }}>
+
                   <div
                     style={{
                       border: "1px solid var(--softline)",
