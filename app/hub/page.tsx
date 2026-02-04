@@ -131,7 +131,7 @@ const TILES: Tile[] = [
   },
   {
     href: "/deep-clean",
-    title: "Autumn Deep Clean",
+    title: "Deep Clean",
     desc: "Track progress across all stores.",
     variant: "deepclean",
     pill: "Checklist",
