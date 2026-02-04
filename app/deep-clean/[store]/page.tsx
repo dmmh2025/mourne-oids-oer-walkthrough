@@ -34,8 +34,8 @@ function calcPct(sections: Section[] | null | undefined) {
   return total ? Math.round((done / total) * 100) : 0;
 }
 
-/* ================= FULL AUTUMN DEEP CLEAN CHECKLIST =================
-   Content taken from your “Mourne-oids autumn deep clean checklist”
+/* ================= FULL DEEP CLEAN CHECKLIST =================
+   Content taken from your “Mourne-oids deep clean checklist”
    document. (Blank lines removed.)  :contentReference[oaicite:1]{index=1}
 ==================================================================== */
 const DEFAULT_CHECKLIST: Section[] = [
@@ -380,7 +380,7 @@ export default function DeepCleanStorePage({
       </div>
 
       <section className="container">
-        <h1>{storeName} · Autumn Deep Clean</h1>
+        <h1>{storeName} · Deep Clean</h1>
 
         {loading ? (
           <div className="card">Loading…</div>
