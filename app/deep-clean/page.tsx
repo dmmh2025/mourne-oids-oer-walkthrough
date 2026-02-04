@@ -8,7 +8,7 @@ type Item = { label: string; done: boolean; by: string; photos: any[] };
 type Section = { title: string; items: Item[] };
 type Row = { store: string; items: Section[]; updated_at?: string };
 
-const STORES = ["Ballynahinch" "Downpatrick", "Kilkeel", "Newcastle"] as const;
+const STORES = ["Ballynahinch", "Downpatrick", "Kilkeel", "Newcastle"] as const;
 
 function calcPct(items: Section[] | null | undefined) {
   if (!items) return 0;
