@@ -54,7 +54,7 @@ type TileVariant =
   | "standards"
   | "reports"
   | "osa"
-  | "cost" // ✅ NEW
+  | "costcontrols" // ✅ ADDED
   | "profile"
   | "deepclean"
   | "memomailer"
@@ -109,12 +109,12 @@ const TILES: Tile[] = [
     badge: "NEW",
   },
 
-  // ✅ NEW TILE: Cost Controls
+  // ✅ ADDED: Cost Controls tile
   {
     href: "/cost-controls",
     title: "Cost Controls",
-    desc: "Food variance + labour control, trends and rankings.",
-    variant: "cost",
+    desc: "Labour + food variance trends and rankings.",
+    variant: "costcontrols",
     pill: "Costs",
     icon: "💷",
     badge: "NEW",
@@ -178,9 +178,9 @@ function accent(variant: TileVariant) {
     case "osa":
       return { a: "#7C3AED", b: "#4C1D95" };
 
-    // ✅ NEW ACCENT: Cost Controls (premium “money” tone)
-    case "cost":
-      return { a: "#0F766E", b: "#065F46" }; // teal → deep green
+    // ✅ ADDED: Cost Controls accent
+    case "costcontrols":
+      return { a: "#0F766E", b: "#065F46" };
 
     case "profile":
       return { a: "#0EA5E9", b: "#0369A1" };
@@ -531,7 +531,9 @@ export default function HubPage() {
       <div className="shell">
         <header className="header">
           <h1>Mourne-oids Hub</h1>
-          <p className="subtitle">“Climbing New Peaks, One Shift at a Time.” ⛰️🍕</p>
+          <p className="subtitle">
+            “Climbing New Peaks, One Shift at a Time.” ⛰️🍕
+          </p>
 
           <div className="purpose-bar" role="note">
             One source of truth for service, standards, and leadership.
@@ -554,7 +556,6 @@ export default function HubPage() {
               </div>
             ) : (
               <div className="highlights-grid">
-                {/* unchanged highlights cards... */}
                 <div className="highlight-card">
                   <div className="highlight-top">
                     <span className="highlight-title">🏆 Top Store</span>
@@ -571,7 +572,9 @@ export default function HubPage() {
                       </span>
                       <span>
                         Labour:{" "}
-                        <b>{topStore ? formatPct(topStore.avgLabour, 1) : "—"}</b>
+                        <b>
+                          {topStore ? formatPct(topStore.avgLabour, 1) : "—"}
+                        </b>
                       </span>
                       <span>
                         Shifts: <b>{topStore ? topStore.shifts : "—"}</b>
@@ -621,8 +624,7 @@ export default function HubPage() {
                         DOT uplift:{" "}
                         <b>
                           {mostImprovedStore
-                            ? (mostImprovedStore.dotDelta * 100).toFixed(1) +
-                              "pp"
+                            ? (mostImprovedStore.dotDelta * 100).toFixed(1) + "pp"
                             : "—"}
                         </b>
                       </span>
@@ -656,19 +658,48 @@ export default function HubPage() {
           </button>
         </div>
 
-        <section className="grid" aria-label="Hub navigation">
-          {TILES.map((t) => (
-            <Link href={t.href} key={t.href} className="card-link" data-variant={t.variant}>
-              <div className="card-link__icon">{t.icon}</div>
-              <div className="card-link__body">
-                <h2>
-                  {t.title} {t.badge ? <span className="badge">{t.badge}</span> : null}
-                </h2>
-                <p>{t.desc}</p>
-              </div>
-              <div className="card-link__chevron">›</div>
-            </Link>
-          ))}
+        {/* ✅ Touchscreen-style panels */}
+        <section className="panelGrid" aria-label="Hub navigation panels">
+          {TILES.map((t) => {
+            const a = accent(t.variant);
+            return (
+              <Link
+                key={t.href}
+                href={t.href}
+                className="panelBtn"
+                style={
+                  {
+                    ["--a" as any]: a.a,
+                    ["--b" as any]: a.b,
+                  } as React.CSSProperties
+                }
+              >
+                <div className="panelTop">
+                  <div className="panelLeft">
+                    <span className="panelIcon" aria-hidden="true">
+                      {t.icon}
+                    </span>
+                    <div className="panelTitles">
+                      <div className="panelTitle">{t.title}</div>
+                      <div className="panelDesc">{t.desc}</div>
+                    </div>
+                  </div>
+
+                  <div className="panelBadges">
+                    <span className="panelPill">{t.pill}</span>
+                    {t.badge ? <span className="panelNew">{t.badge}</span> : null}
+                  </div>
+                </div>
+
+                <div className="panelFoot">
+                  <span className="panelHint">Tap to open</span>
+                  <span className="panelChevron" aria-hidden="true">
+                    →
+                  </span>
+                </div>
+              </Link>
+            );
+          })}
         </section>
 
         <div className="status-bottom" aria-label="Data status">
@@ -709,20 +740,11 @@ export default function HubPage() {
         <p>© 2025 Mourne-oids | Domino’s Pizza | Racz Group</p>
       </footer>
 
-      {/* NOTE: your existing styles continue below unchanged.
-         I’m leaving them as-is to avoid breaking your current design.
-         If you want the Cost Controls tile to have its own accent bar,
-         we can add a data-variant="cost" style block too. */}
-
       <style jsx>{`
         :root {
-          --bg: #0f172a;
-          --paper: rgba(255, 255, 255, 0.08);
-          --paper-solid: #ffffff;
           --text: #0f172a;
-          --muted: #475569;
+          --muted: #64748b;
           --brand: #006491;
-          --brand-dark: #004b75;
           --shadow-card: 0 16px 40px rgba(0, 0, 0, 0.05);
         }
 
@@ -757,88 +779,602 @@ export default function HubPage() {
           display: block;
         }
 
-        /* (rest of your existing CSS stays unchanged) */
-        .grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-          gap: 14px;
+        .ticker-shell {
+          width: min(1100px, 94vw);
+          margin-top: 16px;
+          background: linear-gradient(90deg, #006491 0%, #004b75 100%);
+          border-radius: 9999px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          overflow: hidden;
+          box-shadow: 0 15px 30px rgba(0, 0, 0, 0.06);
         }
 
-        .card-link {
-          position: relative;
-          display: flex;
-          gap: 14px;
-          align-items: center;
-
-          background: rgba(255, 255, 255, 0.92);
-          border-radius: 18px;
-          text-decoration: none;
-
-          padding: 16px 16px;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          box-shadow: 0 10px 22px rgba(2, 6, 23, 0.06),
-            0 1px 0 rgba(255, 255, 255, 0.65) inset;
-
-          transition: transform 0.14s ease, box-shadow 0.14s ease,
-            border-color 0.14s ease, background 0.14s ease;
+        .ticker-inner {
+          white-space: nowrap;
           overflow: hidden;
         }
 
-        .card-link::after {
-          content: "";
-          position: absolute;
-          left: 0;
-          top: 10px;
-          bottom: 10px;
-          width: 6px;
-          border-radius: 999px;
-          background: rgba(0, 100, 145, 0.3);
-          box-shadow: 0 8px 16px rgba(2, 6, 23, 0.08);
+        .ticker {
+          display: inline-block;
+          animation: scroll 30s linear infinite;
+          padding: 9px 0;
         }
 
-        .card-link[data-variant="service"]::after {
-          background: linear-gradient(180deg, #006491 0%, #004b75 100%);
-        }
-        .card-link[data-variant="standards"]::after {
-          background: linear-gradient(180deg, #16a34a 0%, #166534 100%);
-        }
-        .card-link[data-variant="reports"]::after {
-          background: linear-gradient(180deg, #f59e0b 0%, #b45309 100%);
-        }
-        .card-link[data-variant="osa"]::after {
-          background: linear-gradient(180deg, #7c3aed 0%, #4c1d95 100%);
+        .ticker-shell:hover .ticker {
+          animation-play-state: paused;
         }
 
-        /* ✅ NEW: cost controls accent */
-        .card-link[data-variant="cost"]::after {
-          background: linear-gradient(180deg, #0f766e 0%, #065f46 100%);
+        .ticker-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.6rem;
+          padding: 0 1.8rem;
+          font-weight: 700;
+          font-size: 0.9rem;
+          color: #fff;
         }
 
-        .card-link[data-variant="profile"]::after {
-          background: linear-gradient(180deg, #0ea5e9 0%, #0369a1 100%);
-        }
-        .card-link[data-variant="deepclean"]::after {
-          background: linear-gradient(180deg, #22c55e 0%, #15803d 100%);
-        }
-        .card-link[data-variant="memomailer"]::after {
-          background: linear-gradient(180deg, #ef4444 0%, #991b1b 100%);
-        }
-        .card-link[data-variant="promo"]::after {
-          background: linear-gradient(180deg, #e31837 0%, #8a1020 100%);
-        }
-        .card-link[data-variant="admin"]::after {
-          background: linear-gradient(180deg, #0f172a 0%, #334155 100%);
+        .ticker-item.error {
+          color: #fee2e2;
         }
 
-        .badge {
-          margin-left: 8px;
-          font-size: 11px;
+        .cat-pill {
+          width: 12px;
+          height: 20px;
+          border-radius: 8px;
+          box-shadow: 0 0 10px rgba(0, 0, 0, 0.25);
+        }
+
+        .separator {
+          opacity: 0.45;
+        }
+
+        @keyframes scroll {
+          0% {
+            transform: translateX(100%);
+          }
+          100% {
+            transform: translateX(-100%);
+          }
+        }
+
+        .shell {
+          width: min(1100px, 94vw);
+          margin-top: 26px;
+          background: rgba(255, 255, 255, 0.55);
+          backdrop-filter: saturate(160%) blur(6px);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 1.5rem;
+          box-shadow: var(--shadow-card);
+          padding: 30px 26px 34px;
+        }
+
+        .header {
+          text-align: center;
+          margin-bottom: 12px;
+        }
+
+        .header h1 {
+          font-size: clamp(2.1rem, 3vw, 2.4rem);
           font-weight: 900;
-          padding: 3px 8px;
+          letter-spacing: -0.015em;
+        }
+
+        .subtitle {
+          color: #64748b;
+          font-size: 0.95rem;
+          margin-top: 6px;
+        }
+
+        .purpose-bar {
+          display: inline-flex;
+          margin: 12px auto 0;
+          padding: 8px 14px;
+          border-radius: 999px;
+          background: rgba(0, 100, 145, 0.08);
+          border: 1px solid rgba(0, 100, 145, 0.14);
+          color: #0f172a;
+          font-weight: 800;
+          font-size: 13px;
+          letter-spacing: 0.01em;
+        }
+
+        .highlights {
+          margin: 18px auto 0;
+          width: min(980px, 100%);
+          text-align: left;
+        }
+
+        .highlights-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+
+        .highlights-head h2 {
+          font-size: 15px;
+          font-weight: 900;
+          margin: 0;
+          color: #0f172a;
+        }
+
+        .highlights-head p {
+          margin: 0;
+          font-size: 12px;
+          color: #64748b;
+          font-weight: 700;
+        }
+
+        .highlights-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .highlight-card {
+          background: rgba(255, 255, 255, 0.92);
+          border-radius: 16px;
+          border: 1px solid rgba(0, 100, 145, 0.14);
+          box-shadow: 0 12px 28px rgba(2, 6, 23, 0.05);
+          padding: 12px 14px;
+        }
+
+        .highlight-card.warning {
+          border-color: rgba(239, 68, 68, 0.22);
+          background: rgba(254, 242, 242, 0.85);
+        }
+
+        .highlight-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 8px;
+        }
+
+        .highlight-title {
+          font-size: 12px;
+          font-weight: 900;
+          color: #0f172a;
+          letter-spacing: 0.02em;
+          text-transform: uppercase;
+        }
+
+        .highlight-pill {
+          font-size: 11px;
+          font-weight: 800;
+          padding: 4px 10px;
           border-radius: 999px;
           background: rgba(0, 100, 145, 0.1);
           border: 1px solid rgba(0, 100, 145, 0.16);
           color: #004b75;
+          white-space: nowrap;
+        }
+
+        .highlight-name {
+          font-size: 16px;
+          font-weight: 900;
+          color: #0f172a;
+          margin-bottom: 6px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .highlight-metrics {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          font-size: 13px;
+          color: #334155;
+          font-weight: 700;
+        }
+
+        .highlight-body {
+          font-size: 13px;
+          color: #334155;
+          font-weight: 800;
+        }
+
+        .top-actions {
+          display: flex;
+          justify-content: flex-end;
+          margin: 6px 0 16px;
+        }
+
+        .btn-logout {
+          background: rgba(255, 255, 255, 0.92);
+          color: #0f172a;
+          border: 1px solid rgba(15, 23, 42, 0.1);
+          border-radius: 14px;
+          font-weight: 900;
+          font-size: 14px;
+          padding: 9px 14px;
+          cursor: pointer;
+          box-shadow: 0 10px 22px rgba(2, 6, 23, 0.06);
+          transition: transform 0.14s ease, box-shadow 0.14s ease,
+            border-color 0.14s ease, background 0.14s ease;
+        }
+
+        .btn-logout:hover {
+          transform: translateY(-2px);
+          border-color: rgba(0, 100, 145, 0.26);
+          background: rgba(255, 255, 255, 0.98);
+          box-shadow: 0 16px 36px rgba(2, 6, 23, 0.1);
+        }
+
+        .btn-logout:focus-visible {
+          outline: none;
+          box-shadow: 0 0 0 4px rgba(0, 100, 145, 0.22),
+            0 12px 26px rgba(2, 6, 23, 0.08);
+        }
+
+        /* ===========================
+           ✅ Touchscreen panel buttons
+           =========================== */
+        .panelGrid {
+          margin-top: 8px;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
+        }
+
+        .panelBtn {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+
+          min-height: 140px;
+          padding: 18px 18px 16px;
+
+          border-radius: 22px;
+          text-decoration: none;
+          color: inherit;
+
+          /* "stand-alone panel" base */
+          background: linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.94),
+            rgba(248, 251, 255, 0.94)
+          );
+          border: 1px solid rgba(15, 23, 42, 0.1);
+
+          /* deep kiosk shadow + subtle lift */
+          box-shadow: 0 26px 54px rgba(2, 6, 23, 0.14),
+            0 10px 18px rgba(2, 6, 23, 0.08),
+            0 1px 0 rgba(255, 255, 255, 0.8) inset;
+
+          overflow: hidden;
+          transform: translateZ(0);
+          transition: transform 0.16s ease, box-shadow 0.16s ease,
+            border-color 0.16s ease;
+        }
+
+        /* reflective rim / gradient border illusion */
+        .panelBtn::before {
+          content: "";
+          position: absolute;
+          inset: -2px;
+          border-radius: 24px;
+          padding: 2px;
+          background: linear-gradient(
+            135deg,
+            rgba(255, 255, 255, 0.85),
+            rgba(255, 255, 255, 0.15) 30%,
+            rgba(255, 255, 255, 0.55) 55%,
+            rgba(255, 255, 255, 0.12) 75%,
+            rgba(255, 255, 255, 0.7)
+          );
+          -webkit-mask: linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+          -webkit-mask-composite: xor;
+          mask-composite: exclude;
+          pointer-events: none;
+          opacity: 0.9;
+        }
+
+        /* soft glass sheen + variant tint */
+        .panelBtn::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          border-radius: 22px;
+          background: radial-gradient(
+              900px 280px at 15% 0%,
+              rgba(255, 255, 255, 0.55),
+              transparent 55%
+            ),
+            radial-gradient(
+              900px 360px at 100% 10%,
+              rgba(0, 0, 0, 0.04),
+              transparent 55%
+            ),
+            radial-gradient(
+              800px 340px at 80% 0%,
+              color-mix(in srgb, var(--a) 14%, transparent),
+              transparent 60%
+            );
+          pointer-events: none;
+          opacity: 0.85;
+        }
+
+        /* left accent bar */
+        .panelBtn .panelTop::before {
+          content: "";
+          position: absolute;
+          left: 10px;
+          top: 16px;
+          bottom: 16px;
+          width: 7px;
+          border-radius: 999px;
+          background: linear-gradient(180deg, var(--a), var(--b));
+          box-shadow: 0 12px 18px rgba(2, 6, 23, 0.1);
+        }
+
+        .panelBtn:hover {
+          transform: translateY(-3px);
+          border-color: rgba(0, 100, 145, 0.22);
+          box-shadow: 0 34px 70px rgba(2, 6, 23, 0.18),
+            0 12px 20px rgba(2, 6, 23, 0.1),
+            0 1px 0 rgba(255, 255, 255, 0.86) inset;
+        }
+
+        .panelBtn:focus-visible {
+          outline: none;
+          box-shadow: 0 0 0 4px color-mix(in srgb, var(--a) 20%, transparent),
+            0 34px 70px rgba(2, 6, 23, 0.18),
+            0 12px 20px rgba(2, 6, 23, 0.1),
+            0 1px 0 rgba(255, 255, 255, 0.86) inset;
+        }
+
+        .panelTop {
+          position: relative;
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          padding-left: 16px; /* room for accent bar */
+          z-index: 1;
+        }
+
+        .panelLeft {
+          display: flex;
+          gap: 12px;
+          align-items: flex-start;
+          min-width: 0;
+        }
+
+        .panelIcon {
+          width: 54px;
+          height: 54px;
+          border-radius: 18px;
+          display: grid;
+          place-items: center;
+          font-size: 22px;
+
+          background: linear-gradient(135deg, var(--a), var(--b));
+          color: #fff;
+          border: 1px solid rgba(255, 255, 255, 0.22);
+          box-shadow: 0 16px 26px
+              color-mix(in srgb, var(--a) 22%, transparent),
+            0 1px 0 rgba(255, 255, 255, 0.2) inset;
+          flex: 0 0 54px;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .panelIcon::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background: radial-gradient(
+            circle at 30% 25%,
+            rgba(255, 255, 255, 0.3),
+            transparent 60%
+          );
+          pointer-events: none;
+        }
+
+        .panelTitles {
+          min-width: 0;
+        }
+
+        .panelTitle {
+          font-weight: 950;
+          font-size: 16px;
+          letter-spacing: -0.01em;
+          color: #0f172a;
+          line-height: 1.2;
+        }
+
+        .panelDesc {
+          margin-top: 6px;
+          font-size: 13px;
+          font-weight: 800;
+          color: #475569;
+          line-height: 1.35;
+        }
+
+        .panelBadges {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+
+        .panelPill {
+          font-size: 11px;
+          font-weight: 900;
+          padding: 6px 12px;
+          border-radius: 999px;
+          background: color-mix(in srgb, var(--a) 10%, #ffffff);
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          color: #0f172a;
+          box-shadow: 0 10px 20px rgba(2, 6, 23, 0.06);
+          white-space: nowrap;
+        }
+
+        .panelNew {
+          font-size: 11px;
+          font-weight: 950;
+          padding: 6px 12px;
+          border-radius: 999px;
+          background: rgba(0, 100, 145, 0.1);
+          border: 1px solid rgba(0, 100, 145, 0.16);
+          color: #004b75;
+          white-space: nowrap;
+        }
+
+        .panelFoot {
+          z-index: 1;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-top: auto;
+
+          padding-top: 12px;
+          border-top: 1px solid rgba(15, 23, 42, 0.06);
+        }
+
+        .panelHint {
+          font-size: 12px;
+          font-weight: 900;
+          color: #64748b;
+        }
+
+        .panelChevron {
+          width: 42px;
+          height: 42px;
+          border-radius: 999px;
+          display: grid;
+          place-items: center;
+          font-size: 18px;
+          font-weight: 950;
+
+          background: rgba(2, 6, 23, 0.04);
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          box-shadow: 0 12px 18px rgba(2, 6, 23, 0.08);
+          transition: transform 0.16s ease, background 0.16s ease,
+            border-color 0.16s ease;
+        }
+
+        .panelBtn:hover .panelChevron {
+          transform: translateX(3px);
+          background: color-mix(in srgb, var(--a) 10%, #ffffff);
+          border-color: color-mix(in srgb, var(--a) 25%, transparent);
+        }
+
+        /* ===== Status ===== */
+        .status-bottom {
+          margin-top: 22px;
+          padding-top: 14px;
+          border-top: 1px dashed rgba(15, 23, 42, 0.18);
+        }
+
+        .status-bottom-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+
+        .status-bottom-head h3 {
+          margin: 0;
+          font-size: 14px;
+          font-weight: 900;
+          color: #0f172a;
+        }
+
+        .status-bottom-head p {
+          margin: 0;
+          font-size: 12px;
+          color: #64748b;
+          font-weight: 700;
+        }
+
+        .status-strip {
+          width: min(900px, 100%);
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          justify-content: flex-start;
+        }
+
+        .status-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.85);
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          box-shadow: 0 8px 18px rgba(2, 6, 23, 0.04);
+          font-size: 13px;
+        }
+
+        .status-item.warn {
+          border-color: rgba(239, 68, 68, 0.25);
+          background: rgba(254, 242, 242, 0.75);
+        }
+
+        .status-dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 999px;
+          display: inline-block;
+        }
+
+        .status-dot.ok {
+          background: #22c55e;
+        }
+        .status-dot.bad {
+          background: #ef4444;
+        }
+
+        .status-label {
+          color: #475569;
+          font-weight: 800;
+        }
+
+        .status-value {
+          color: #0f172a;
+          font-weight: 800;
+        }
+
+        .footer {
+          text-align: center;
+          margin-top: 24px;
+          color: #94a3b8;
+          font-size: 0.8rem;
+        }
+
+        @media (max-width: 980px) {
+          .highlights-grid {
+            grid-template-columns: 1fr;
+          }
+          .highlights-head {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+          .panelGrid {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        @media (max-width: 720px) {
+          .shell {
+            padding: 24px 16px 28px;
+          }
+          .ticker-shell {
+            border-radius: 1.2rem;
+          }
+          .purpose-bar {
+            border-radius: 14px;
+          }
         }
       `}</style>
     </main>
