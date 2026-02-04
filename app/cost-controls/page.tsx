@@ -12,7 +12,7 @@ const supabase =
       )
     : null;
 
-type RangeMode = "today" | "previous_day" | "this_week" | "this_month" | "custom";
+type RangeMode = "previous_day" | "this_week" | "this_month" | "custom";
 
 type CostRow = {
   id: string;
@@ -28,6 +28,12 @@ type CostRow = {
 
   created_at?: string | null;
 };
+
+const LABOUR_TARGET = 0.25; // 25%
+
+// Food variance target band: -0.25% .. +0.25%
+const FOODVAR_MIN = -0.0025;
+const FOODVAR_MAX = 0.0025;
 
 function isYYYYMMDD(v: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(v);
@@ -90,24 +96,28 @@ function fmtShortDate(yyyyMMdd: string) {
   });
 }
 
-// expects decimal form (0.28). We use this for labour% and food% (and variance as percentage points).
+// expects decimal form (0.28). Used for labour% and food var%.
 function fmtPct(n: number, dp = 1) {
   if (!isFinite(n)) return "—";
   return (n * 100).toFixed(dp) + "%";
 }
 
 type Agg = {
-  name: string; // store or manager
+  name: string;
   days: number;
 
-  // kept internally for weighting + tiebreaks (NOT displayed)
+  // internal totals (NOT displayed)
   sales: number;
   labour: number;
   idealFood: number;
   actualFood: number;
 
   labourPct: number; // labour £ / sales £ over the period
-  foodVarPctSales: number; // (actual% - ideal%) over the period, i.e. (actual£-ideal£)/sales£
+  foodVarPctSales: number; // (actual% - ideal%) over the period
+
+  // target distance scores (lower is better)
+  labourDelta: number; // abs(labourPct - 25%)
+  foodVarDelta: number; // distance to [-0.25%, +0.25%] band
 };
 
 function sum(arr: number[]) {
@@ -146,7 +156,6 @@ function normaliseRow(r: any): CostRow {
   };
 }
 
-// fallback if id not present (shouldn’t happen, but avoids React key crashes)
 function cryptoRandomFallback() {
   try {
     // @ts-ignore
@@ -155,20 +164,23 @@ function cryptoRandomFallback() {
   return String(Date.now()) + "_" + Math.random().toString(16).slice(2);
 }
 
+// distance to an interval [min, max]: 0 if inside; else distance to nearest edge
+function distanceToBand(x: number, min: number, max: number) {
+  if (!Number.isFinite(x)) return Number.POSITIVE_INFINITY;
+  if (x < min) return min - x;
+  if (x > max) return x - max;
+  return 0;
+}
+
 export default function CostControlsPage() {
   const router = useRouter();
 
-  const [rangeMode, setRangeMode] = useState<RangeMode>("today");
+  // Default to previous_day (today is never complete)
+  const [rangeMode, setRangeMode] = useState<RangeMode>("previous_day");
   const [customFrom, setCustomFrom] = useState<string>(() => toYYYYMMDDLocal(startOfTodayLocal()));
   const [customTo, setCustomTo] = useState<string>(() => toYYYYMMDDLocal(startOfTodayLocal()));
 
   const rangeWindow = useMemo(() => {
-    if (rangeMode === "today") {
-      const from = toYYYYMMDDLocal(startOfTodayLocal());
-      const to = toYYYYMMDDLocal(startOfTomorrowLocal());
-      return { from, to, label: "Today" };
-    }
-
     if (rangeMode === "previous_day") {
       const d = startOfTodayLocal();
       d.setDate(d.getDate() - 1);
@@ -201,6 +213,7 @@ export default function CostControlsPage() {
       };
     }
 
+    // custom
     const safeFrom = customFrom;
     const safeTo = customTo;
     const toD = new Date(safeTo + "T00:00:00");
@@ -269,8 +282,9 @@ export default function CostControlsPage() {
   const storeAgg = useMemo(() => aggregate(rows, "store"), [rows]);
   const mgrAgg = useMemo(() => aggregate(rows, "manager_name"), [rows]);
 
-  const topStoreLabour = storeAgg.slice().sort((a, b) => a.labourPct - b.labourPct)[0] || null;
-  const topStoreFood = storeAgg.slice().sort((a, b) => a.foodVarPctSales - b.foodVarPctSales)[0] || null;
+  // Highlights based on closeness-to-target (not “lowest wins”)
+  const topStoreLabour = storeAgg.slice().sort((a, b) => a.labourDelta - b.labourDelta)[0] || null;
+  const topStoreFood = storeAgg.slice().sort((a, b) => a.foodVarDelta - b.foodVarDelta)[0] || null;
 
   return (
     <main className="wrap">
@@ -292,15 +306,13 @@ export default function CostControlsPage() {
         <header className="header">
           <h1>Cost Controls</h1>
           <p className="subtitle">
-            Labour % + Food Variance % (Actual − Ideal) • weighted by total sales • period: <b>{rangeWindow.label}</b>
+            Ranked by closeness to targets — Labour <b>{fmtPct(LABOUR_TARGET, 0)}</b> and Food Variance band{" "}
+            <b>{fmtPct(FOODVAR_MIN, 2)} → {fmtPct(FOODVAR_MAX, 2)}</b> • period: <b>{rangeWindow.label}</b>
           </p>
         </header>
 
         <section className="rangeCard" aria-label="Date range">
           <div className="chips">
-            <button type="button" className={`chip ${rangeMode === "today" ? "active" : ""}`} onClick={() => setRangeMode("today")}>
-              Today
-            </button>
             <button
               type="button"
               className={`chip ${rangeMode === "previous_day" ? "active" : ""}`}
@@ -308,13 +320,25 @@ export default function CostControlsPage() {
             >
               Previous day
             </button>
-            <button type="button" className={`chip ${rangeMode === "this_week" ? "active" : ""}`} onClick={() => setRangeMode("this_week")}>
+            <button
+              type="button"
+              className={`chip ${rangeMode === "this_week" ? "active" : ""}`}
+              onClick={() => setRangeMode("this_week")}
+            >
               This week
             </button>
-            <button type="button" className={`chip ${rangeMode === "this_month" ? "active" : ""}`} onClick={() => setRangeMode("this_month")}>
+            <button
+              type="button"
+              className={`chip ${rangeMode === "this_month" ? "active" : ""}`}
+              onClick={() => setRangeMode("this_month")}
+            >
               This month
             </button>
-            <button type="button" className={`chip ${rangeMode === "custom" ? "active" : ""}`} onClick={() => setRangeMode("custom")}>
+            <button
+              type="button"
+              className={`chip ${rangeMode === "custom" ? "active" : ""}`}
+              onClick={() => setRangeMode("custom")}
+            >
               Custom
             </button>
           </div>
@@ -350,14 +374,14 @@ export default function CostControlsPage() {
             <section className="highlights">
               <div className="highlightsHead">
                 <h2>Highlights</h2>
-                <p>Best performers in the selected period</p>
+                <p>Closest to targets in the selected period</p>
               </div>
 
               <div className="highlightsGrid">
                 <div className="hlCard">
                   <div className="hlTop">
-                    <span className="hlTitle">🏆 Best Labour</span>
-                    <span className="hlPill">Weighted</span>
+                    <span className="hlTitle">🏆 Labour Target</span>
+                    <span className="hlPill">Closest to 25%</span>
                   </div>
                   <div className="hlMain">
                     <div className="hlName">{topStoreLabour ? topStoreLabour.name : "No data"}</div>
@@ -369,8 +393,8 @@ export default function CostControlsPage() {
 
                 <div className="hlCard">
                   <div className="hlTop">
-                    <span className="hlTitle">🥇 Best Food Variance</span>
-                    <span className="hlPill">Weighted</span>
+                    <span className="hlTitle">🥇 Food Variance Band</span>
+                    <span className="hlPill">Within ±0.25%</span>
                   </div>
                   <div className="hlMain">
                     <div className="hlName">{topStoreFood ? topStoreFood.name : "No data"}</div>
@@ -399,7 +423,7 @@ export default function CostControlsPage() {
               <div className="board">
                 <div className="boardHead">
                   <h2>Store Rankings</h2>
-                  <p>Ranked by lower labour% then lower food variance% (Actual − Ideal)</p>
+                  <p>Closest to Labour 25% then closest to Food Var band (±0.25%)</p>
                 </div>
 
                 <div className="tableWrap">
@@ -438,7 +462,7 @@ export default function CostControlsPage() {
               <div className="board">
                 <div className="boardHead">
                   <h2>Manager Rankings</h2>
-                  <p>Ranked by lower labour% then lower food variance% (Actual − Ideal)</p>
+                  <p>Closest to Labour 25% then closest to Food Var band (±0.25%)</p>
                 </div>
 
                 <div className="tableWrap">
@@ -848,15 +872,17 @@ function aggregate(rows: CostRow[], key: "store" | "manager_name"): Agg[] {
     const idealFood = sum(items.map((x) => Number(x.ideal_food_cost_gbp || 0)));
     const actualFood = sum(items.map((x) => Number(x.actual_food_cost_gbp || 0)));
 
-    // Labour % over the whole period
+    // Period-level %s (weighted properly by sales because we use totals)
     const labourPct = sales > 0 ? labour / sales : 0;
-
-    // ✅ Correct food %s over the whole period
     const idealFoodPct = sales > 0 ? idealFood / sales : 0;
     const actualFoodPct = sales > 0 ? actualFood / sales : 0;
 
-    // ✅ Food variance over the whole period (Actual − Ideal)
+    // Food variance = actual% - ideal% (can be negative)
     const foodVarPctSales = actualFoodPct - idealFoodPct;
+
+    // Target distance scoring
+    const labourDelta = Math.abs(labourPct - LABOUR_TARGET);
+    const foodVarDelta = distanceToBand(foodVarPctSales, FOODVAR_MIN, FOODVAR_MAX);
 
     const days = new Set(items.map((x) => x.shift_date)).size;
 
@@ -869,15 +895,25 @@ function aggregate(rows: CostRow[], key: "store" | "manager_name"): Agg[] {
       actualFood,
       labourPct,
       foodVarPctSales,
+      labourDelta,
+      foodVarDelta,
     };
   });
 
-  // Rank: lower labour% best, tie-break lower food variance% best, then higher sales (not displayed)
+  // Rank: closest labour to 25%, then closest food variance to band, then higher sales
   out.sort((a, b) => {
-    if (a.labourPct !== b.labourPct) return a.labourPct - b.labourPct;
-    if (a.foodVarPctSales !== b.foodVarPctSales) return a.foodVarPctSales - b.foodVarPctSales;
+    if (a.labourDelta !== b.labourDelta) return a.labourDelta - b.labourDelta;
+    if (a.foodVarDelta !== b.foodVarDelta) return a.foodVarDelta - b.foodVarDelta;
     return b.sales - a.sales;
   });
 
   return out;
+}
+
+// distance to interval [min, max]
+function distanceToBand(x: number, min: number, max: number) {
+  if (!Number.isFinite(x)) return Number.POSITIVE_INFINITY;
+  if (x < min) return min - x;
+  if (x > max) return x - max;
+  return 0;
 }
