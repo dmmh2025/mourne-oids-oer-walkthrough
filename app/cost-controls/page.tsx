@@ -20,10 +20,10 @@ type CostRow = {
   shift_date: string; // YYYY-MM-DD
   manager_name: string;
 
-  sales_gbp: number;
-  labour_cost_gbp: number;
-  ideal_food_cost_gbp: number;
-  actual_food_cost_gbp: number;
+  sales_gbp: number; // still used for weighting + labour% (not displayed)
+  labour_cost_gbp: number; // still used for labour% (not displayed)
+  ideal_food_cost_gbp: number; // NOW holds ideal food % (0.28 or 28)
+  actual_food_cost_gbp: number; // NOW holds actual food % (0.30 or 30)
 
   created_at?: string | null;
 };
@@ -89,6 +89,7 @@ function fmtShortDate(yyyyMMdd: string) {
   });
 }
 
+// expects decimal form (0.28). For "percentage points" we also use this.
 function fmtPct(n: number, dp = 1) {
   if (!isFinite(n)) return "—";
   return (n * 100).toFixed(dp) + "%";
@@ -97,13 +98,13 @@ function fmtPct(n: number, dp = 1) {
 type Agg = {
   name: string; // store or manager
   days: number;
+
   // kept internally for weighting + tiebreaks (NOT displayed)
   sales: number;
   labour: number;
-  idealFood: number;
-  actualFood: number;
-  labourPct: number; // weighted
-  foodVarPctSales: number; // weighted
+
+  labourPct: number; // weighted by sales
+  foodVarPctSales: number; // (actual% - ideal%) weighted by sales
 };
 
 function sum(arr: number[]) {
@@ -115,15 +116,24 @@ function num(v: any) {
   return Number.isFinite(n) ? n : 0;
 }
 
+// Accept both 0.28 and 28; output decimal 0.28
+function normalisePctInput(v: any) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return n > 1 ? n / 100 : n;
+}
+
 function normaliseRow(r: any): CostRow {
-  // Coalesce common alternate column names so schema mismatches don’t break the page.
   const id = String(r.id ?? r.uuid ?? cryptoRandomFallback());
   const store = String(r.store ?? r.store_name ?? r.shop ?? "").trim() || "Unknown";
   const shift_date = String(r.shift_date ?? r.date ?? r.shiftDay ?? r.shift_day ?? "").slice(0, 10);
-  const manager_name = String(r.manager_name ?? r.manager ?? r.shift_manager ?? r.user ?? "Unknown").trim() || "Unknown";
+  const manager_name =
+    String(r.manager_name ?? r.manager ?? r.shift_manager ?? r.user ?? "Unknown").trim() || "Unknown";
 
   const sales_gbp = num(r.sales_gbp ?? r.sales ?? r.net_sales ?? 0);
   const labour_cost_gbp = num(r.labour_cost_gbp ?? r.labour_gbp ?? r.labour_cost ?? r.labour ?? 0);
+
+  // still stored in the same columns, but now these represent % inputs
   const ideal_food_cost_gbp = num(r.ideal_food_cost_gbp ?? r.ideal_food ?? r.ideal_food_gbp ?? 0);
   const actual_food_cost_gbp = num(r.actual_food_cost_gbp ?? r.actual_food ?? r.actual_food_gbp ?? 0);
 
@@ -142,7 +152,6 @@ function normaliseRow(r: any): CostRow {
   };
 }
 
-// fallback if id not present (shouldn’t happen, but avoids React key crashes)
 function cryptoRandomFallback() {
   try {
     // @ts-ignore
@@ -159,8 +168,6 @@ export default function CostControlsPage() {
   const [customTo, setCustomTo] = useState<string>(() => toYYYYMMDDLocal(startOfTodayLocal()));
 
   const rangeWindow = useMemo(() => {
-    // We query by shift_date (DATE) using YYYY-MM-DD boundaries:
-    // inclusive start, exclusive end (end is next day/week/month)
     if (rangeMode === "today") {
       const from = toYYYYMMDDLocal(startOfTodayLocal());
       const to = toYYYYMMDDLocal(startOfTomorrowLocal());
@@ -199,10 +206,8 @@ export default function CostControlsPage() {
       };
     }
 
-    // custom
     const safeFrom = customFrom;
     const safeTo = customTo;
-    // exclusive end is next day of customTo
     const toD = new Date(safeTo + "T00:00:00");
     toD.setDate(toD.getDate() + 1);
     const to = toYYYYMMDDLocal(toD);
@@ -219,7 +224,6 @@ export default function CostControlsPage() {
       setLoading(true);
       if (!supabase) throw new Error("Supabase client not available");
 
-      // ✅ Keep correct table name. Switch to select("*") so missing columns don't break the query.
       const { data, error } = await supabase
         .from("cost_control_entries")
         .select("*")
@@ -228,7 +232,6 @@ export default function CostControlsPage() {
         .order("shift_date", { ascending: false });
 
       if (error) {
-        // Provide full diagnostics to the UI
         throw new Error(
           [
             error.message,
@@ -245,7 +248,6 @@ export default function CostControlsPage() {
 
       const normalised = (data || []).map(normaliseRow);
 
-      // If shift_date isn't present / malformed, warn rather than silently empty
       const missingShiftDate = normalised.some((r) => !r.shift_date || r.shift_date.length < 10);
       if (missingShiftDate) {
         setErr(
@@ -295,11 +297,10 @@ export default function CostControlsPage() {
         <header className="header">
           <h1>Cost Controls</h1>
           <p className="subtitle">
-            Labour % + Food Variance % of sales • weighted rankings • period: <b>{rangeWindow.label}</b>
+            Labour % + Food Variance (Actual − Ideal) • weighted rankings • period: <b>{rangeWindow.label}</b>
           </p>
         </header>
 
-        {/* Range selector */}
         <section className="rangeCard" aria-label="Date range">
           <div className="chips">
             <button type="button" className={`chip ${rangeMode === "today" ? "active" : ""}`} onClick={() => setRangeMode("today")}>
@@ -351,7 +352,6 @@ export default function CostControlsPage() {
 
         {!loading && !err && (
           <>
-            {/* Highlights (percent-only) */}
             <section className="highlights">
               <div className="highlightsHead">
                 <h2>Highlights</h2>
@@ -380,7 +380,7 @@ export default function CostControlsPage() {
                   <div className="hlMain">
                     <div className="hlName">{topStoreFood ? topStoreFood.name : "No data"}</div>
                     <div className="hlMeta">
-                      Var % sales: <b>{topStoreFood ? fmtPct(topStoreFood.foodVarPctSales, 2) : "—"}</b>
+                      Variance (pp): <b>{topStoreFood ? fmtPct(topStoreFood.foodVarPctSales, 2) : "—"}</b>
                     </div>
                   </div>
                 </div>
@@ -400,12 +400,11 @@ export default function CostControlsPage() {
               </div>
             </section>
 
-            {/* Rankings (store + manager only) */}
             <section className="boards">
               <div className="board">
                 <div className="boardHead">
                   <h2>Store Rankings</h2>
-                  <p>Ranked by lower labour% then lower food variance% of sales</p>
+                  <p>Ranked by lower labour% then lower food variance (Actual − Ideal)</p>
                 </div>
 
                 <div className="tableWrap">
@@ -416,7 +415,7 @@ export default function CostControlsPage() {
                         <th>Store</th>
                         <th style={{ width: 130 }}>Days</th>
                         <th style={{ width: 170 }}>Labour %</th>
-                        <th style={{ width: 210 }}>Food Var % Sales</th>
+                        <th style={{ width: 210 }}>Food Var (pp)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -444,7 +443,7 @@ export default function CostControlsPage() {
               <div className="board">
                 <div className="boardHead">
                   <h2>Manager Rankings</h2>
-                  <p>Ranked by lower labour% then lower food variance% of sales</p>
+                  <p>Ranked by lower labour% then lower food variance (Actual − Ideal)</p>
                 </div>
 
                 <div className="tableWrap">
@@ -455,7 +454,7 @@ export default function CostControlsPage() {
                         <th>Manager</th>
                         <th style={{ width: 130 }}>Days</th>
                         <th style={{ width: 170 }}>Labour %</th>
-                        <th style={{ width: 210 }}>Food Var % Sales</th>
+                        <th style={{ width: 210 }}>Food Var (pp)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -851,14 +850,28 @@ function aggregate(rows: CostRow[], key: "store" | "manager_name"): Agg[] {
   const out: Agg[] = Object.entries(bucket).map(([name, items]) => {
     const sales = sum(items.map((x) => Number(x.sales_gbp || 0)));
     const labour = sum(items.map((x) => Number(x.labour_cost_gbp || 0)));
-    const idealFood = sum(items.map((x) => Number(x.ideal_food_cost_gbp || 0)));
-    const actualFood = sum(items.map((x) => Number(x.actual_food_cost_gbp || 0)));
 
+    // Labour % is still derived from labour_cost / sales (internally), but not displaying £.
     const labourPct = sales > 0 ? labour / sales : 0;
-    const foodVarGbp = actualFood - idealFood;
-    const foodVarPctSales = sales > 0 ? foodVarGbp / sales : 0;
 
-    // count unique days (shift_date)
+    // ✅ NEW: ideal_food_cost_gbp and actual_food_cost_gbp are % inputs (0.28 or 28)
+    // variance per row = actual% - ideal% (decimal), then weighted by sales.
+    const weightedFoodVar = items.reduce((acc, r) => {
+      const s = Number(r.sales_gbp || 0);
+      const idealPct = normalisePctInput(r.ideal_food_cost_gbp);
+      const actualPct = normalisePctInput(r.actual_food_cost_gbp);
+      const varPct = actualPct - idealPct; // positive = above ideal (worse)
+      const w = s > 0 ? s : 1; // if no sales recorded, still count but lightly
+      return acc + varPct * w;
+    }, 0);
+
+    const totalWeight = items.reduce((acc, r) => {
+      const s = Number(r.sales_gbp || 0);
+      return acc + (s > 0 ? s : 1);
+    }, 0);
+
+    const foodVarPctSales = totalWeight > 0 ? weightedFoodVar / totalWeight : 0;
+
     const days = new Set(items.map((x) => x.shift_date)).size;
 
     return {
@@ -866,14 +879,12 @@ function aggregate(rows: CostRow[], key: "store" | "manager_name"): Agg[] {
       days,
       sales,
       labour,
-      idealFood,
-      actualFood,
       labourPct,
       foodVarPctSales,
     };
   });
 
-  // Rank: lower labour% best, tie-break lower food variance% of sales, then higher sales (not displayed)
+  // Rank: lower labour% best, tie-break lower food variance (Actual − Ideal) best, then higher sales
   out.sort((a, b) => {
     if (a.labourPct !== b.labourPct) return a.labourPct - b.labourPct;
     if (a.foodVarPctSales !== b.foodVarPctSales) return a.foodVarPctSales - b.foodVarPctSales;
@@ -881,4 +892,11 @@ function aggregate(rows: CostRow[], key: "store" | "manager_name"): Agg[] {
   });
 
   return out;
+}
+
+// local helper used by aggregate (kept outside to avoid re-creation)
+function normalisePctInput(v: any) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return n > 1 ? n / 100 : n;
 }
