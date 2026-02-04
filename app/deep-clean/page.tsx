@@ -43,7 +43,7 @@ export default function DeepCleanHome() {
 
       <section style={{ marginTop: 16, padding: 16 }}>
         <header style={{ display: "grid", gap: 4 }}>
-          <strong style={{ fontSize: 22 }}>Autumn Deep Clean</strong>
+          <strong style={{ fontSize: 22 }}>Deep Clean</strong>
           <small style={{ color: "var(--muted)" }}>
             Select a store to open its checklist. Progress updates as teams work.
           </small>
