@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
+import CostControlsUploadPanel from "./CostControlsUploadPanel";
 
 const supabase =
   typeof window !== "undefined"
@@ -46,9 +47,9 @@ export default function AdminPage() {
   const [isAuthed, setIsAuthed] = useState(false);
   const [authError, setAuthError] = useState("");
 
-  // ✅ add "osa" tab
+  // ✅ add "osa" + "cost_controls" tab
   const [activeTab, setActiveTab] = useState<
-    "ticker" | "service" | "memomailer" | "pizza" | "osa"
+    "ticker" | "service" | "memomailer" | "pizza" | "osa" | "cost_controls"
   >("ticker");
 
   // ticker state
@@ -452,10 +453,8 @@ export default function AdminPage() {
   };
 
   const computedOsaOverall =
-    Math.max(
-      0,
-      Number(osaStartingPoints || 0) - Number(osaPointsLost || 0)
-    ) || 0;
+    Math.max(0, Number(osaStartingPoints || 0) - Number(osaPointsLost || 0)) ||
+    0;
 
   return (
     <main className="wrap">
@@ -504,7 +503,7 @@ export default function AdminPage() {
           <header className="header">
             <h1>Mourne-oids Admin</h1>
             <p className="subtitle">
-              Ticker · Service dashboard uploads · future admin
+              Ticker · Service dashboard uploads · cost controls · admin
             </p>
             <div className="actions">
               <a href="/" className="btn btn--ghost">
@@ -539,12 +538,18 @@ export default function AdminPage() {
             >
               🍕 Pizza of the Week
             </button>
-            {/* ✅ NEW OSA TAB */}
             <button
               className={activeTab === "osa" ? "tab active" : "tab"}
               onClick={() => setActiveTab("osa")}
             >
               ⭐ Internal OSA
+            </button>
+            {/* ✅ NEW COST CONTROLS TAB */}
+            <button
+              className={activeTab === "cost_controls" ? "tab active" : "tab"}
+              onClick={() => setActiveTab("cost_controls")}
+            >
+              💷 Cost Controls
             </button>
           </div>
 
@@ -907,6 +912,9 @@ export default function AdminPage() {
                 </p>
               )}
             </section>
+          ) : activeTab === "cost_controls" ? (
+            // 💷 COST CONTROLS SECTION (NEW)
+            <CostControlsUploadPanel />
           ) : (
             // 🍕 PIZZA OF THE WEEK SECTION
             <section className="card">
