@@ -20,10 +20,11 @@ type CostRow = {
   shift_date: string; // YYYY-MM-DD
   manager_name: string;
 
-  sales_gbp: number; // still used for weighting + labour% (not displayed)
-  labour_cost_gbp: number; // still used for labour% (not displayed)
-  ideal_food_cost_gbp: number; // NOW holds ideal food % (0.28 or 28)
-  actual_food_cost_gbp: number; // NOW holds actual food % (0.30 or 30)
+  // Raw £ amounts from Supabase (NOT displayed)
+  sales_gbp: number;
+  labour_cost_gbp: number;
+  ideal_food_cost_gbp: number;
+  actual_food_cost_gbp: number;
 
   created_at?: string | null;
 };
@@ -89,7 +90,7 @@ function fmtShortDate(yyyyMMdd: string) {
   });
 }
 
-// expects decimal form (0.28). For "percentage points" we also use this.
+// expects decimal form (0.28). We use this for labour% and food% (and variance as percentage points).
 function fmtPct(n: number, dp = 1) {
   if (!isFinite(n)) return "—";
   return (n * 100).toFixed(dp) + "%";
@@ -102,9 +103,11 @@ type Agg = {
   // kept internally for weighting + tiebreaks (NOT displayed)
   sales: number;
   labour: number;
+  idealFood: number;
+  actualFood: number;
 
-  labourPct: number; // weighted by sales
-  foodVarPctSales: number; // (actual% - ideal%) weighted by sales
+  labourPct: number; // labour £ / sales £ over the period
+  foodVarPctSales: number; // (actual% - ideal%) over the period, i.e. (actual£-ideal£)/sales£
 };
 
 function sum(arr: number[]) {
@@ -116,13 +119,6 @@ function num(v: any) {
   return Number.isFinite(n) ? n : 0;
 }
 
-// Accept both 0.28 and 28; output decimal 0.28
-function normalisePctInput(v: any) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return 0;
-  return n > 1 ? n / 100 : n;
-}
-
 function normaliseRow(r: any): CostRow {
   const id = String(r.id ?? r.uuid ?? cryptoRandomFallback());
   const store = String(r.store ?? r.store_name ?? r.shop ?? "").trim() || "Unknown";
@@ -132,8 +128,6 @@ function normaliseRow(r: any): CostRow {
 
   const sales_gbp = num(r.sales_gbp ?? r.sales ?? r.net_sales ?? 0);
   const labour_cost_gbp = num(r.labour_cost_gbp ?? r.labour_gbp ?? r.labour_cost ?? r.labour ?? 0);
-
-  // still stored in the same columns, but now these represent % inputs
   const ideal_food_cost_gbp = num(r.ideal_food_cost_gbp ?? r.ideal_food ?? r.ideal_food_gbp ?? 0);
   const actual_food_cost_gbp = num(r.actual_food_cost_gbp ?? r.actual_food ?? r.actual_food_gbp ?? 0);
 
@@ -152,6 +146,7 @@ function normaliseRow(r: any): CostRow {
   };
 }
 
+// fallback if id not present (shouldn’t happen, but avoids React key crashes)
 function cryptoRandomFallback() {
   try {
     // @ts-ignore
@@ -297,7 +292,7 @@ export default function CostControlsPage() {
         <header className="header">
           <h1>Cost Controls</h1>
           <p className="subtitle">
-            Labour % + Food Variance (Actual − Ideal) • weighted rankings • period: <b>{rangeWindow.label}</b>
+            Labour % + Food Variance % (Actual − Ideal) • weighted by total sales • period: <b>{rangeWindow.label}</b>
           </p>
         </header>
 
@@ -380,7 +375,7 @@ export default function CostControlsPage() {
                   <div className="hlMain">
                     <div className="hlName">{topStoreFood ? topStoreFood.name : "No data"}</div>
                     <div className="hlMeta">
-                      Variance (pp): <b>{topStoreFood ? fmtPct(topStoreFood.foodVarPctSales, 2) : "—"}</b>
+                      Variance: <b>{topStoreFood ? fmtPct(topStoreFood.foodVarPctSales, 2) : "—"}</b>
                     </div>
                   </div>
                 </div>
@@ -404,7 +399,7 @@ export default function CostControlsPage() {
               <div className="board">
                 <div className="boardHead">
                   <h2>Store Rankings</h2>
-                  <p>Ranked by lower labour% then lower food variance (Actual − Ideal)</p>
+                  <p>Ranked by lower labour% then lower food variance% (Actual − Ideal)</p>
                 </div>
 
                 <div className="tableWrap">
@@ -415,7 +410,7 @@ export default function CostControlsPage() {
                         <th>Store</th>
                         <th style={{ width: 130 }}>Days</th>
                         <th style={{ width: 170 }}>Labour %</th>
-                        <th style={{ width: 210 }}>Food Var (pp)</th>
+                        <th style={{ width: 210 }}>Food Var %</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -443,7 +438,7 @@ export default function CostControlsPage() {
               <div className="board">
                 <div className="boardHead">
                   <h2>Manager Rankings</h2>
-                  <p>Ranked by lower labour% then lower food variance (Actual − Ideal)</p>
+                  <p>Ranked by lower labour% then lower food variance% (Actual − Ideal)</p>
                 </div>
 
                 <div className="tableWrap">
@@ -454,7 +449,7 @@ export default function CostControlsPage() {
                         <th>Manager</th>
                         <th style={{ width: 130 }}>Days</th>
                         <th style={{ width: 170 }}>Labour %</th>
-                        <th style={{ width: 210 }}>Food Var (pp)</th>
+                        <th style={{ width: 210 }}>Food Var %</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -850,27 +845,18 @@ function aggregate(rows: CostRow[], key: "store" | "manager_name"): Agg[] {
   const out: Agg[] = Object.entries(bucket).map(([name, items]) => {
     const sales = sum(items.map((x) => Number(x.sales_gbp || 0)));
     const labour = sum(items.map((x) => Number(x.labour_cost_gbp || 0)));
+    const idealFood = sum(items.map((x) => Number(x.ideal_food_cost_gbp || 0)));
+    const actualFood = sum(items.map((x) => Number(x.actual_food_cost_gbp || 0)));
 
-    // Labour % is still derived from labour_cost / sales (internally), but not displaying £.
+    // Labour % over the whole period
     const labourPct = sales > 0 ? labour / sales : 0;
 
-    // ✅ NEW: ideal_food_cost_gbp and actual_food_cost_gbp are % inputs (0.28 or 28)
-    // variance per row = actual% - ideal% (decimal), then weighted by sales.
-    const weightedFoodVar = items.reduce((acc, r) => {
-      const s = Number(r.sales_gbp || 0);
-      const idealPct = normalisePctInput(r.ideal_food_cost_gbp);
-      const actualPct = normalisePctInput(r.actual_food_cost_gbp);
-      const varPct = actualPct - idealPct; // positive = above ideal (worse)
-      const w = s > 0 ? s : 1; // if no sales recorded, still count but lightly
-      return acc + varPct * w;
-    }, 0);
+    // ✅ Correct food %s over the whole period
+    const idealFoodPct = sales > 0 ? idealFood / sales : 0;
+    const actualFoodPct = sales > 0 ? actualFood / sales : 0;
 
-    const totalWeight = items.reduce((acc, r) => {
-      const s = Number(r.sales_gbp || 0);
-      return acc + (s > 0 ? s : 1);
-    }, 0);
-
-    const foodVarPctSales = totalWeight > 0 ? weightedFoodVar / totalWeight : 0;
+    // ✅ Food variance over the whole period (Actual − Ideal)
+    const foodVarPctSales = actualFoodPct - idealFoodPct;
 
     const days = new Set(items.map((x) => x.shift_date)).size;
 
@@ -879,12 +865,14 @@ function aggregate(rows: CostRow[], key: "store" | "manager_name"): Agg[] {
       days,
       sales,
       labour,
+      idealFood,
+      actualFood,
       labourPct,
       foodVarPctSales,
     };
   });
 
-  // Rank: lower labour% best, tie-break lower food variance (Actual − Ideal) best, then higher sales
+  // Rank: lower labour% best, tie-break lower food variance% best, then higher sales (not displayed)
   out.sort((a, b) => {
     if (a.labourPct !== b.labourPct) return a.labourPct - b.labourPct;
     if (a.foodVarPctSales !== b.foodVarPctSales) return a.foodVarPctSales - b.foodVarPctSales;
@@ -892,11 +880,4 @@ function aggregate(rows: CostRow[], key: "store" | "manager_name"): Agg[] {
   });
 
   return out;
-}
-
-// local helper used by aggregate (kept outside to avoid re-creation)
-function normalisePctInput(v: any) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return 0;
-  return n > 1 ? n / 100 : n;
 }
