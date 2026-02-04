@@ -12,9 +12,6 @@ const supabase =
       )
     : null;
 
-const STORES = ["Downpatrick", "Kilkeel", "Newcastle", "Ballynahinch"] as const;
-type Store = (typeof STORES)[number];
-
 type RangeMode = "today" | "previous_day" | "this_week" | "this_month" | "custom";
 
 type CostRow = {
@@ -92,11 +89,6 @@ function fmtShortDate(yyyyMMdd: string) {
   });
 }
 
-function fmtMoney(n: number) {
-  if (!isFinite(n)) return "—";
-  return n.toLocaleString("en-GB", { style: "currency", currency: "GBP" });
-}
-
 function fmtPct(n: number, dp = 1) {
   if (!isFinite(n)) return "—";
   return (n * 100).toFixed(dp) + "%";
@@ -105,17 +97,58 @@ function fmtPct(n: number, dp = 1) {
 type Agg = {
   name: string; // store or manager
   days: number;
+  // kept internally for weighting + tiebreaks (NOT displayed)
   sales: number;
   labour: number;
   idealFood: number;
   actualFood: number;
   labourPct: number; // weighted
-  foodVarGbp: number;
   foodVarPctSales: number; // weighted
 };
 
 function sum(arr: number[]) {
   return arr.reduce((a, b) => a + b, 0);
+}
+
+function num(v: any) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function normaliseRow(r: any): CostRow {
+  // Coalesce common alternate column names so schema mismatches don’t break the page.
+  const id = String(r.id ?? r.uuid ?? cryptoRandomFallback());
+  const store = String(r.store ?? r.store_name ?? r.shop ?? "").trim() || "Unknown";
+  const shift_date = String(r.shift_date ?? r.date ?? r.shiftDay ?? r.shift_day ?? "").slice(0, 10);
+  const manager_name = String(r.manager_name ?? r.manager ?? r.shift_manager ?? r.user ?? "Unknown").trim() || "Unknown";
+
+  const sales_gbp = num(r.sales_gbp ?? r.sales ?? r.net_sales ?? 0);
+  const labour_cost_gbp = num(r.labour_cost_gbp ?? r.labour_gbp ?? r.labour_cost ?? r.labour ?? 0);
+  const ideal_food_cost_gbp = num(r.ideal_food_cost_gbp ?? r.ideal_food ?? r.ideal_food_gbp ?? 0);
+  const actual_food_cost_gbp = num(r.actual_food_cost_gbp ?? r.actual_food ?? r.actual_food_gbp ?? 0);
+
+  const created_at = r.created_at ? String(r.created_at) : null;
+
+  return {
+    id,
+    store,
+    shift_date,
+    manager_name,
+    sales_gbp,
+    labour_cost_gbp,
+    ideal_food_cost_gbp,
+    actual_food_cost_gbp,
+    created_at,
+  };
+}
+
+// fallback if id not present (shouldn’t happen, but avoids React key crashes)
+function cryptoRandomFallback() {
+  try {
+    // @ts-ignore
+    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  } catch {}
+  return String(Date.now()) + "_" + Math.random().toString(16).slice(2);
 }
 
 export default function CostControlsPage() {
@@ -125,7 +158,7 @@ export default function CostControlsPage() {
   const [customFrom, setCustomFrom] = useState<string>(() => toYYYYMMDDLocal(startOfTodayLocal()));
   const [customTo, setCustomTo] = useState<string>(() => toYYYYMMDDLocal(startOfTodayLocal()));
 
-  const window = useMemo(() => {
+  const rangeWindow = useMemo(() => {
     // We query by shift_date (DATE) using YYYY-MM-DD boundaries:
     // inclusive start, exclusive end (end is next day/week/month)
     if (rangeMode === "today") {
@@ -186,18 +219,41 @@ export default function CostControlsPage() {
       setLoading(true);
       if (!supabase) throw new Error("Supabase client not available");
 
+      // ✅ Keep correct table name. Switch to select("*") so missing columns don't break the query.
       const { data, error } = await supabase
         .from("cost_control_entries")
-        .select(
-          "id, store, shift_date, manager_name, sales_gbp, labour_cost_gbp, ideal_food_cost_gbp, actual_food_cost_gbp, created_at"
-        )
-        .gte("shift_date", window.from)
-        .lt("shift_date", window.to)
+        .select("*")
+        .gte("shift_date", rangeWindow.from)
+        .lt("shift_date", rangeWindow.to)
         .order("shift_date", { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        // Provide full diagnostics to the UI
+        throw new Error(
+          [
+            error.message,
+            error.code ? `code: ${error.code}` : null,
+            // @ts-ignore
+            error.details ? `details: ${error.details}` : null,
+            // @ts-ignore
+            error.hint ? `hint: ${error.hint}` : null,
+          ]
+            .filter(Boolean)
+            .join(" | ")
+        );
+      }
 
-      setRows((data || []) as CostRow[]);
+      const normalised = (data || []).map(normaliseRow);
+
+      // If shift_date isn't present / malformed, warn rather than silently empty
+      const missingShiftDate = normalised.some((r) => !r.shift_date || r.shift_date.length < 10);
+      if (missingShiftDate) {
+        setErr(
+          "Loaded rows, but some entries are missing a valid shift_date. Check table column names/types (expected shift_date as YYYY-MM-DD)."
+        );
+      }
+
+      setRows(normalised);
     } catch (e: any) {
       setErr(e?.message || "Failed to load cost control entries");
       setRows([]);
@@ -211,7 +267,7 @@ export default function CostControlsPage() {
     const t = setInterval(load, 60_000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [window.from, window.to]);
+  }, [rangeWindow.from, rangeWindow.to]);
 
   const storeAgg = useMemo(() => aggregate(rows, "store"), [rows]);
   const mgrAgg = useMemo(() => aggregate(rows, "manager_name"), [rows]);
@@ -238,7 +294,9 @@ export default function CostControlsPage() {
 
         <header className="header">
           <h1>Cost Controls</h1>
-          <p className="subtitle">Labour + Food Variance • weighted rankings • period: <b>{window.label}</b></p>
+          <p className="subtitle">
+            Labour % + Food Variance % of sales • weighted rankings • period: <b>{rangeWindow.label}</b>
+          </p>
         </header>
 
         {/* Range selector */}
@@ -293,7 +351,7 @@ export default function CostControlsPage() {
 
         {!loading && !err && (
           <>
-            {/* Highlights */}
+            {/* Highlights (percent-only) */}
             <section className="highlights">
               <div className="highlightsHead">
                 <h2>Highlights</h2>
@@ -309,8 +367,7 @@ export default function CostControlsPage() {
                   <div className="hlMain">
                     <div className="hlName">{topStoreLabour ? topStoreLabour.name : "No data"}</div>
                     <div className="hlMeta">
-                      Labour: <b>{topStoreLabour ? fmtPct(topStoreLabour.labourPct, 1) : "—"}</b> • Sales:{" "}
-                      <b>{topStoreLabour ? fmtMoney(topStoreLabour.sales) : "—"}</b>
+                      Labour: <b>{topStoreLabour ? fmtPct(topStoreLabour.labourPct, 1) : "—"}</b>
                     </div>
                   </div>
                 </div>
@@ -323,8 +380,7 @@ export default function CostControlsPage() {
                   <div className="hlMain">
                     <div className="hlName">{topStoreFood ? topStoreFood.name : "No data"}</div>
                     <div className="hlMeta">
-                      Var % sales: <b>{topStoreFood ? fmtPct(topStoreFood.foodVarPctSales, 2) : "—"}</b> • Var £:{" "}
-                      <b>{topStoreFood ? fmtMoney(topStoreFood.foodVarGbp) : "—"}</b>
+                      Var % sales: <b>{topStoreFood ? fmtPct(topStoreFood.foodVarPctSales, 2) : "—"}</b>
                     </div>
                   </div>
                 </div>
@@ -337,14 +393,14 @@ export default function CostControlsPage() {
                   <div className="hlMain">
                     <div className="hlName">{rows.length}</div>
                     <div className="hlMeta">
-                      Range: <b>{window.label}</b>
+                      Range: <b>{rangeWindow.label}</b>
                     </div>
                   </div>
                 </div>
               </div>
             </section>
 
-            {/* Rankings */}
+            {/* Rankings (store + manager only) */}
             <section className="boards">
               <div className="board">
                 <div className="boardHead">
@@ -359,10 +415,8 @@ export default function CostControlsPage() {
                         <th style={{ width: 70 }}>Rank</th>
                         <th>Store</th>
                         <th style={{ width: 130 }}>Days</th>
-                        <th style={{ width: 150 }}>Sales</th>
-                        <th style={{ width: 150 }}>Labour %</th>
-                        <th style={{ width: 180 }}>Food Var £</th>
-                        <th style={{ width: 180 }}>Food Var % Sales</th>
+                        <th style={{ width: 170 }}>Labour %</th>
+                        <th style={{ width: 210 }}>Food Var % Sales</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -371,15 +425,13 @@ export default function CostControlsPage() {
                           <td className="rank">{idx + 1}</td>
                           <td className="name">{a.name}</td>
                           <td className="num">{a.days}</td>
-                          <td className="num">{fmtMoney(a.sales)}</td>
                           <td className="num">{fmtPct(a.labourPct, 1)}</td>
-                          <td className="num">{fmtMoney(a.foodVarGbp)}</td>
                           <td className="num">{fmtPct(a.foodVarPctSales, 2)}</td>
                         </tr>
                       ))}
                       {storeAgg.length === 0 && (
                         <tr>
-                          <td className="empty" colSpan={7}>
+                          <td className="empty" colSpan={5}>
                             No cost control entries found for this period.
                           </td>
                         </tr>
@@ -402,10 +454,8 @@ export default function CostControlsPage() {
                         <th style={{ width: 70 }}>Rank</th>
                         <th>Manager</th>
                         <th style={{ width: 130 }}>Days</th>
-                        <th style={{ width: 150 }}>Sales</th>
-                        <th style={{ width: 150 }}>Labour %</th>
-                        <th style={{ width: 180 }}>Food Var £</th>
-                        <th style={{ width: 180 }}>Food Var % Sales</th>
+                        <th style={{ width: 170 }}>Labour %</th>
+                        <th style={{ width: 210 }}>Food Var % Sales</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -414,15 +464,13 @@ export default function CostControlsPage() {
                           <td className="rank">{idx + 1}</td>
                           <td className="name">{a.name}</td>
                           <td className="num">{a.days}</td>
-                          <td className="num">{fmtMoney(a.sales)}</td>
                           <td className="num">{fmtPct(a.labourPct, 1)}</td>
-                          <td className="num">{fmtMoney(a.foodVarGbp)}</td>
                           <td className="num">{fmtPct(a.foodVarPctSales, 2)}</td>
                         </tr>
                       ))}
                       {mgrAgg.length === 0 && (
                         <tr>
-                          <td className="empty" colSpan={7}>
+                          <td className="empty" colSpan={5}>
                             No cost control entries found for this period.
                           </td>
                         </tr>
@@ -430,61 +478,6 @@ export default function CostControlsPage() {
                     </tbody>
                   </table>
                 </div>
-              </div>
-            </section>
-
-            {/* Raw rows */}
-            <section className="raw">
-              <div className="boardHead">
-                <h2>Raw Entries</h2>
-                <p>Latest first</p>
-              </div>
-
-              <div className="tableWrap">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Store</th>
-                      <th>Manager</th>
-                      <th className="num">Sales</th>
-                      <th className="num">Labour £</th>
-                      <th className="num">Labour %</th>
-                      <th className="num">Ideal Food £</th>
-                      <th className="num">Actual Food £</th>
-                      <th className="num">Food Var £</th>
-                      <th className="num">Food Var % Sales</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r) => {
-                      const labourPct = r.sales_gbp > 0 ? r.labour_cost_gbp / r.sales_gbp : 0;
-                      const foodVarGbp = r.actual_food_cost_gbp - r.ideal_food_cost_gbp;
-                      const foodVarPctSales = r.sales_gbp > 0 ? foodVarGbp / r.sales_gbp : 0;
-                      return (
-                        <tr key={r.id}>
-                          <td>{fmtShortDate(r.shift_date)}</td>
-                          <td>{r.store}</td>
-                          <td>{r.manager_name}</td>
-                          <td className="num">{fmtMoney(r.sales_gbp)}</td>
-                          <td className="num">{fmtMoney(r.labour_cost_gbp)}</td>
-                          <td className="num">{fmtPct(labourPct, 1)}</td>
-                          <td className="num">{fmtMoney(r.ideal_food_cost_gbp)}</td>
-                          <td className="num">{fmtMoney(r.actual_food_cost_gbp)}</td>
-                          <td className="num">{fmtMoney(foodVarGbp)}</td>
-                          <td className="num">{fmtPct(foodVarPctSales, 2)}</td>
-                        </tr>
-                      );
-                    })}
-                    {rows.length === 0 && (
-                      <tr>
-                        <td className="empty" colSpan={10}>
-                          No entries for this period.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
               </div>
             </section>
           </>
@@ -676,6 +669,7 @@ export default function CostControlsPage() {
           background: rgba(254, 242, 242, 0.9);
           border: 1px solid rgba(239, 68, 68, 0.25);
           color: #7f1d1d;
+          word-break: break-word;
         }
         .alert.muted {
           background: rgba(255, 255, 255, 0.85);
@@ -823,10 +817,6 @@ export default function CostControlsPage() {
           font-weight: 800;
         }
 
-        .raw {
-          margin-top: 16px;
-        }
-
         .footer {
           text-align: center;
           margin-top: 18px;
@@ -853,7 +843,7 @@ function aggregate(rows: CostRow[], key: "store" | "manager_name"): Agg[] {
   const bucket: Record<string, CostRow[]> = {};
 
   for (const r of rows) {
-    const name = String(r[key] || "").trim() || "Unknown";
+    const name = String((r as any)[key] || "").trim() || "Unknown";
     if (!bucket[name]) bucket[name] = [];
     bucket[name].push(r);
   }
@@ -879,12 +869,11 @@ function aggregate(rows: CostRow[], key: "store" | "manager_name"): Agg[] {
       idealFood,
       actualFood,
       labourPct,
-      foodVarGbp,
       foodVarPctSales,
     };
   });
 
-  // Rank: lower labour% best, tie-break lower food variance% of sales, then higher sales
+  // Rank: lower labour% best, tie-break lower food variance% of sales, then higher sales (not displayed)
   out.sort((a, b) => {
     if (a.labourPct !== b.labourPct) return a.labourPct - b.labourPct;
     if (a.foodVarPctSales !== b.foodVarPctSales) return a.foodVarPctSales - b.foodVarPctSales;
