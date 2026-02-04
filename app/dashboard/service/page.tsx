@@ -35,7 +35,7 @@ type ShiftRow = {
 
   dot_pct: number | null;
 
-  extremes_pct: number | null;
+  extreme_over_40: number | null;
 
   sbr_pct: number | null;
   rnl_minutes: number | null;
@@ -178,7 +178,7 @@ export default function ServiceDashboardPage() {
       const dot = normalisePct(r.dot_pct);
       if (dot != null) dotVals.push(dot);
 
-      const ext = normalisePct(r.extremes_pct);
+      const ext = normalisePct(r.extreme_over_40);
       if (ext != null) extVals.push(ext);
 
       if (typeof r.additional_hours === "number" && Number.isFinite(r.additional_hours)) {
@@ -208,7 +208,7 @@ export default function ServiceDashboardPage() {
       for (const r of rowsForStore) {
         const l = normalisePct(r.labour_pct);
         const d = normalisePct(r.dot_pct);
-        const e = normalisePct(r.extremes_pct);
+        const e = normalisePct(r.extreme_over_40);
 
         if (l != null) lab.push(l);
         if (d != null) dot.push(d);
@@ -272,7 +272,7 @@ export default function ServiceDashboardPage() {
 
       const l = normalisePct(r.labour_pct);
       const d = normalisePct(r.dot_pct);
-      const e = normalisePct(r.extremes_pct);
+      const e = normalisePct(r.extreme_over_40);
 
       if (l != null) bucket[name].labour.push(l);
       if (d != null) bucket[name].dot.push(d);
