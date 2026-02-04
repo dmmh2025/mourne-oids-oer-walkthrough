@@ -12,6 +12,7 @@ const supabase =
       )
     : null;
 
+// ✅ Removed "today" (current day is never complete)
 type RangeMode = "previous_day" | "this_week" | "this_month" | "custom";
 
 type CostRow = {
@@ -20,7 +21,7 @@ type CostRow = {
   shift_date: string; // YYYY-MM-DD
   manager_name: string;
 
-  // Raw £ amounts from Supabase (NOT displayed)
+  // Stored in Supabase as £ values (not displayed)
   sales_gbp: number;
   labour_cost_gbp: number;
   ideal_food_cost_gbp: number;
@@ -28,12 +29,6 @@ type CostRow = {
 
   created_at?: string | null;
 };
-
-const LABOUR_TARGET = 0.25; // 25%
-
-// Food variance target band: -0.25% .. +0.25%
-const FOODVAR_MIN = -0.0025;
-const FOODVAR_MAX = 0.0025;
 
 function isYYYYMMDD(v: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(v);
@@ -52,13 +47,6 @@ function startOfTodayLocal() {
   return d;
 }
 
-function startOfTomorrowLocal() {
-  const d = startOfTodayLocal();
-  d.setDate(d.getDate() + 1);
-  return d;
-}
-
-// Monday 00:00 local (UK-style)
 function startOfThisWeekLocal() {
   const d = startOfTodayLocal();
   const day = d.getDay(); // 0=Sun..6=Sat
@@ -96,37 +84,23 @@ function fmtShortDate(yyyyMMdd: string) {
   });
 }
 
-// expects decimal form (0.28). Used for labour% and food var%.
-function fmtPct(n: number, dp = 1) {
+// expects decimal form (0.25 = 25%)
+function fmtPct(n: number, dp = 2) {
   if (!isFinite(n)) return "—";
   return (n * 100).toFixed(dp) + "%";
-}
-
-type Agg = {
-  name: string;
-  days: number;
-
-  // internal totals (NOT displayed)
-  sales: number;
-  labour: number;
-  idealFood: number;
-  actualFood: number;
-
-  labourPct: number; // labour £ / sales £ over the period
-  foodVarPctSales: number; // (actual% - ideal%) over the period
-
-  // target distance scores (lower is better)
-  labourDelta: number; // abs(labourPct - 25%)
-  foodVarDelta: number; // distance to [-0.25%, +0.25%] band
-};
-
-function sum(arr: number[]) {
-  return arr.reduce((a, b) => a + b, 0);
 }
 
 function num(v: any) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+function cryptoRandomFallback() {
+  try {
+    // @ts-ignore
+    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  } catch {}
+  return String(Date.now()) + "_" + Math.random().toString(16).slice(2);
 }
 
 function normaliseRow(r: any): CostRow {
@@ -156,21 +130,41 @@ function normaliseRow(r: any): CostRow {
   };
 }
 
-function cryptoRandomFallback() {
-  try {
-    // @ts-ignore
-    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
-  } catch {}
-  return String(Date.now()) + "_" + Math.random().toString(16).slice(2);
+type Agg = {
+  name: string; // store or manager
+  days: number;
+
+  // Internal sums for correct weighting (NOT displayed)
+  sales: number;
+  labour: number;
+  idealFood: number;
+  actualFood: number;
+
+  // Displayed metrics
+  labourPct: number; // labour / sales
+  foodVarPctSales: number; // (actual - ideal) / sales   => "Actual% - Ideal%"
+
+  // Ranking metrics (closeness to target)
+  labourDelta: number; // abs(labourPct - 25%)
+  foodVarDelta: number; // distance to band [-0.25%, +0.25%]
+};
+
+function sum(arr: number[]) {
+  return arr.reduce((a, b) => a + b, 0);
 }
 
-// distance to an interval [min, max]: 0 if inside; else distance to nearest edge
+// ✅ one single definition only (fixes your build error)
 function distanceToBand(x: number, min: number, max: number) {
   if (!Number.isFinite(x)) return Number.POSITIVE_INFINITY;
   if (x < min) return min - x;
   if (x > max) return x - max;
   return 0;
 }
+
+// Targets
+const LABOUR_TARGET = 0.25; // 25%
+const FOODVAR_MIN = -0.0025; // -0.25%
+const FOODVAR_MAX = 0.0025; // +0.25%
 
 export default function CostControlsPage() {
   const router = useRouter();
@@ -282,7 +276,7 @@ export default function CostControlsPage() {
   const storeAgg = useMemo(() => aggregate(rows, "store"), [rows]);
   const mgrAgg = useMemo(() => aggregate(rows, "manager_name"), [rows]);
 
-  // Highlights based on closeness-to-target (not “lowest wins”)
+  // Highlights based on closeness-to-target (smaller delta wins)
   const topStoreLabour = storeAgg.slice().sort((a, b) => a.labourDelta - b.labourDelta)[0] || null;
   const topStoreFood = storeAgg.slice().sort((a, b) => a.foodVarDelta - b.foodVarDelta)[0] || null;
 
@@ -307,7 +301,10 @@ export default function CostControlsPage() {
           <h1>Cost Controls</h1>
           <p className="subtitle">
             Ranked by closeness to targets — Labour <b>{fmtPct(LABOUR_TARGET, 0)}</b> and Food Variance band{" "}
-            <b>{fmtPct(FOODVAR_MIN, 2)} → {fmtPct(FOODVAR_MAX, 2)}</b> • period: <b>{rangeWindow.label}</b>
+            <b>
+              {fmtPct(FOODVAR_MIN, 2)} → {fmtPct(FOODVAR_MAX, 2)}
+            </b>{" "}
+            • period: <b>{rangeWindow.label}</b>
           </p>
         </header>
 
@@ -872,19 +869,18 @@ function aggregate(rows: CostRow[], key: "store" | "manager_name"): Agg[] {
     const idealFood = sum(items.map((x) => Number(x.ideal_food_cost_gbp || 0)));
     const actualFood = sum(items.map((x) => Number(x.actual_food_cost_gbp || 0)));
 
-    // Period-level %s (weighted properly by sales because we use totals)
+    // ✅ Labour% based on totals (weighted correctly)
     const labourPct = sales > 0 ? labour / sales : 0;
-    const idealFoodPct = sales > 0 ? idealFood / sales : 0;
-    const actualFoodPct = sales > 0 ? actualFood / sales : 0;
 
-    // Food variance = actual% - ideal% (can be negative)
-    const foodVarPctSales = actualFoodPct - idealFoodPct;
-
-    // Target distance scoring
-    const labourDelta = Math.abs(labourPct - LABOUR_TARGET);
-    const foodVarDelta = distanceToBand(foodVarPctSales, FOODVAR_MIN, FOODVAR_MAX);
+    // ✅ Food variance % based on totals:
+    // (actual% - ideal%) = (actual/sales) - (ideal/sales) = (actual - ideal)/sales
+    const foodVarPctSales = sales > 0 ? (actualFood - idealFood) / sales : 0;
 
     const days = new Set(items.map((x) => x.shift_date)).size;
+
+    // ✅ Closeness to target metrics
+    const labourDelta = Math.abs(labourPct - LABOUR_TARGET);
+    const foodVarDelta = distanceToBand(foodVarPctSales, FOODVAR_MIN, FOODVAR_MAX);
 
     return {
       name,
@@ -900,7 +896,10 @@ function aggregate(rows: CostRow[], key: "store" | "manager_name"): Agg[] {
     };
   });
 
-  // Rank: closest labour to 25%, then closest food variance to band, then higher sales
+  // ✅ Rank by closeness:
+  // 1) closest labour to 25%
+  // 2) closest food variance to band [-0.25%, +0.25%]
+  // 3) higher sales as tiebreak (not displayed)
   out.sort((a, b) => {
     if (a.labourDelta !== b.labourDelta) return a.labourDelta - b.labourDelta;
     if (a.foodVarDelta !== b.foodVarDelta) return a.foodVarDelta - b.foodVarDelta;
@@ -908,12 +907,4 @@ function aggregate(rows: CostRow[], key: "store" | "manager_name"): Agg[] {
   });
 
   return out;
-}
-
-// distance to interval [min, max]
-function distanceToBand(x: number, min: number, max: number) {
-  if (!Number.isFinite(x)) return Number.POSITIVE_INFINITY;
-  if (x < min) return min - x;
-  if (x > max) return x - max;
-  return 0;
 }
