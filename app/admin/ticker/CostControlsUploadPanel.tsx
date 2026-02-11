@@ -181,6 +181,60 @@ export default function CostControlsUploadPanel() {
           {msg}
         </p>
       )}
+
+      <style jsx>{`
+        .card {
+          background: #fff;
+          width: min(900px, 94vw);
+          margin-top: 18px;
+          border-radius: 14px;
+          box-shadow: 0 10px 18px rgba(2, 6, 23, 0.04);
+          padding: 16px 18px 20px;
+        }
+        .card h2 {
+          font-size: 18px;
+          margin-bottom: 12px;
+        }
+        label {
+          display: block;
+          font-weight: 600;
+          margin-bottom: 4px;
+        }
+        select,
+        input[type="text"],
+        input[type="number"],
+        input[type="date"] {
+          width: 100%;
+          border-radius: 10px;
+          border: 1px solid #d4dbe3;
+          padding: 6px 8px;
+          font-size: 0.85rem;
+        }
+        .form-2col {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 12px;
+        }
+        .upload-btn {
+          width: 100%;
+          background: #006491;
+          color: #fff;
+          border: none;
+          border-radius: 10px;
+          padding: 8px 0;
+          font-weight: 700;
+          cursor: pointer;
+          margin-top: 14px;
+        }
+        .upload-btn:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+        }
+        .muted {
+          color: #94a3b8;
+          font-size: 0.8rem;
+        }
+      `}</style>
     </section>
   );
 }
