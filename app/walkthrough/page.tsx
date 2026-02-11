@@ -10,6 +10,7 @@ import { OSA_STANDARDS_CHECKLIST } from "@/lib/osa-standards-checklist";
  * - Replaces OER scoring content with OSA Standards tick-only checklist
  * - Twice daily completion: Pre-Open + Handover
  * - No reliance on section.id (derive keys from section.title)
+ * - ✅ Save Progress: localStorage draft save/restore + autosave
  */
 
 type Store = "" | "Downpatrick" | "Kilkeel" | "Newcastle" | "Ballynahinch";
@@ -18,6 +19,34 @@ type WalkthroughType = "pre_open" | "handover";
 /* ---------- Helpers ---------- */
 const slug = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+// ✅ Draft storage helpers
+const DRAFT_KEY = "mourneoids:osa_walkthrough_draft:v1";
+type Draft = {
+  store: Store;
+  name: string;
+  walkthroughType: WalkthroughType;
+  ticks: Record<string, boolean>;
+  open: boolean[];
+  savedAt: string; // ISO
+};
+
+function safeJsonParse<T>(raw: string | null): T | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+function clampOpenArray(arr: any): boolean[] {
+  const len = OSA_STANDARDS_CHECKLIST.length;
+  if (!Array.isArray(arr)) return OSA_STANDARDS_CHECKLIST.map(() => true);
+  const out = new Array<boolean>(len).fill(true);
+  for (let i = 0; i < len; i++) out[i] = Boolean(arr[i]);
+  return out;
+}
 
 export default function WalkthroughPage() {
   const router = useRouter();
@@ -39,6 +68,10 @@ export default function WalkthroughPage() {
 
   // Tick state: key = `${sectionSlug}:${itemIndex}`
   const [ticks, setTicks] = React.useState<Record<string, boolean>>({});
+
+  // Draft meta
+  const [lastSavedAt, setLastSavedAt] = React.useState<string | null>(null);
+  const [saveToast, setSaveToast] = React.useState<string | null>(null);
 
   const allKeys = React.useMemo(() => {
     const keys: string[] = [];
@@ -63,6 +96,92 @@ export default function WalkthroughPage() {
     if (!walkthroughType) return false;
     return totalChecks > 0 && doneChecks === totalChecks;
   }, [store, name, walkthroughType, doneChecks, totalChecks]);
+
+  /* ---------- Save / Restore ---------- */
+  const saveDraft = React.useCallback(
+    (opts?: { silent?: boolean }) => {
+      try {
+        if (typeof window === "undefined") return;
+
+        const payload: Draft = {
+          store,
+          name,
+          walkthroughType,
+          ticks,
+          open,
+          savedAt: new Date().toISOString(),
+        };
+
+        window.localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
+        setLastSavedAt(payload.savedAt);
+
+        if (!opts?.silent) {
+          setSaveToast("✅ Progress saved");
+          window.setTimeout(() => setSaveToast(null), 2500);
+        }
+      } catch (e: any) {
+        if (!opts?.silent) alert(`Save failed: ${e?.message || String(e)}`);
+      }
+    },
+    [store, name, walkthroughType, ticks, open]
+  );
+
+  const clearDraft = React.useCallback(() => {
+    try {
+      if (typeof window === "undefined") return;
+      window.localStorage.removeItem(DRAFT_KEY);
+      setLastSavedAt(null);
+    } catch {}
+  }, []);
+
+  // Restore once on mount
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const raw = window.localStorage.getItem(DRAFT_KEY);
+    const draft = safeJsonParse<Draft>(raw);
+    if (!draft) return;
+
+    // Basic shape checks
+    const hasTicks = draft && typeof draft === "object" && draft.ticks && typeof draft.ticks === "object";
+    const hasMeta =
+      (draft.store === "" ||
+        draft.store === "Downpatrick" ||
+        draft.store === "Kilkeel" ||
+        draft.store === "Newcastle" ||
+        draft.store === "Ballynahinch") &&
+      (draft.walkthroughType === "pre_open" || draft.walkthroughType === "handover");
+
+    if (!hasTicks || !hasMeta) return;
+
+    const when = draft.savedAt ? new Date(draft.savedAt) : null;
+    const label = when && !isNaN(when.getTime()) ? when.toLocaleString("en-GB") : "recently";
+
+    const ok = window.confirm(`A saved walkthrough draft was found (saved ${label}).\n\nRestore it?`);
+    if (!ok) return;
+
+    setStore(draft.store);
+    setName(draft.name || "");
+    setWalkthroughType(draft.walkthroughType);
+    setTicks(draft.ticks || {});
+    setOpen(clampOpenArray(draft.open));
+    setLastSavedAt(draft.savedAt || null);
+  }, []);
+
+  // Autosave (throttled) on changes
+  const autosaveTimer = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (autosaveTimer.current) window.clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = window.setTimeout(() => {
+      saveDraft({ silent: true });
+    }, 700);
+
+    return () => {
+      if (autosaveTimer.current) window.clearTimeout(autosaveTimer.current);
+    };
+  }, [store, name, walkthroughType, ticks, open, saveDraft]);
 
   /* ---------- Submit ---------- */
   async function onSubmit(e: React.FormEvent) {
@@ -109,6 +228,9 @@ export default function WalkthroughPage() {
         return;
       }
 
+      // ✅ Clear saved draft on successful submit
+      clearDraft();
+
       // Keep it simple: back to hub
       router.push("/hub");
     } catch (err: any) {
@@ -132,9 +254,17 @@ export default function WalkthroughPage() {
             <span className={`chip ${allComplete ? "chip--green" : "chip--grey"}`}>
               {allComplete ? "Ready to submit" : "In progress"}
             </span>
+            {lastSavedAt && (
+              <span className="chip chip--grey">
+                Saved {new Date(lastSavedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
           </div>
 
           <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className="btn btn--ghost" onClick={() => saveDraft()}>
+              Save progress
+            </button>
             <button type="button" className="btn btn--ghost" onClick={() => router.back()}>
               Back
             </button>
@@ -167,8 +297,11 @@ export default function WalkthroughPage() {
 
         {/* THE FORM */}
         <form id="walkForm" onSubmit={onSubmit} className="stack">
-          {/* ---- TOP SUBMIT ---- */}
+          {/* ---- TOP ACTIONS ---- */}
           <div className="inlineSubmitTop">
+            <button type="button" className="btn btn--ghost btn--lg" onClick={() => saveDraft()}>
+              Save progress
+            </button>{" "}
             <button
               type="button"
               className="btn btn--brand btn--lg"
@@ -225,6 +358,9 @@ export default function WalkthroughPage() {
             <button type="button" className="btn" onClick={() => setAll(false)}>
               Collapse all
             </button>
+            <button type="button" className="btn btn--ghost" onClick={() => saveDraft()}>
+              Save progress
+            </button>
           </div>
 
           {/* Sections */}
@@ -235,7 +371,8 @@ export default function WalkthroughPage() {
                 (acc, _, idx) => acc + (ticks[`${sid}:${idx}`] ? 1 : 0),
                 0
               );
-              const sectionFull = doneInSection === sec.items.length && sec.items.length > 0;
+              const sectionFull =
+                doneInSection === sec.items.length && sec.items.length > 0;
 
               return (
                 <div key={sid} className="card card--section">
@@ -248,7 +385,11 @@ export default function WalkthroughPage() {
                       </div>
                     </div>
                     <div className="section__chips">
-                      <span className={`chip ${sectionFull ? "chip--green" : "chip--grey"}`}>
+                      <span
+                        className={`chip ${
+                          sectionFull ? "chip--green" : "chip--grey"
+                        }`}
+                      >
                         {sectionFull ? "Complete" : "In progress"}
                       </span>
                       <button
@@ -268,14 +409,20 @@ export default function WalkthroughPage() {
                         const checked = ticks[key] === true;
 
                         return (
-                          <div key={key} className={`check ${ii % 2 ? "check--alt" : ""}`}>
+                          <div
+                            key={key}
+                            className={`check ${ii % 2 ? "check--alt" : ""}`}
+                          >
                             <label className="check__row">
                               <input
                                 className="bigbox"
                                 type="checkbox"
                                 checked={checked}
                                 onChange={(e) =>
-                                  setTicks((prev) => ({ ...prev, [key]: e.target.checked }))
+                                  setTicks((prev) => ({
+                                    ...prev,
+                                    [key]: e.target.checked,
+                                  }))
                                 }
                               />
                               <span className="check__label">
@@ -292,8 +439,11 @@ export default function WalkthroughPage() {
             })}
           </div>
 
-          {/* ---- BOTTOM SUBMIT ---- */}
+          {/* ---- BOTTOM ACTIONS ---- */}
           <div className="inlineSubmitBottom">
+            <button type="button" className="btn btn--ghost btn--lg" onClick={() => saveDraft()}>
+              Save progress
+            </button>{" "}
             <button
               type="button"
               className="btn btn--brand btn--lg"
@@ -317,6 +467,9 @@ export default function WalkthroughPage() {
       >
         ✓ Submit
       </button>
+
+      {/* Small toast */}
+      {saveToast && <div className="toast">{saveToast}</div>}
 
       <style jsx>{`
         :root {
@@ -427,6 +580,20 @@ export default function WalkthroughPage() {
           border-radius: 14px; padding: 14px 18px; font-weight: 900;
           box-shadow: 0 10px 18px rgba(2,6,23,.18);
           cursor:pointer; pointer-events:auto;
+        }
+
+        .toast {
+          position: fixed;
+          left: 50%;
+          transform: translateX(-50%);
+          bottom: 16px;
+          z-index: 95;
+          background: rgba(15, 23, 42, 0.92);
+          color: #fff !important;
+          padding: 10px 14px;
+          border-radius: 999px;
+          font-weight: 900;
+          box-shadow: 0 10px 18px rgba(2,6,23,.18);
         }
       `}</style>
     </main>
