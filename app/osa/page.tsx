@@ -179,6 +179,52 @@ const formatShiftDateAny = (v: any) => {
 
 const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
 
+const toISODateLocal = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const getWeekRange = () => {
+  const now = new Date();
+  const day = now.getDay(); // 0 = Sunday
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diffToMonday);
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  return {
+    from: toISODateLocal(monday),
+    to: toISODateLocal(sunday),
+  };
+};
+
+const getMonthRange = () => {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+  return {
+    from: toISODateLocal(first),
+    to: toISODateLocal(last),
+  };
+};
+
+const getYearRange = () => {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), 0, 1);
+  const last = new Date(now.getFullYear(), 11, 31);
+
+  return {
+    from: toISODateLocal(first),
+    to: toISODateLocal(last),
+  };
+};
+
 const pillClassFromStars = (stars: number) => {
   if (stars >= 4.5) return "pill green";
   if (stars >= 4.0) return "pill amber";
@@ -255,16 +301,14 @@ function buildAgg(
 export default function InternalOsaScorecardPage() {
   const router = useRouter();
 
-  const todayISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const defaultFromISO = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 28);
-    return d.toISOString().slice(0, 10);
-  }, []);
+  const defaultWeekRange = useMemo(() => getWeekRange(), []);
 
   // Date filter (inclusive)
-  const [fromDate, setFromDate] = useState<string>(defaultFromISO);
-  const [toDate, setToDate] = useState<string>(todayISO);
+  const [fromDate, setFromDate] = useState<string>(defaultWeekRange.from);
+  const [toDate, setToDate] = useState<string>(defaultWeekRange.to);
+  const [activeDateFilter, setActiveDateFilter] = useState<
+    "this_week" | "this_month" | "this_year" | "custom"
+  >("this_week");
 
   const [rows, setRows] = useState<OsaRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -453,7 +497,10 @@ export default function InternalOsaScorecardPage() {
                 <input
                   type="date"
                   value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
+                  onChange={(e) => {
+                    setFromDate(e.target.value);
+                    setActiveDateFilter("custom");
+                  }}
                   max={toDate}
                 />
               </label>
@@ -463,40 +510,61 @@ export default function InternalOsaScorecardPage() {
                 <input
                   type="date"
                   value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
+                  onChange={(e) => {
+                    setToDate(e.target.value);
+                    setActiveDateFilter("custom");
+                  }}
                   min={fromDate}
-                  max={new Date().toISOString().slice(0, 10)}
                 />
               </label>
 
               <button
-                className="quick"
+                className={`quick ${activeDateFilter === "this_week" ? "active" : ""}`}
                 onClick={() => {
-                  const d = new Date();
-                  const to = d.toISOString().slice(0, 10);
-                  d.setDate(d.getDate() - 7);
-                  const from = d.toISOString().slice(0, 10);
+                  const { from, to } = getWeekRange();
                   setFromDate(from);
                   setToDate(to);
+                  setActiveDateFilter("this_week");
                 }}
                 type="button"
               >
-                Last 7 days
+                This week (Monday - Sunday)
               </button>
 
               <button
-                className="quick"
+                className={`quick ${activeDateFilter === "this_month" ? "active" : ""}`}
                 onClick={() => {
-                  const d = new Date();
-                  const to = d.toISOString().slice(0, 10);
-                  d.setDate(d.getDate() - 28);
-                  const from = d.toISOString().slice(0, 10);
+                  const { from, to } = getMonthRange();
                   setFromDate(from);
                   setToDate(to);
+                  setActiveDateFilter("this_month");
                 }}
                 type="button"
               >
-                Last 28 days
+                This Month
+              </button>
+
+              <button
+                className={`quick ${activeDateFilter === "this_year" ? "active" : ""}`}
+                onClick={() => {
+                  const { from, to } = getYearRange();
+                  setFromDate(from);
+                  setToDate(to);
+                  setActiveDateFilter("this_year");
+                }}
+                type="button"
+              >
+                This Year
+              </button>
+
+              <button
+                className={`quick ${activeDateFilter === "custom" ? "active" : ""}`}
+                onClick={() => {
+                  setActiveDateFilter("custom");
+                }}
+                type="button"
+              >
+                Custom dates
               </button>
             </div>
           </div>
@@ -914,6 +982,11 @@ export default function InternalOsaScorecardPage() {
         }
 
         .quick:hover {
+          background: var(--brand);
+          color: #fff;
+        }
+
+        .quick.active {
           background: var(--brand);
           color: #fff;
         }
