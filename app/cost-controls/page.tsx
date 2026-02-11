@@ -144,8 +144,8 @@ type Agg = {
   labourPct: number; // labour / sales
   foodVarPctSales: number; // (actual - ideal) / sales   => "Actual% - Ideal%"
 
-  // Ranking metrics (closeness to target)
-  labourDelta: number; // abs(labourPct - 25%)
+  // Ranking metrics
+  labourDelta: number; // ✅ amount ABOVE target (0 if <= 25%). Lower is better.
   foodVarDelta: number; // distance to band [-0.25%, +0.25%]
 };
 
@@ -276,8 +276,19 @@ export default function CostControlsPage() {
   const storeAgg = useMemo(() => aggregate(rows, "store"), [rows]);
   const mgrAgg = useMemo(() => aggregate(rows, "manager_name"), [rows]);
 
-  // Highlights based on closeness-to-target (smaller delta wins)
-  const topStoreLabour = storeAgg.slice().sort((a, b) => a.labourDelta - b.labourDelta)[0] || null;
+  // ✅ Highlights based on NEW ranking rules:
+  // Labour: under-target first, then lowest labour%
+  const topStoreLabour =
+    storeAgg
+      .slice()
+      .sort((a, b) => {
+        const aOver = a.labourPct > LABOUR_TARGET ? 1 : 0;
+        const bOver = b.labourPct > LABOUR_TARGET ? 1 : 0;
+        if (aOver !== bOver) return aOver - bOver; // under-target first
+        if (a.labourPct !== b.labourPct) return a.labourPct - b.labourPct; // lower labour wins
+        return b.sales - a.sales;
+      })[0] || null;
+
   const topStoreFood = storeAgg.slice().sort((a, b) => a.foodVarDelta - b.foodVarDelta)[0] || null;
 
   return (
@@ -300,7 +311,7 @@ export default function CostControlsPage() {
         <header className="header">
           <h1>Cost Controls</h1>
           <p className="subtitle">
-            Ranked by closeness to targets — Labour <b>{fmtPct(LABOUR_TARGET, 0)}</b> and Food Variance band{" "}
+            Ranked by targets — Labour <b>≤ {fmtPct(LABOUR_TARGET, 0)}</b> (lower is better) and Food Variance band{" "}
             <b>
               {fmtPct(FOODVAR_MIN, 2)} → {fmtPct(FOODVAR_MAX, 2)}
             </b>{" "}
@@ -371,14 +382,14 @@ export default function CostControlsPage() {
             <section className="highlights">
               <div className="highlightsHead">
                 <h2>Highlights</h2>
-                <p>Closest to targets in the selected period</p>
+                <p>Best performers in the selected period</p>
               </div>
 
               <div className="highlightsGrid">
                 <div className="hlCard">
                   <div className="hlTop">
                     <span className="hlTitle">🏆 Labour Target</span>
-                    <span className="hlPill">Closest to 25%</span>
+                    <span className="hlPill">≤ 25% (lower wins)</span>
                   </div>
                   <div className="hlMain">
                     <div className="hlName">{topStoreLabour ? topStoreLabour.name : "No data"}</div>
@@ -420,7 +431,7 @@ export default function CostControlsPage() {
               <div className="board">
                 <div className="boardHead">
                   <h2>Store Rankings</h2>
-                  <p>Closest to Labour 25% then closest to Food Var band (±0.25%)</p>
+                  <p>Ranked by: Labour (≤25% then lowest) → Food Var (within ±0.25%)</p>
                 </div>
 
                 <div className="tableWrap">
@@ -459,7 +470,7 @@ export default function CostControlsPage() {
               <div className="board">
                 <div className="boardHead">
                   <h2>Manager Rankings</h2>
-                  <p>Closest to Labour 25% then closest to Food Var band (±0.25%)</p>
+                  <p>Ranked by: Labour (≤25% then lowest) → Food Var (within ±0.25%)</p>
                 </div>
 
                 <div className="tableWrap">
@@ -662,249 +673,4 @@ export default function CostControlsPage() {
           color: #334155;
         }
 
-        input[type="date"] {
-          border-radius: 12px;
-          border: 1px solid rgba(15, 23, 42, 0.14);
-          padding: 8px 10px;
-          font-weight: 800;
-          background: #fff;
-        }
-
-        .rangeRight {
-          display: flex;
-          gap: 10px;
-          align-items: center;
-        }
-
-        .alert {
-          margin-top: 12px;
-          border-radius: 14px;
-          padding: 12px 14px;
-          font-weight: 800;
-          background: rgba(254, 242, 242, 0.9);
-          border: 1px solid rgba(239, 68, 68, 0.25);
-          color: #7f1d1d;
-          word-break: break-word;
-        }
-        .alert.muted {
-          background: rgba(255, 255, 255, 0.85);
-          border: 1px solid rgba(15, 23, 42, 0.1);
-          color: #334155;
-        }
-
-        .highlights {
-          margin-top: 16px;
-        }
-        .highlightsHead {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-end;
-          gap: 10px;
-          margin-bottom: 10px;
-        }
-        .highlightsHead h2 {
-          margin: 0;
-          font-size: 15px;
-          font-weight: 900;
-        }
-        .highlightsHead p {
-          margin: 0;
-          font-size: 12px;
-          color: var(--muted);
-          font-weight: 800;
-        }
-        .highlightsGrid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 12px;
-        }
-        .hlCard {
-          background: rgba(255, 255, 255, 0.92);
-          border-radius: 18px;
-          border: 1px solid rgba(0, 100, 145, 0.14);
-          box-shadow: 0 12px 28px rgba(2, 6, 23, 0.05);
-          padding: 12px 14px;
-        }
-        .hlTop {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-          margin-bottom: 8px;
-        }
-        .hlTitle {
-          font-size: 12px;
-          font-weight: 900;
-          letter-spacing: 0.02em;
-          text-transform: uppercase;
-          color: #0f172a;
-        }
-        .hlPill {
-          font-size: 11px;
-          font-weight: 800;
-          padding: 4px 10px;
-          border-radius: 999px;
-          background: rgba(0, 100, 145, 0.1);
-          border: 1px solid rgba(0, 100, 145, 0.16);
-          color: #004b75;
-          white-space: nowrap;
-        }
-        .hlName {
-          font-size: 18px;
-          font-weight: 900;
-          color: #0f172a;
-          margin-bottom: 6px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .hlMeta {
-          font-size: 13px;
-          color: #334155;
-          font-weight: 800;
-        }
-
-        .boards {
-          margin-top: 16px;
-          display: grid;
-          grid-template-columns: 1fr;
-          gap: 16px;
-        }
-
-        .boardHead {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-end;
-          gap: 10px;
-          margin-bottom: 10px;
-        }
-        .boardHead h2 {
-          margin: 0;
-          font-size: 15px;
-          font-weight: 900;
-        }
-        .boardHead p {
-          margin: 0;
-          font-size: 12px;
-          color: var(--muted);
-          font-weight: 800;
-        }
-
-        .tableWrap {
-          overflow-x: auto;
-          border-radius: 16px;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          background: rgba(255, 255, 255, 0.9);
-          box-shadow: 0 12px 28px rgba(2, 6, 23, 0.05);
-        }
-
-        .table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-        th,
-        td {
-          padding: 12px 12px;
-          text-align: left;
-          font-size: 13px;
-        }
-        th {
-          background: rgba(0, 100, 145, 0.08);
-          font-weight: 900;
-          letter-spacing: 0.02em;
-        }
-        tr + tr td {
-          border-top: 1px solid rgba(15, 23, 42, 0.06);
-        }
-
-        td.num {
-          text-align: right;
-          font-variant-numeric: tabular-nums;
-          font-weight: 900;
-        }
-        td.rank,
-        td.name {
-          font-weight: 900;
-        }
-        td.empty {
-          padding: 16px 12px;
-          color: #475569;
-          font-weight: 800;
-        }
-
-        .footer {
-          text-align: center;
-          margin-top: 18px;
-          color: #94a3b8;
-          font-size: 0.8rem;
-        }
-
-        @media (max-width: 980px) {
-          .highlightsGrid {
-            grid-template-columns: 1fr;
-          }
-          .highlightsHead,
-          .boardHead {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-        }
-      `}</style>
-    </main>
-  );
-}
-
-function aggregate(rows: CostRow[], key: "store" | "manager_name"): Agg[] {
-  const bucket: Record<string, CostRow[]> = {};
-
-  for (const r of rows) {
-    const name = String((r as any)[key] || "").trim() || "Unknown";
-    if (!bucket[name]) bucket[name] = [];
-    bucket[name].push(r);
-  }
-
-  const out: Agg[] = Object.entries(bucket).map(([name, items]) => {
-    const sales = sum(items.map((x) => Number(x.sales_gbp || 0)));
-    const labour = sum(items.map((x) => Number(x.labour_cost_gbp || 0)));
-    const idealFood = sum(items.map((x) => Number(x.ideal_food_cost_gbp || 0)));
-    const actualFood = sum(items.map((x) => Number(x.actual_food_cost_gbp || 0)));
-
-    // ✅ Labour% based on totals (weighted correctly)
-    const labourPct = sales > 0 ? labour / sales : 0;
-
-    // ✅ Food variance % based on totals:
-    // (actual% - ideal%) = (actual/sales) - (ideal/sales) = (actual - ideal)/sales
-    const foodVarPctSales = sales > 0 ? (actualFood - idealFood) / sales : 0;
-
-    const days = new Set(items.map((x) => x.shift_date)).size;
-
-    // ✅ Closeness to target metrics
-    const labourDelta = Math.abs(labourPct - LABOUR_TARGET);
-    const foodVarDelta = distanceToBand(foodVarPctSales, FOODVAR_MIN, FOODVAR_MAX);
-
-    return {
-      name,
-      days,
-      sales,
-      labour,
-      idealFood,
-      actualFood,
-      labourPct,
-      foodVarPctSales,
-      labourDelta,
-      foodVarDelta,
-    };
-  });
-
-  // ✅ Rank by closeness:
-  // 1) closest labour to 25%
-  // 2) closest food variance to band [-0.25%, +0.25%]
-  // 3) higher sales as tiebreak (not displayed)
-  out.sort((a, b) => {
-    if (a.labourDelta !== b.labourDelta) return a.labourDelta - b.labourDelta;
-    if (a.foodVarDelta !== b.foodVarDelta) return a.foodVarDelta - b.foodVarDelta;
-    return b.sales - a.sales;
-  });
-
-  return out;
-}
+        input[type=]()
