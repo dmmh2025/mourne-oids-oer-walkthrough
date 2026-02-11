@@ -11,12 +11,23 @@ const supabase =
       )
     : null;
 
+const toNumberOrNull = (value: string) => {
+  if (value === "") return null;
+  const num = Number(value);
+  return Number.isNaN(num) ? null : num;
+};
+
 export default function CostControlsUploadPanel() {
   const [date, setDate] = useState("");
   const [store, setStore] = useState("Downpatrick");
-  const [manager, setManager] = useState("");
-  const [labourPct, setLabourPct] = useState("");
-  const [foodVarPct, setFoodVarPct] = useState("");
+  const [managerName, setManagerName] = useState("");
+
+  const [salesGbp, setSalesGbp] = useState("");
+  const [labourCostGbp, setLabourCostGbp] = useState("");
+  const [idealFoodCostGbp, setIdealFoodCostGbp] = useState("");
+  const [actualFoodCostGbp, setActualFoodCostGbp] = useState("");
+  const [notes, setNotes] = useState("");
+
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -25,7 +36,7 @@ export default function CostControlsUploadPanel() {
 
     setMsg(null);
 
-    if (!date || !store || !manager) {
+    if (!date || !store || !managerName.trim()) {
       setMsg("Please complete Date, Store and Manager.");
       return;
     }
@@ -35,9 +46,12 @@ export default function CostControlsUploadPanel() {
     const payload = {
       shift_date: date,
       store,
-      manager: manager.trim(),
-      labour_pct: labourPct ? Number(labourPct) : null,
-      food_variance_pct: foodVarPct ? Number(foodVarPct) : null,
+      manager_name: managerName.trim(),
+      sales_gbp: toNumberOrNull(salesGbp),
+      labour_cost_gbp: toNumberOrNull(labourCostGbp),
+      ideal_food_cost_gbp: toNumberOrNull(idealFoodCostGbp),
+      actual_food_cost_gbp: toNumberOrNull(actualFoodCostGbp),
+      notes: notes.trim() ? notes.trim() : null,
     };
 
     const { error } = await supabase
@@ -52,9 +66,12 @@ export default function CostControlsUploadPanel() {
 
     setMsg("✅ Cost control data saved.");
     setDate("");
-    setManager("");
-    setLabourPct("");
-    setFoodVarPct("");
+    setManagerName("");
+    setSalesGbp("");
+    setLabourCostGbp("");
+    setIdealFoodCostGbp("");
+    setActualFoodCostGbp("");
+    setNotes("");
     setSaving(false);
   };
 
@@ -62,8 +79,8 @@ export default function CostControlsUploadPanel() {
     <section className="card">
       <h2>Cost Controls — Daily Entry</h2>
       <p className="muted">
-        Enter daily labour and food variance. Data will be averaged and ranked
-        in the Cost Controls dashboard.
+        Enter the day’s financial values (£). These feed directly into the
+        Cost Controls dashboard and ranking.
       </p>
 
       <div className="form-2col">
@@ -90,31 +107,63 @@ export default function CostControlsUploadPanel() {
           <label>Manager on shift</label>
           <input
             type="text"
-            value={manager}
-            onChange={(e) => setManager(e.target.value)}
+            value={managerName}
+            onChange={(e) => setManagerName(e.target.value)}
             placeholder="e.g. Stuart Graham"
           />
         </div>
 
         <div>
-          <label>Labour %</label>
+          <label>Sales £</label>
           <input
             type="number"
-            step="0.1"
-            value={labourPct}
-            onChange={(e) => setLabourPct(e.target.value)}
-            placeholder="24.5"
+            step="0.01"
+            value={salesGbp}
+            onChange={(e) => setSalesGbp(e.target.value)}
+            placeholder="e.g. 2450.00"
           />
         </div>
 
         <div>
-          <label>Food variance %</label>
+          <label>Labour £</label>
           <input
             type="number"
             step="0.01"
-            value={foodVarPct}
-            onChange={(e) => setFoodVarPct(e.target.value)}
-            placeholder="0.85"
+            value={labourCostGbp}
+            onChange={(e) => setLabourCostGbp(e.target.value)}
+            placeholder="e.g. 610.00"
+          />
+        </div>
+
+        <div>
+          <label>Ideal Food £</label>
+          <input
+            type="number"
+            step="0.01"
+            value={idealFoodCostGbp}
+            onChange={(e) => setIdealFoodCostGbp(e.target.value)}
+            placeholder="e.g. 720.00"
+          />
+        </div>
+
+        <div>
+          <label>Actual Food £</label>
+          <input
+            type="number"
+            step="0.01"
+            value={actualFoodCostGbp}
+            onChange={(e) => setActualFoodCostGbp(e.target.value)}
+            placeholder="e.g. 760.00"
+          />
+        </div>
+
+        <div style={{ gridColumn: "1 / -1" }}>
+          <label>Notes (optional)</label>
+          <input
+            type="text"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="e.g. promo mix, wastage spike, stock issue"
           />
         </div>
       </div>
