@@ -49,31 +49,23 @@ export default function LoginLandingPage() {
   }
 
   return (
-    <main
-      style={{
-        maxWidth: 420,
-        margin: "50px auto",
-        background: "white",
-        padding: 24,
-        borderRadius: 12,
-        border: "1px solid #e2e8f0",
-      }}
-    >
+    <main className="hub-bg">
+      <div className="hub-card">
       <img
         src="/mourneoids_forms_header_1600x400.png"
         alt="Mourne-oids"
-        style={{ width: "100%", borderRadius: 8, marginBottom: 16 }}
+        style={{ width: "100%", borderRadius: 12, marginBottom: 16 }}
       />
 
-      <h1 style={{ marginBottom: 6 }}>
+      <h1>
         {mode === "signin" ? "Sign in to Mourne-oids Hub" : "Create your Mourne-oids account"}
       </h1>
-      <p style={{ marginBottom: 16, color: "#64748b" }}>
+      <p className="hub-subtitle">
         Secure access for Mourne-oids / Racz Group team.
       </p>
 
-      <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
-        <label style={{ display: "grid", gap: 4 }}>
+      <form onSubmit={handleSubmit} className="hub-form">
+        <label className="hub-label">
           <span>Email</span>
           <input
             type="email"
@@ -81,11 +73,10 @@ export default function LoginLandingPage() {
             autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
           />
         </label>
 
-        <label style={{ display: "grid", gap: 4 }}>
+        <label className="hub-label">
           <span>Password</span>
           <input
             type="password"
@@ -94,42 +85,23 @@ export default function LoginLandingPage() {
             autoComplete={mode === "signin" ? "current-password" : "new-password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
           />
         </label>
 
         {error && <p style={{ color: "#b91c1c", margin: 0 }}>{error}</p>}
 
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            background: "#006491",
-            color: "white",
-            padding: "10px 14px",
-            borderRadius: 8,
-            border: "none",
-            fontWeight: 700,
-            cursor: loading ? "not-allowed" : "pointer",
-          }}
-        >
+        <button type="submit" className="brand" disabled={loading}>
           {loading ? "Working..." : mode === "signin" ? "Sign in" : "Sign up"}
         </button>
       </form>
 
       <div style={{ marginTop: 16 }}>
         {mode === "signin" ? (
-          <button
-            onClick={() => setMode("signup")}
-            style={{ background: "transparent", border: "none", color: "#0ea5e9", cursor: "pointer" }}
-          >
+          <button onClick={() => setMode("signup")} className="hub-link-btn">
             Need an account? Create one
           </button>
         ) : (
-          <button
-            onClick={() => setMode("signin")}
-            style={{ background: "transparent", border: "none", color: "#0ea5e9", cursor: "pointer" }}
-          >
+          <button onClick={() => setMode("signin")} className="hub-link-btn">
             Already have an account? Sign in
           </button>
         )}
@@ -138,6 +110,7 @@ export default function LoginLandingPage() {
       <p style={{ marginTop: 20, fontSize: 12, color: "#94a3b8" }}>
        
       </p>
+      </div>
     </main>
   );
 }

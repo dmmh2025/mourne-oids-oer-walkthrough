@@ -149,3 +149,63 @@ details > summary::-webkit-details-marker { display: none; }
   font-size: 12px;
   background: #f9fafb;
 }
+
+/* Shared auth + simple page shell style (matches Hub look-and-feel) */
+.hub-bg {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background:
+    radial-gradient(circle at top, rgba(0, 100, 145, 0.08), transparent 45%),
+    linear-gradient(180deg, #e3edf4 0%, #f2f5f9 30%, #f2f5f9 100%);
+}
+
+.hub-card {
+  width: 100%;
+  max-width: 420px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 100, 145, 0.14);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 16px 40px rgba(2, 6, 23, 0.08);
+}
+
+.hub-card h1 {
+  margin: 0 0 6px;
+  font-size: clamp(1.35rem, 2.5vw, 1.55rem);
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+
+.hub-subtitle {
+  margin: 0 0 16px;
+  color: #64748b;
+  font-size: 0.95rem;
+}
+
+.hub-form {
+  display: grid;
+  gap: 12px;
+}
+
+.hub-label {
+  display: grid;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+
+.hub-link-btn {
+  background: none;
+  border: none;
+  color: #006491;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.hub-link-btn:hover {
+  transform: none;
+  box-shadow: none;
+  text-decoration: underline;
+}
