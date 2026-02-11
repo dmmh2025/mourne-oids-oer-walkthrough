@@ -528,7 +528,7 @@ export default function InternalOsaScorecardPage() {
                 }}
                 type="button"
               >
-                This week (Monday - Sunday)
+                This week
               </button>
 
               <button
@@ -557,15 +557,6 @@ export default function InternalOsaScorecardPage() {
                 This Year
               </button>
 
-              <button
-                className={`quick ${activeDateFilter === "custom" ? "active" : ""}`}
-                onClick={() => {
-                  setActiveDateFilter("custom");
-                }}
-                type="button"
-              >
-                Custom dates
-              </button>
             </div>
           </div>
         </section>
