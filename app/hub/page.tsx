@@ -911,7 +911,7 @@ export default function HubPage() {
 
               <div className={`highlight-card${costHighlightError ? " warning" : ""}`}>
                 <div className="highlight-top">
-                  <span className="highlight-title">💷 Store Labour (This week)</span>
+                  <span className="highlight-title">💷 Store Labour </span>
                   <span className="highlight-pill">WTD</span>
                 </div>
                 <div className="highlight-main">
@@ -932,7 +932,7 @@ export default function HubPage() {
 
               <div className={`highlight-card${costHighlightError ? " warning" : ""}`}>
                 <div className="highlight-top">
-                  <span className="highlight-title">🍕 Store Food (This week)</span>
+                  <span className="highlight-title">🍕 Store Food </span>
                   <span className="highlight-pill">WTD</span>
                 </div>
                 <div className="highlight-main">
