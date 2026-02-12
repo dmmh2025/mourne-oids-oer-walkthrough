@@ -46,7 +46,7 @@ type RankedItem = {
 type ImprovedItem = {
   name: string;
   dotDelta: number;
-  monthDOT: number;
+  weekDOT: number;
 };
 
 type OsaInternalRow = {
@@ -644,11 +644,7 @@ export default function HubPage() {
     return out;
   };
 
-  const computeImproved = (
-    week: ServiceRowMini[],
-    prevWeek: ServiceRowMini[],
-    monthToDate: ServiceRowMini[]
-  ) => {
+  const computeImproved = (week: ServiceRowMini[], prevWeek: ServiceRowMini[]) => {
     const makeBucket = (rows: ServiceRowMini[]) => {
       const bucket: Record<string, { dot: number[] }> = {};
 
@@ -670,25 +666,21 @@ export default function HubPage() {
 
     const weekBucket = makeBucket(week);
     const prevWeekBucket = makeBucket(prevWeek);
-    const monthBucket = makeBucket(monthToDate);
-
     const names = Array.from(
       new Set([
         ...Object.keys(weekBucket),
         ...Object.keys(prevWeekBucket),
-        ...Object.keys(monthBucket),
       ])
     );
 
     const items: ImprovedItem[] = names.map((name) => {
       const weekDOT = weekBucket[name] ? avg(weekBucket[name].dot) : 0;
       const prevDOT = prevWeekBucket[name] ? avg(prevWeekBucket[name].dot) : 0;
-      const monthDOT = monthBucket[name] ? avg(monthBucket[name].dot) : 0;
 
       return {
         name,
         dotDelta: weekDOT - prevDOT,
-        monthDOT,
+        weekDOT,
       };
     });
 
@@ -709,8 +701,7 @@ export default function HubPage() {
   const mostImprovedStore = useMemo(() => {
     const improved = computeImproved(
       splitSvcRows.weekToDate,
-      splitSvcRows.previousWeek,
-      splitSvcRows.monthToDate
+      splitSvcRows.previousWeek
     );
     return improved[0] || null;
   }, [splitSvcRows]);
@@ -880,10 +871,10 @@ export default function HubPage() {
                       </b>
                     </span>
                     <span>
-                      Month DOT:{" "}
+                      WTD DOT:{" "}
                       <b>
                         {mostImprovedStore && !highlightsError
-                          ? formatPct(mostImprovedStore.monthDOT, 0)
+                          ? formatPct(mostImprovedStore.weekDOT, 0)
                           : "—"}
                       </b>
                     </span>
