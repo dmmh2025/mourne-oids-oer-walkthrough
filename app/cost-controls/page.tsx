@@ -393,32 +393,32 @@ export default function CostControlsPage() {
           </p>
         </header>
 
-        <section className="rangeCard" aria-label="Date range">
-          <div className="chips">
+        <section className="filter-card" aria-label="Date range">
+          <div className="quick-row">
             <button
               type="button"
-              className={`chip ${rangeMode === "previous_day" ? "active" : ""}`}
+              className={`quick ${rangeMode === "previous_day" ? "active" : ""}`}
               onClick={() => setRangeMode("previous_day")}
             >
               Previous day
             </button>
             <button
               type="button"
-              className={`chip ${rangeMode === "this_week" ? "active" : ""}`}
+              className={`quick ${rangeMode === "this_week" ? "active" : ""}`}
               onClick={() => setRangeMode("this_week")}
             >
               This week
             </button>
             <button
               type="button"
-              className={`chip ${rangeMode === "this_month" ? "active" : ""}`}
+              className={`quick ${rangeMode === "this_month" ? "active" : ""}`}
               onClick={() => setRangeMode("this_month")}
             >
               This month
             </button>
             <button
               type="button"
-              className={`chip ${rangeMode === "custom" ? "active" : ""}`}
+              className={`quick ${rangeMode === "custom" ? "active" : ""}`}
               onClick={() => setRangeMode("custom")}
             >
               Custom
@@ -426,8 +426,8 @@ export default function CostControlsPage() {
           </div>
 
           {rangeMode === "custom" && (
-            <div className="customDates">
-              <label className="field">
+            <div className="custom-grid">
+              <label className="date-field">
                 <span>From</span>
                 <input
                   type="date"
@@ -436,7 +436,7 @@ export default function CostControlsPage() {
                   onChange={(e) => setCustomFrom(e.target.value)}
                 />
               </label>
-              <label className="field">
+              <label className="date-field">
                 <span>To</span>
                 <input
                   type="date"
@@ -451,7 +451,7 @@ export default function CostControlsPage() {
             </div>
           )}
 
-          <div className="rangeRight">
+          <div className="filter-actions">
             <button className="navbtn" type="button" onClick={load}>
               Refresh
             </button>
@@ -469,17 +469,17 @@ export default function CostControlsPage() {
                 <p>Best performers in the selected period</p>
               </div>
 
-              <div className="highlightsGrid">
-                <div className="hlCard">
-                  <div className="hlTop">
-                    <span className="hlTitle">🏆 Labour Winner</span>
-                    <span className="hlPill">≤ 25% then lowest</span>
+              <div className="podium-grid">
+                <div className="podium-card">
+                  <div className="podium-top">
+                    <span className="metric-title">🏆 Labour Winner</span>
+                    <span className="pill neutral">≤ 25% then lowest</span>
                   </div>
-                  <div className="hlMain">
-                    <div className="hlName">
+                  <div className="podium-metrics">
+                    <div className="podium-name">
                       {topStoreLabour ? topStoreLabour.name : "No data"}
                     </div>
-                    <div className="hlMeta">
+                    <div className="metric-row">
                       Labour:{" "}
                       <b>
                         {topStoreLabour
@@ -490,16 +490,16 @@ export default function CostControlsPage() {
                   </div>
                 </div>
 
-                <div className="hlCard">
-                  <div className="hlTop">
-                    <span className="hlTitle">🥇 Food Winner</span>
-                    <span className="hlPill">Closest to 0%</span>
+                <div className="podium-card">
+                  <div className="podium-top">
+                    <span className="metric-title">🥇 Food Winner</span>
+                    <span className="pill neutral">Closest to 0%</span>
                   </div>
-                  <div className="hlMain">
-                    <div className="hlName">
+                  <div className="podium-metrics">
+                    <div className="podium-name">
                       {topStoreFood ? topStoreFood.name : "No data"}
                     </div>
-                    <div className="hlMeta">
+                    <div className="metric-row">
                       Variance:{" "}
                       <b>
                         {topStoreFood
@@ -510,14 +510,14 @@ export default function CostControlsPage() {
                   </div>
                 </div>
 
-                <div className="hlCard">
-                  <div className="hlTop">
-                    <span className="hlTitle">📦 Entries</span>
-                    <span className="hlPill">Data</span>
+                <div className="podium-card">
+                  <div className="podium-top">
+                    <span className="metric-title">📦 Entries</span>
+                    <span className="pill neutral">Data</span>
                   </div>
-                  <div className="hlMain">
-                    <div className="hlName">{rows.length}</div>
-                    <div className="hlMeta">
+                  <div className="podium-metrics">
+                    <div className="podium-name">{rows.length}</div>
+                    <div className="metric-row">
                       Range: <b>{rangeWindow.label}</b>
                     </div>
                   </div>
@@ -533,7 +533,7 @@ export default function CostControlsPage() {
                   <p>≤ 25% first → lowest labour% wins</p>
                 </div>
 
-                <div className="tableWrap">
+                <div className="table-wrap">
                   <table className="table">
                     <thead>
                       <tr>
@@ -573,7 +573,7 @@ export default function CostControlsPage() {
                   <p>Closest to 0% food variance wins</p>
                 </div>
 
-                <div className="tableWrap">
+                <div className="table-wrap">
                   <table className="table">
                     <thead>
                       <tr>
@@ -613,7 +613,7 @@ export default function CostControlsPage() {
                   <p>≤ 25% first → lowest labour% wins</p>
                 </div>
 
-                <div className="tableWrap">
+                <div className="table-wrap">
                   <table className="table">
                     <thead>
                       <tr>
@@ -653,7 +653,7 @@ export default function CostControlsPage() {
                   <p>Closest to 0% food variance wins</p>
                 </div>
 
-                <div className="tableWrap">
+                <div className="table-wrap">
                   <table className="table">
                     <thead>
                       <tr>
@@ -695,356 +695,69 @@ export default function CostControlsPage() {
       </footer>
 
       <style jsx>{`
-        :root {
-          --text: #0f172a;
-          --muted: #64748b;
-          --brand: #006491;
-          --brand-dark: #004b75;
-          --shadow: 0 16px 40px rgba(0, 0, 0, 0.05);
-        }
-
         .wrap {
           min-height: 100dvh;
-          background: radial-gradient(
-              circle at top,
-              rgba(0, 100, 145, 0.08),
-              transparent 45%
-            ),
-            linear-gradient(180deg, #e3edf4 0%, #f2f5f9 30%, #f2f5f9 100%);
+          background: radial-gradient(circle at top, rgba(0, 100, 145, 0.08), transparent 45%), linear-gradient(180deg, #e3edf4 0%, #f2f5f9 30%, #f2f5f9 100%);
           display: flex;
           flex-direction: column;
           align-items: center;
-          color: var(--text);
+          color: #0f172a;
           padding-bottom: 40px;
         }
+        .banner { display:flex; justify-content:center; align-items:center; background:#fff; border-bottom:3px solid #006491; box-shadow:0 12px 35px rgba(2,6,23,.08); width:100%; }
+        .banner img { max-width:min(1160px,92%); height:auto; display:block; }
+        .shell { width:min(1100px,94vw); margin-top:18px; background:rgba(255,255,255,.65); backdrop-filter:saturate(160%) blur(6px); border:1px solid rgba(255,255,255,.22); border-radius:1.5rem; box-shadow:0 16px 40px rgba(0,0,0,.05); padding:18px 22px 26px; }
+        .topbar { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+        .topbar-spacer { flex:1; }
+        .navbtn { border-radius:14px; border:2px solid #006491; background:#fff; color:#006491; font-weight:900; font-size:14px; padding:8px 12px; cursor:pointer; box-shadow:0 6px 14px rgba(0,100,145,.12); }
+        .navbtn.solid { background:#006491; color:#fff; }
+        .header { text-align:center; margin-bottom:12px; }
+        .header h1 { font-size:clamp(2rem,3vw,2.3rem); font-weight:900; margin:0; }
+        .subtitle { margin:6px 0 0; color:#64748b; font-weight:700; font-size:.95rem; }
 
-        .banner {
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          background: #fff;
-          border-bottom: 3px solid var(--brand);
-          box-shadow: 0 12px 35px rgba(2, 6, 23, 0.08);
-          width: 100%;
-        }
+        .filter-card { margin-top:14px; display:grid; grid-template-columns:1fr auto; gap:12px; align-items:center; padding:12px 14px; border-radius:16px; background:rgba(255,255,255,.9); border:1px solid rgba(0,100,145,.14); box-shadow:0 12px 28px rgba(2,6,23,.05); }
+        .quick-row { display:flex; gap:8px; flex-wrap:wrap; }
+        .quick { border:1px solid rgba(15,23,42,.08); background:#fff; border-radius:999px; padding:8px 12px; font-weight:900; font-size:13px; cursor:pointer; color:#0f172a; }
+        .quick.active { background:rgba(0,100,145,.1); border-color:rgba(0,100,145,.25); color:#004b75; }
+        .custom-grid { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; grid-column:1 / -1; }
+        .date-field { display:flex; flex-direction:column; gap:6px; font-size:12px; font-weight:900; color:#334155; }
+        input[type="date"] { border-radius:12px; border:1px solid rgba(15,23,42,.14); padding:8px 10px; font-weight:800; background:#fff; }
+        .filter-actions { display:flex; gap:10px; align-items:center; }
 
-        .banner img {
-          max-width: min(1160px, 92%);
-          height: auto;
-          display: block;
-        }
+        .alert { margin-top:12px; border-radius:14px; padding:12px 14px; font-weight:800; background:rgba(254,242,242,.9); border:1px solid rgba(239,68,68,.25); color:#7f1d1d; word-break:break-word; }
+        .alert.muted { background:rgba(255,255,255,.85); border:1px solid rgba(15,23,42,.1); color:#334155; }
 
-        .shell {
-          width: min(1100px, 94vw);
-          margin-top: 18px;
-          background: rgba(255, 255, 255, 0.65);
-          backdrop-filter: saturate(160%) blur(6px);
-          border: 1px solid rgba(255, 255, 255, 0.22);
-          border-radius: 1.5rem;
-          box-shadow: var(--shadow);
-          padding: 18px 22px 26px;
-        }
+        .highlights, .boards { margin-top:16px; }
+        .highlightsHead, .boardHead, .section-head { display:flex; justify-content:space-between; align-items:flex-end; gap:10px; margin-bottom:10px; }
+        .highlightsHead h2, .boardHead h2 { margin:0; font-size:15px; font-weight:900; }
+        .highlightsHead p, .boardHead p { margin:0; font-size:12px; color:#64748b; font-weight:800; }
 
-        .topbar {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          margin-bottom: 10px;
-        }
-        .topbar-spacer {
-          flex: 1;
-        }
+        .podium-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+        .podium-card { background:rgba(255,255,255,.92); border-radius:18px; border:1px solid rgba(0,100,145,.14); box-shadow:0 12px 28px rgba(2,6,23,.05); padding:12px 14px; }
+        .podium-top { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }
+        .metric-title { font-size:12px; font-weight:900; letter-spacing:.02em; text-transform:uppercase; color:#0f172a; }
+        .podium-name { font-size:18px; font-weight:900; color:#0f172a; margin-bottom:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .podium-metrics { display:grid; gap:6px; }
+        .metric-row { font-size:13px; color:#334155; font-weight:800; }
 
-        .navbtn {
-          border-radius: 14px;
-          border: 2px solid var(--brand);
-          background: #fff;
-          color: var(--brand);
-          font-weight: 900;
-          font-size: 14px;
-          padding: 8px 12px;
-          cursor: pointer;
-          box-shadow: 0 6px 14px rgba(0, 100, 145, 0.12);
-          transition: background 0.15s ease, color 0.15s ease,
-            transform 0.1s ease, border-color 0.15s ease;
-        }
-        .navbtn:hover {
-          background: var(--brand);
-          color: #fff;
-          transform: translateY(-1px);
-        }
-        .navbtn.solid {
-          background: var(--brand);
-          color: #fff;
-        }
-        .navbtn.solid:hover {
-          background: var(--brand-dark);
-          border-color: var(--brand-dark);
-        }
+        .pill { font-size:11px; font-weight:700; padding:4px 10px; border-radius:999px; border:1px solid rgba(15,23,42,.12); background:rgba(241,245,249,.9); color:#334155; white-space:nowrap; }
+        .pill.green { background:rgba(34,197,94,.12); border-color:rgba(34,197,94,.25); color:#166534; }
+        .pill.amber { background:rgba(245,158,11,.14); border-color:rgba(245,158,11,.28); color:#92400e; }
+        .pill.red { background:rgba(239,68,68,.12); border-color:rgba(239,68,68,.26); color:#991b1b; }
+        .pill.neutral { background:rgba(0,100,145,.1); border-color:rgba(0,100,145,.2); color:#004b75; }
 
-        .header {
-          text-align: center;
-          margin-bottom: 12px;
-        }
-        .header h1 {
-          font-size: clamp(2rem, 3vw, 2.3rem);
-          font-weight: 900;
-          letter-spacing: -0.015em;
-          margin: 0;
-        }
-        .subtitle {
-          margin: 6px 0 0;
-          color: var(--muted);
-          font-weight: 700;
-          font-size: 0.95rem;
-        }
+        .boards { display:grid; gap:16px; }
+        .table-wrap { overflow-x:auto; border-radius:16px; border:1px solid rgba(15,23,42,.08); background:rgba(255,255,255,.9); box-shadow:0 12px 28px rgba(2,6,23,.05); }
+        .table { width:100%; border-collapse:collapse; }
+        .table th, .table td { padding:12px; text-align:left; font-size:13px; }
+        .table th { background:rgba(0,100,145,.08); font-weight:900; letter-spacing:.02em; }
+        .table tr + tr td { border-top:1px solid rgba(15,23,42,.06); }
+        td.num { text-align:right; font-variant-numeric:tabular-nums; font-weight:900; }
+        td.rank, td.name { font-weight:900; }
+        td.empty { padding:16px 12px; color:#475569; font-weight:800; }
 
-        .rangeCard {
-          margin-top: 14px;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 12px;
-          flex-wrap: wrap;
-
-          padding: 12px 14px;
-          border-radius: 16px;
-          background: rgba(255, 255, 255, 0.9);
-          border: 1px solid rgba(0, 100, 145, 0.14);
-          box-shadow: 0 12px 28px rgba(2, 6, 23, 0.05);
-        }
-
-        .chips {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-        }
-
-        .chip {
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          background: #fff;
-          border-radius: 999px;
-          padding: 8px 12px;
-          font-weight: 900;
-          font-size: 13px;
-          cursor: pointer;
-          color: #0f172a;
-          transition: transform 0.12s ease, border-color 0.12s ease,
-            background 0.12s ease;
-        }
-        .chip:hover {
-          transform: translateY(-1px);
-          border-color: rgba(0, 100, 145, 0.28);
-        }
-        .chip.active {
-          background: rgba(0, 100, 145, 0.1);
-          border-color: rgba(0, 100, 145, 0.25);
-          color: #004b75;
-        }
-
-        .customDates {
-          display: flex;
-          gap: 10px;
-          align-items: flex-end;
-          flex-wrap: wrap;
-        }
-
-        .field {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          font-size: 12px;
-          font-weight: 900;
-          color: #334155;
-        }
-
-        input[type="date"] {
-          border-radius: 12px;
-          border: 1px solid rgba(15, 23, 42, 0.14);
-          padding: 8px 10px;
-          font-weight: 800;
-          background: #fff;
-        }
-
-        .rangeRight {
-          display: flex;
-          gap: 10px;
-          align-items: center;
-        }
-
-        .alert {
-          margin-top: 12px;
-          border-radius: 14px;
-          padding: 12px 14px;
-          font-weight: 800;
-          background: rgba(254, 242, 242, 0.9);
-          border: 1px solid rgba(239, 68, 68, 0.25);
-          color: #7f1d1d;
-          word-break: break-word;
-        }
-        .alert.muted {
-          background: rgba(255, 255, 255, 0.85);
-          border: 1px solid rgba(15, 23, 42, 0.1);
-          color: #334155;
-        }
-
-        .highlights {
-          margin-top: 16px;
-        }
-        .highlightsHead {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-end;
-          gap: 10px;
-          margin-bottom: 10px;
-        }
-        .highlightsHead h2 {
-          margin: 0;
-          font-size: 15px;
-          font-weight: 900;
-        }
-        .highlightsHead p {
-          margin: 0;
-          font-size: 12px;
-          color: var(--muted);
-          font-weight: 800;
-        }
-        .highlightsGrid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 12px;
-        }
-        .hlCard {
-          background: rgba(255, 255, 255, 0.92);
-          border-radius: 18px;
-          border: 1px solid rgba(0, 100, 145, 0.14);
-          box-shadow: 0 12px 28px rgba(2, 6, 23, 0.05);
-          padding: 12px 14px;
-        }
-        .hlTop {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-          margin-bottom: 8px;
-        }
-        .hlTitle {
-          font-size: 12px;
-          font-weight: 900;
-          letter-spacing: 0.02em;
-          text-transform: uppercase;
-          color: #0f172a;
-        }
-        .hlPill {
-          font-size: 11px;
-          font-weight: 800;
-          padding: 4px 10px;
-          border-radius: 999px;
-          background: rgba(0, 100, 145, 0.1);
-          border: 1px solid rgba(0, 100, 145, 0.16);
-          color: #004b75;
-          white-space: nowrap;
-        }
-        .hlName {
-          font-size: 18px;
-          font-weight: 900;
-          color: #0f172a;
-          margin-bottom: 6px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .hlMeta {
-          font-size: 13px;
-          color: #334155;
-          font-weight: 800;
-        }
-
-        .boards {
-          margin-top: 16px;
-          display: grid;
-          grid-template-columns: 1fr;
-          gap: 16px;
-        }
-
-        .boardHead {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-end;
-          gap: 10px;
-          margin-bottom: 10px;
-        }
-        .boardHead h2 {
-          margin: 0;
-          font-size: 15px;
-          font-weight: 900;
-        }
-        .boardHead p {
-          margin: 0;
-          font-size: 12px;
-          color: var(--muted);
-          font-weight: 800;
-        }
-
-        .tableWrap {
-          overflow-x: auto;
-          border-radius: 16px;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          background: rgba(255, 255, 255, 0.9);
-          box-shadow: 0 12px 28px rgba(2, 6, 23, 0.05);
-        }
-
-        .table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-        th,
-        td {
-          padding: 12px 12px;
-          text-align: left;
-          font-size: 13px;
-        }
-        th {
-          background: rgba(0, 100, 145, 0.08);
-          font-weight: 900;
-          letter-spacing: 0.02em;
-        }
-        tr + tr td {
-          border-top: 1px solid rgba(15, 23, 42, 0.06);
-        }
-
-        td.num {
-          text-align: right;
-          font-variant-numeric: tabular-nums;
-          font-weight: 900;
-        }
-        td.rank,
-        td.name {
-          font-weight: 900;
-        }
-        td.empty {
-          padding: 16px 12px;
-          color: #475569;
-          font-weight: 800;
-        }
-
-        .footer {
-          text-align: center;
-          margin-top: 18px;
-          color: #94a3b8;
-          font-size: 0.8rem;
-        }
-
-        @media (max-width: 980px) {
-          .highlightsGrid {
-            grid-template-columns: 1fr;
-          }
-          .highlightsHead,
-          .boardHead {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-        }
+        .footer { text-align:center; margin-top:18px; color:#94a3b8; font-size:.8rem; }
+        @media (max-width: 980px) { .podium-grid { grid-template-columns:1fr; } .highlightsHead, .boardHead { flex-direction:column; align-items:flex-start; } .filter-card { grid-template-columns:1fr; } }
       `}</style>
     </main>
   );
