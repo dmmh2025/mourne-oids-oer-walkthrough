@@ -28,7 +28,10 @@ type ServiceRowMini = {
   store: string;
   dot_pct: number | null;
   labour_pct: number | null;
+  rnl_minutes?: number | null;
   manager: string | null;
+  opening_manager?: string | null;
+  closing_manager?: string | null;
   created_at?: string | null;
   shift_date?: string | null;
 };
@@ -37,16 +40,14 @@ type RankedItem = {
   name: string;
   avgDOT: number;
   avgLabour: number;
+  avgRnlMinutes: number;
   shifts: number;
 };
 
 type ImprovedItem = {
   name: string;
   dotDelta: number;
-  recentDOT: number;
-  prevDOT: number;
-  recentLabour: number;
-  shiftsRecent: number;
+  monthDOT: number;
 };
 
 type TileVariant =
@@ -307,7 +308,7 @@ export default function HubPage() {
     loadStatus();
   }, []);
 
-  // Load service rows for highlights (last 14 days)
+  // Load service rows for highlights (from earliest required window)
   useEffect(() => {
     const loadHighlights = async () => {
       if (!supabase) {
@@ -319,13 +320,27 @@ export default function HubPage() {
         setHighlightsError(null);
 
         const now = new Date();
-        const fourteen = new Date(now);
-        fourteen.setDate(now.getDate() - 14);
-        const fromStr = fourteen.toISOString().slice(0, 10);
+        const day = now.getDay();
+        const mondayOffset = day === 0 ? 6 : day - 1;
+
+        const weekStart = new Date(now);
+        weekStart.setDate(now.getDate() - mondayOffset);
+        weekStart.setHours(0, 0, 0, 0);
+
+        const prevWeekStart = new Date(weekStart);
+        prevWeekStart.setDate(weekStart.getDate() - 7);
+
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        monthStart.setHours(0, 0, 0, 0);
+
+        const from = prevWeekStart < monthStart ? prevWeekStart : monthStart;
+        const fromStr = from.toISOString().slice(0, 10);
 
         const { data, error } = await supabase
           .from("service_shifts")
-          .select("store, dot_pct, labour_pct, manager, created_at, shift_date")
+          .select(
+            "store, dot_pct, labour_pct, rnl_minutes, manager, opening_manager, closing_manager, created_at, shift_date"
+          )
           .gte("shift_date", fromStr)
           .order("shift_date", { ascending: false });
 
@@ -343,54 +358,64 @@ export default function HubPage() {
 
   const splitSvcRows = useMemo(() => {
     const now = new Date();
-    const last7Start = new Date(now);
-    last7Start.setDate(now.getDate() - 7);
-    last7Start.setHours(0, 0, 0, 0);
+    const day = now.getDay(); // sunday = 0
+    const mondayOffset = day === 0 ? 6 : day - 1;
 
-    const prev7Start = new Date(now);
-    prev7Start.setDate(now.getDate() - 14);
-    prev7Start.setHours(0, 0, 0, 0);
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - mondayOffset);
+    weekStart.setHours(0, 0, 0, 0);
 
-    const last7: ServiceRowMini[] = [];
-    const prev7: ServiceRowMini[] = [];
+    const prevWeekStart = new Date(weekStart);
+    prevWeekStart.setDate(weekStart.getDate() - 7);
+
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const weekToDate: ServiceRowMini[] = [];
+    const previousWeek: ServiceRowMini[] = [];
+    const monthToDate: ServiceRowMini[] = [];
 
     for (const r of svcRows) {
-      const iso = r.created_at ? new Date(r.created_at) : null;
-      const d = iso && !isNaN(iso.getTime()) ? iso : null;
+      const sourceDate = r.shift_date || r.created_at;
+      const d = sourceDate ? new Date(sourceDate) : null;
+      if (!d || isNaN(d.getTime())) continue;
 
-      if (!d) {
-        last7.push(r);
-        continue;
-      }
+      if (d >= monthStart) monthToDate.push(r);
 
-      if (d >= last7Start) last7.push(r);
-      else if (d >= prev7Start && d < last7Start) prev7.push(r);
+      if (d >= weekStart) weekToDate.push(r);
+      else if (d >= prevWeekStart && d < weekStart) previousWeek.push(r);
     }
 
-    return { last7, prev7 };
+    return { weekToDate, previousWeek, monthToDate };
   }, [svcRows]);
 
   const computeRanked = (rows: ServiceRowMini[], key: "store" | "manager") => {
     const bucket: Record<
       string,
-      { dot: number[]; labour: number[]; shifts: number }
+      { dot: number[]; labour: number[]; rnl: number[]; shifts: number }
     > = {};
 
     for (const r of rows) {
       const name =
         key === "store"
           ? (r.store || "").trim()
-          : ((r.manager || "Unknown").trim() || "Unknown");
+          : (
+              (r.closing_manager || r.manager || r.opening_manager || "Unknown")
+                .trim() || "Unknown"
+            );
 
       if (!name) continue;
 
-      if (!bucket[name]) bucket[name] = { dot: [], labour: [], shifts: 0 };
+      if (!bucket[name]) {
+        bucket[name] = { dot: [], labour: [], rnl: [], shifts: 0 };
+      }
       bucket[name].shifts += 1;
 
       const d = normalisePct(r.dot_pct);
       const l = normalisePct(r.labour_pct);
       if (d != null) bucket[name].dot.push(d);
       if (l != null) bucket[name].labour.push(l);
+      if (r.rnl_minutes != null) bucket[name].rnl.push(r.rnl_minutes);
     }
 
     const avg = (arr: number[]) =>
@@ -400,60 +425,64 @@ export default function HubPage() {
       name,
       avgDOT: avg(v.dot),
       avgLabour: avg(v.labour),
+      avgRnlMinutes: avg(v.rnl),
       shifts: v.shifts,
     }));
 
     out.sort((a, b) => {
       if (b.avgDOT !== a.avgDOT) return b.avgDOT - a.avgDOT;
-      return a.avgLabour - b.avgLabour;
+      if (a.avgLabour !== b.avgLabour) return a.avgLabour - b.avgLabour;
+      return a.avgRnlMinutes - b.avgRnlMinutes;
     });
 
     return out;
   };
 
-  const computeImproved = (recent: ServiceRowMini[], prev: ServiceRowMini[]) => {
+  const computeImproved = (
+    week: ServiceRowMini[],
+    prevWeek: ServiceRowMini[],
+    monthToDate: ServiceRowMini[]
+  ) => {
     const makeBucket = (rows: ServiceRowMini[]) => {
-      const bucket: Record<
-        string,
-        { dot: number[]; labour: number[]; shifts: number }
-      > = {};
+      const bucket: Record<string, { dot: number[] }> = {};
+
       for (const r of rows) {
         const name = (r.store || "").trim();
         if (!name) continue;
-        if (!bucket[name]) bucket[name] = { dot: [], labour: [], shifts: 0 };
-        bucket[name].shifts += 1;
+
+        if (!bucket[name]) bucket[name] = { dot: [] };
 
         const d = normalisePct(r.dot_pct);
-        const l = normalisePct(r.labour_pct);
         if (d != null) bucket[name].dot.push(d);
-        if (l != null) bucket[name].labour.push(l);
       }
+
       return bucket;
     };
 
     const avg = (arr: number[]) =>
       arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
-    const rB = makeBucket(recent);
-    const pB = makeBucket(prev);
+    const weekBucket = makeBucket(week);
+    const prevWeekBucket = makeBucket(prevWeek);
+    const monthBucket = makeBucket(monthToDate);
 
-    const names = Array.from(new Set([...Object.keys(rB), ...Object.keys(pB)]));
+    const names = Array.from(
+      new Set([
+        ...Object.keys(weekBucket),
+        ...Object.keys(prevWeekBucket),
+        ...Object.keys(monthBucket),
+      ])
+    );
 
     const items: ImprovedItem[] = names.map((name) => {
-      const r = rB[name];
-      const p = pB[name];
-
-      const recentDOT = r ? avg(r.dot) : 0;
-      const prevDOT = p ? avg(p.dot) : 0;
-      const recentLabour = r ? avg(r.labour) : 0;
+      const weekDOT = weekBucket[name] ? avg(weekBucket[name].dot) : 0;
+      const prevDOT = prevWeekBucket[name] ? avg(prevWeekBucket[name].dot) : 0;
+      const monthDOT = monthBucket[name] ? avg(monthBucket[name].dot) : 0;
 
       return {
         name,
-        dotDelta: recentDOT - prevDOT,
-        recentDOT,
-        prevDOT,
-        recentLabour,
-        shiftsRecent: r?.shifts ?? 0,
+        dotDelta: weekDOT - prevDOT,
+        monthDOT,
       };
     });
 
@@ -462,17 +491,21 @@ export default function HubPage() {
   };
 
   const topStore = useMemo(() => {
-    const rankedStores = computeRanked(splitSvcRows.last7, "store");
+    const rankedStores = computeRanked(splitSvcRows.weekToDate, "store");
     return rankedStores[0] || null;
   }, [splitSvcRows]);
 
   const topManager = useMemo(() => {
-    const rankedManagers = computeRanked(splitSvcRows.last7, "manager");
+    const rankedManagers = computeRanked(splitSvcRows.weekToDate, "manager");
     return rankedManagers[0] || null;
   }, [splitSvcRows]);
 
   const mostImprovedStore = useMemo(() => {
-    const improved = computeImproved(splitSvcRows.last7, splitSvcRows.prev7);
+    const improved = computeImproved(
+      splitSvcRows.weekToDate,
+      splitSvcRows.previousWeek,
+      splitSvcRows.monthToDate
+    );
     return improved[0] || null;
   }, [splitSvcRows]);
 
@@ -542,7 +575,7 @@ export default function HubPage() {
           <div className="highlights">
             <div className="highlights-head">
               <h2>Highlights</h2>
-              <p>Last 7 days • ranked by higher DOT% then lower labour%</p>
+              <p>This week to date • ranked by DOT, labour, then RNL</p>
             </div>
 
             {highlightsError ? (
@@ -558,8 +591,8 @@ export default function HubPage() {
               <div className="highlights-grid">
                 <div className="highlight-card">
                   <div className="highlight-top">
-                    <span className="highlight-title">🏆 Top Store</span>
-                    <span className="highlight-pill">Winners circle</span>
+                    <span className="highlight-title">🏆 Top Store (This week)</span>
+                    <span className="highlight-pill">WTD</span>
                   </div>
                   <div className="highlight-main">
                     <div className="highlight-name">
@@ -576,17 +609,14 @@ export default function HubPage() {
                           {topStore ? formatPct(topStore.avgLabour, 1) : "—"}
                         </b>
                       </span>
-                      <span>
-                        Shifts: <b>{topStore ? topStore.shifts : "—"}</b>
-                      </span>
                     </div>
                   </div>
                 </div>
 
                 <div className="highlight-card">
                   <div className="highlight-top">
-                    <span className="highlight-title">🥇 Top Manager</span>
-                    <span className="highlight-pill">Closing game</span>
+                    <span className="highlight-title">🥇 Top Manager (This week)</span>
+                    <span className="highlight-pill">WTD</span>
                   </div>
                   <div className="highlight-main">
                     <div className="highlight-name">
@@ -612,8 +642,10 @@ export default function HubPage() {
 
                 <div className="highlight-card">
                   <div className="highlight-top">
-                    <span className="highlight-title">📈 Most Improved Store</span>
-                    <span className="highlight-pill">Vs prev 7 days</span>
+                    <span className="highlight-title">
+                      📈 Best Improved Store (This month)
+                    </span>
+                    <span className="highlight-pill">WTD vs prev week</span>
                   </div>
                   <div className="highlight-main">
                     <div className="highlight-name">
@@ -621,7 +653,7 @@ export default function HubPage() {
                     </div>
                     <div className="highlight-metrics">
                       <span>
-                        DOT uplift:{" "}
+                        DOT gain:{" "}
                         <b>
                           {mostImprovedStore
                             ? (mostImprovedStore.dotDelta * 100).toFixed(1) + "pp"
@@ -629,18 +661,10 @@ export default function HubPage() {
                         </b>
                       </span>
                       <span>
-                        Recent DOT:{" "}
+                        Month DOT:{" "}
                         <b>
                           {mostImprovedStore
-                            ? formatPct(mostImprovedStore.recentDOT, 0)
-                            : "—"}
-                        </b>
-                      </span>
-                      <span>
-                        Labour:{" "}
-                        <b>
-                          {mostImprovedStore
-                            ? formatPct(mostImprovedStore.recentLabour, 1)
+                            ? formatPct(mostImprovedStore.monthDOT, 0)
                             : "—"}
                         </b>
                       </span>
