@@ -157,20 +157,12 @@ type Agg = {
   foodVarPctSales: number; // (actual - ideal) / sales
 
   // Ranking metrics
-  labourDelta: number; // ✅ amount ABOVE target (0 if <= target). Lower is better.
-  foodVarDelta: number; // ✅ distance to 0 (absolute). Lower is better.
+  labourDelta: number; // amount ABOVE target (0 if <= target). Lower is better.
+  foodVarDelta: number; // distance to 0 (absolute). Lower is better.
 };
 
 function sum(arr: number[]) {
   return arr.reduce((a, b) => a + b, 0);
-}
-
-// ✅ one single definition only
-function distanceToBand(x: number, min: number, max: number) {
-  if (!Number.isFinite(x)) return Number.POSITIVE_INFINITY;
-  if (x < min) return min - x;
-  if (x > max) return x - max;
-  return 0;
 }
 
 // Targets
@@ -302,27 +294,24 @@ export default function CostControlsPage() {
   const storeAgg = useMemo(() => aggregate(rows, "store"), [rows]);
   const mgrAgg = useMemo(() => aggregate(rows, "manager_name"), [rows]);
 
-  // ✅ Highlights (labour unchanged)
+  // Highlights: labour (unchanged)
   const topStoreLabour = useMemo(() => {
     if (!storeAgg.length) return null;
 
     const sorted = storeAgg.slice().sort((a, b) => {
-      // under-target first
       const aOver = a.labourPct > LABOUR_TARGET ? 1 : 0;
       const bOver = b.labourPct > LABOUR_TARGET ? 1 : 0;
       if (aOver !== bOver) return aOver - bOver;
 
-      // lower labour is better
       if (a.labourPct !== b.labourPct) return a.labourPct - b.labourPct;
 
-      // tiebreak
       return b.sales - a.sales;
     });
 
     return sorted[0] || null;
   }, [storeAgg]);
 
-  // ✅ Food highlight: closest to 0% variance wins
+  // Highlights: food (closest to 0 wins)
   const topStoreFood = useMemo(() => {
     if (!storeAgg.length) return null;
 
@@ -363,8 +352,8 @@ export default function CostControlsPage() {
         <header className="header">
           <h1>Cost Controls</h1>
           <p className="subtitle">
-            Ranked by targets — Labour <b>≤ {fmtPct(LABOUR_TARGET, 0)}</b>{" "}
-            (lower is better) and Food Variance band{" "}
+            Ranked by targets — Labour <b>≤ {fmtPct(LABOUR_TARGET, 0)}</b> (lower
+            is better) and Food Variance band{" "}
             <b>
               {fmtPct(FOODVAR_MIN, 2)} → {fmtPct(FOODVAR_MAX, 2)}
             </b>{" "}
@@ -425,39 +414,4 @@ export default function CostControlsPage() {
                 />
               </label>
               <button className="navbtn" type="button" onClick={load}>
-                Apply
-              </button>
-            </div>
-          )}
-
-          <div className="rangeRight">
-            <button className="navbtn" type="button" onClick={load}>
-              Refresh
-            </button>
-          </div>
-        </section>
-
-        {err && <div className="alert">❌ {err}</div>}
-        {loading && <div className="alert muted">Loading…</div>}
-
-        {!loading && !err && (
-          <>
-            <section className="highlights">
-              <div className="highlightsHead">
-                <h2>Highlights</h2>
-                <p>Best performers in the selected period</p>
-              </div>
-
-              <div className="highlightsGrid">
-                <div className="hlCard">
-                  <div className="hlTop">
-                    <span className="hlTitle">🏆 Labour Target</span>
-                    <span className="hlPill">≤ 25% (lower wins)</span>
-                  </div>
-                  <div className="hlMain">
-                    <div className="hlName">
-                      {topStoreLabour ? topStoreLabour.name : "No data"}
-                    </div>
-                    <div className="hlMeta">
-                      Labour:{" "}
-                      <b>
+                Ap
