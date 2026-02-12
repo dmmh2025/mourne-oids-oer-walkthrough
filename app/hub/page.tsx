@@ -893,7 +893,7 @@ export default function HubPage() {
 
               <div className={`highlight-card${osaHighlightError ? " warning" : ""}`}>
                 <div className="highlight-top">
-                  <span className="highlight-title">🛡️ Best OSA Performance (This week)</span>
+                  <span className="highlight-title">🛡️ Best OSA Performance </span>
                   <span className="highlight-pill">WTD</span>
                 </div>
                 <div className="highlight-main">
