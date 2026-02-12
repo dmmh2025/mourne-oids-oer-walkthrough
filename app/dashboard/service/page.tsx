@@ -59,11 +59,9 @@ export default function ServiceDashboardPage() {
     return v > 1 ? v / 100 : v; // accept 78 or 0.78
   };
 
-  // ✅ Return null if no values (prevents weird blanks / NaN propagation)
   const avg = (arr: number[]) =>
     arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
 
-  // ✅ Prefer proper manager name chain (fixes "Unknown")
   const getManagerName = (r: ShiftRow) => {
     const c = (r.closing_manager || "").trim();
     if (c) return c;
@@ -98,7 +96,6 @@ export default function ServiceDashboardPage() {
     load();
   }, []);
 
-  // master date filter
   const dateFilteredRows = useMemo(() => {
     const now = new Date();
 
@@ -157,13 +154,11 @@ export default function ServiceDashboardPage() {
     return rows;
   }, [rows, dateRange, customFrom, customTo]);
 
-  // store filter (affects Area + Manager sections; Store overview always shows all stores in period)
   const filteredRows = useMemo(() => {
     if (selectedStore === "all") return dateFilteredRows;
     return dateFilteredRows.filter((r) => r.store === selectedStore);
   }, [dateFilteredRows, selectedStore]);
 
-  // AREA OVERVIEW: Avg DOT, Avg R&L, Avg Extremes >40%, Additional hours used (TOTAL)
   const areaKpis = useMemo(() => {
     const dotVals: number[] = [];
     const extVals: number[] = [];
@@ -197,7 +192,6 @@ export default function ServiceDashboardPage() {
     };
   }, [filteredRows]);
 
-  // STORE OVERVIEW (rank by DOT desc, Extremes asc)
   const storeData = useMemo(() => {
     const out = STORES.map((storeName) => {
       const rowsForStore = dateFilteredRows.filter((r) => r.store === storeName);
@@ -233,7 +227,6 @@ export default function ServiceDashboardPage() {
       };
     });
 
-    // rank: higher DOT first, tie-break lower extremes, then lower R&L
     out.sort((a, b) => {
       const aDot = a.avgDOT ?? -1;
       const bDot = b.avgDOT ?? -1;
@@ -251,7 +244,7 @@ export default function ServiceDashboardPage() {
     return out;
   }, [dateFilteredRows]);
 
-  // MANAGER OVERVIEW (rank by DOT desc, Extremes asc)
+  // ✅ MANAGER OVERVIEW: include shifts worked
   const managerData = useMemo(() => {
     const bucket: Record<
       string,
@@ -260,6 +253,7 @@ export default function ServiceDashboardPage() {
         rnl: number[];
         ext: number[];
         totalAddHours: number;
+        shifts: number; // ✅ count of rows (shifts) in period
       }
     > = {};
 
@@ -272,8 +266,12 @@ export default function ServiceDashboardPage() {
           rnl: [],
           ext: [],
           totalAddHours: 0,
+          shifts: 0,
         };
       }
+
+      // ✅ count this row as a shift
+      bucket[name].shifts += 1;
 
       const d = normalisePct(r.dot_pct);
       const e = normalisePct(r.extreme_over_40);
@@ -293,13 +291,13 @@ export default function ServiceDashboardPage() {
 
     const arr = Object.entries(bucket).map(([name, v]) => ({
       name,
+      shiftsWorked: v.shifts, // ✅ surfaced in UI
       avgDOT: avg(v.dot),
       avgRnL: avg(v.rnl),
       avgExtremes: avg(v.ext),
       totalAddHours: v.totalAddHours,
     }));
 
-    // ✅ Team member ranking: DOT desc, Extremes asc (then R&L asc, then name)
     arr.sort((a, b) => {
       const aDot = a.avgDOT ?? -1;
       const bDot = b.avgDOT ?? -1;
@@ -337,14 +335,14 @@ export default function ServiceDashboardPage() {
   const formatPct = (v: number | null, dp = 1) =>
     v == null || !Number.isFinite(v) ? "—" : (v * 100).toFixed(dp) + "%";
 
-  const formatHours = (n: number) => (Number.isFinite(n) ? n.toFixed(1) : "0.0");
+  const formatHours = (n: number) =>
+    Number.isFinite(n) ? n.toFixed(1) : "0.0";
 
   const formatMinutes = (v: number | null, dp = 1) =>
     v == null || !Number.isFinite(v) ? "—" : v.toFixed(dp) + "m";
 
   return (
     <main className="wrap">
-      {/* banner */}
       <div className="banner">
         <img
           src="/mourneoids_forms_header_1600x400.png"
@@ -352,7 +350,6 @@ export default function ServiceDashboardPage() {
         />
       </div>
 
-      {/* nav */}
       <div className="nav-row">
         <button onClick={handleBack} className="btn btn--ghost">
           ← Back
@@ -362,7 +359,6 @@ export default function ServiceDashboardPage() {
         </a>
       </div>
 
-      {/* header */}
       <header className="header">
         <h1>Mourne-oids Service Dashboard</h1>
         <p className="subtitle">
@@ -371,7 +367,6 @@ export default function ServiceDashboardPage() {
         </p>
       </header>
 
-      {/* filters */}
       <section className="container wide">
         <div className="filters-panel card soft">
           <div className="filters-block">
@@ -379,9 +374,7 @@ export default function ServiceDashboardPage() {
             <div className="filters">
               <button
                 onClick={() => setSelectedStore("all")}
-                className={`chip ${
-                  selectedStore === "all" ? "chip--active" : ""
-                }`}
+                className={`chip ${selectedStore === "all" ? "chip--active" : ""}`}
               >
                 All stores
               </button>
@@ -460,14 +453,12 @@ export default function ServiceDashboardPage() {
         </div>
       </section>
 
-      {/* content */}
       <section className="container wide content">
         {loading && <div className="card">Loading Mourne-oids data…</div>}
         {errorMsg && <div className="card error">Error: {errorMsg}</div>}
 
         {!loading && !errorMsg && (
           <>
-            {/* AREA OVERVIEW */}
             <div className="section-head">
               <h2>Area overview</h2>
               <p className="section-sub">{periodLabel}</p>
@@ -507,7 +498,6 @@ export default function ServiceDashboardPage() {
               </div>
             </div>
 
-            {/* STORE OVERVIEW */}
             <div className="section-head mt">
               <h2>Store overview</h2>
               <p className="section-sub">
@@ -558,7 +548,6 @@ export default function ServiceDashboardPage() {
               ))}
             </div>
 
-            {/* MANAGER OVERVIEW */}
             <div className="section-head mt">
               <h2>Manager overview</h2>
               <p className="section-sub">
@@ -602,6 +591,12 @@ export default function ServiceDashboardPage() {
                     </div>
 
                     <div className="store-rows">
+                      {/* ✅ NEW: Shifts worked tally */}
+                      <p className="metric">
+                        <span>Shifts worked</span>
+                        <strong>{mgr.shiftsWorked}</strong>
+                      </p>
+
                       <p className="metric">
                         <span>Avg R&amp;L</span>
                         <strong>{formatMinutes(mgr.avgRnL, 2)}</strong>
@@ -619,7 +614,6 @@ export default function ServiceDashboardPage() {
         )}
       </section>
 
-      {/* footer */}
       <footer className="footer">
         <p>© 2025 Mourne-oids | Domino’s Pizza | Racz Group</p>
       </footer>
