@@ -150,7 +150,7 @@ const TILES: Tile[] = [
   {
     href: "/pizza-of-the-week",
     title: "Pizza of the Week",
-    desc: "Current promo assets for team briefings.",
+    desc: "Best Pizza seen this week.",
     variant: "promo",
     pill: "Promo",
     icon: "🍕",
@@ -648,7 +648,7 @@ export default function HubPage() {
                 <div className="highlight-card">
                   <div className="highlight-top">
                     <span className="highlight-title">
-                      📈 Best Improved Store (This month)
+                      📈 Best Improved Store (This week vs Last week)
                     </span>
                     <span className="highlight-pill">WTD vs prev week</span>
                   </div>
