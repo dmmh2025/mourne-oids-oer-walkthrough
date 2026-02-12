@@ -20,6 +20,7 @@ type TickerItem = {
 
 type HubStatus = {
   serviceLastUpdated: string | null;
+  costLastUpdated: string | null;
   osaLastUpdated: string | null;
   error?: string | null;
 };
@@ -202,6 +203,7 @@ export default function HubPage() {
 
   const [status, setStatus] = useState<HubStatus>({
     serviceLastUpdated: null,
+    costLastUpdated: null,
     osaLastUpdated: null,
     error: null,
   });
@@ -287,11 +289,19 @@ export default function HubPage() {
           .order("created_at", { ascending: false })
           .limit(1);
 
+        const { data: costData, error: costErr } = await supabase
+          .from("cost_control_entries")
+          .select("created_at")
+          .order("created_at", { ascending: false })
+          .limit(1);
+
         if (svcErr) throw svcErr;
         if (osaErr) throw osaErr;
+        if (costErr) throw costErr;
 
         setStatus({
           serviceLastUpdated: svcData?.[0]?.created_at ?? null,
+          costLastUpdated: costData?.[0]?.created_at ?? null,
           osaLastUpdated: osaData?.[0]?.created_at ?? null,
           error: null,
         });
@@ -741,6 +751,14 @@ export default function HubPage() {
               <span className="status-label">Internal OSA:</span>
               <span className="status-value">
                 {formatStamp(status.osaLastUpdated)}
+              </span>
+            </div>
+
+            <div className="status-item">
+              <span className="status-dot ok" />
+              <span className="status-label">Cost controls:</span>
+              <span className="status-value">
+                {formatStamp(status.costLastUpdated)}
               </span>
             </div>
 
