@@ -59,6 +59,13 @@ export default function ServiceDashboardPage() {
     return v > 1 ? v / 100 : v; // accept 78 or 0.78
   };
 
+  // ✅ Fix mixed units: if rnl_minutes is accidentally stored in seconds, convert to minutes.
+  // Anything >180 is almost certainly seconds (e.g. 787 -> 13.1m).
+  const normaliseMinutes = (v: number | null) => {
+    if (v == null || !Number.isFinite(v)) return null;
+    return v > 180 ? v / 60 : v;
+  };
+
   const avg = (arr: number[]) =>
     arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
 
@@ -162,7 +169,7 @@ export default function ServiceDashboardPage() {
   const areaKpis = useMemo(() => {
     const dotVals: number[] = [];
     const extVals: number[] = [];
-    const rnlVals: number[] = [];
+    const rackLoadVals: number[] = [];
     let totalAddHours = 0;
 
     for (const r of filteredRows) {
@@ -172,9 +179,8 @@ export default function ServiceDashboardPage() {
       const ext = normalisePct(r.extreme_over_40);
       if (ext != null) extVals.push(ext);
 
-      if (typeof r.rnl_minutes === "number" && Number.isFinite(r.rnl_minutes)) {
-        rnlVals.push(r.rnl_minutes);
-      }
+      const rl = normaliseMinutes(r.rnl_minutes);
+      if (rl != null) rackLoadVals.push(rl);
 
       if (
         typeof r.additional_hours === "number" &&
@@ -187,7 +193,7 @@ export default function ServiceDashboardPage() {
     return {
       avgDOT: avg(dotVals),
       avgExtremes: avg(extVals),
-      avgRnL: avg(rnlVals),
+      avgRackLoad: avg(rackLoadVals),
       totalAddHours,
     };
   }, [filteredRows]);
@@ -197,17 +203,17 @@ export default function ServiceDashboardPage() {
       const rowsForStore = dateFilteredRows.filter((r) => r.store === storeName);
 
       const dot: number[] = [];
-      const rnl: number[] = [];
+      const rackLoad: number[] = [];
       const ext: number[] = [];
       let totalAddHours = 0;
 
       for (const r of rowsForStore) {
         const d = normalisePct(r.dot_pct);
         const e = normalisePct(r.extreme_over_40);
+        const rl = normaliseMinutes(r.rnl_minutes);
 
         if (d != null) dot.push(d);
-        if (typeof r.rnl_minutes === "number" && Number.isFinite(r.rnl_minutes))
-          rnl.push(r.rnl_minutes);
+        if (rl != null) rackLoad.push(rl);
         if (e != null) ext.push(e);
 
         if (
@@ -221,12 +227,13 @@ export default function ServiceDashboardPage() {
       return {
         store: storeName,
         avgDOT: avg(dot),
-        avgRnL: avg(rnl),
+        avgRackLoad: avg(rackLoad),
         avgExtremes: avg(ext),
         totalAddHours,
       };
     });
 
+    // rank: higher DOT first, tie-break lower extremes, then lower Rack & Load
     out.sort((a, b) => {
       const aDot = a.avgDOT ?? -1;
       const bDot = b.avgDOT ?? -1;
@@ -236,9 +243,9 @@ export default function ServiceDashboardPage() {
       const bExt = b.avgExtremes ?? 999;
       if (aExt !== bExt) return aExt - bExt;
 
-      const aRnl = a.avgRnL ?? 999999;
-      const bRnl = b.avgRnL ?? 999999;
-      return aRnl - bRnl;
+      const aRL = a.avgRackLoad ?? 999999;
+      const bRL = b.avgRackLoad ?? 999999;
+      return aRL - bRL;
     });
 
     return out;
@@ -250,10 +257,10 @@ export default function ServiceDashboardPage() {
       string,
       {
         dot: number[];
-        rnl: number[];
+        rackLoad: number[];
         ext: number[];
         totalAddHours: number;
-        shifts: number; // ✅ count of rows (shifts) in period
+        shifts: number;
       }
     > = {};
 
@@ -263,22 +270,21 @@ export default function ServiceDashboardPage() {
       if (!bucket[name]) {
         bucket[name] = {
           dot: [],
-          rnl: [],
+          rackLoad: [],
           ext: [],
           totalAddHours: 0,
           shifts: 0,
         };
       }
 
-      // ✅ count this row as a shift
       bucket[name].shifts += 1;
 
       const d = normalisePct(r.dot_pct);
       const e = normalisePct(r.extreme_over_40);
+      const rl = normaliseMinutes(r.rnl_minutes);
 
       if (d != null) bucket[name].dot.push(d);
-      if (typeof r.rnl_minutes === "number" && Number.isFinite(r.rnl_minutes))
-        bucket[name].rnl.push(r.rnl_minutes);
+      if (rl != null) bucket[name].rackLoad.push(rl);
       if (e != null) bucket[name].ext.push(e);
 
       if (
@@ -291,13 +297,14 @@ export default function ServiceDashboardPage() {
 
     const arr = Object.entries(bucket).map(([name, v]) => ({
       name,
-      shiftsWorked: v.shifts, // ✅ surfaced in UI
+      shiftsWorked: v.shifts,
       avgDOT: avg(v.dot),
-      avgRnL: avg(v.rnl),
+      avgRackLoad: avg(v.rackLoad),
       avgExtremes: avg(v.ext),
       totalAddHours: v.totalAddHours,
     }));
 
+    // rank: DOT desc, Extremes asc, Rack & Load asc, then name
     arr.sort((a, b) => {
       const aDot = a.avgDOT ?? -1;
       const bDot = b.avgDOT ?? -1;
@@ -307,9 +314,9 @@ export default function ServiceDashboardPage() {
       const bExt = b.avgExtremes ?? 999;
       if (aExt !== bExt) return aExt - bExt;
 
-      const aRnl = a.avgRnL ?? 999999;
-      const bRnl = b.avgRnL ?? 999999;
-      if (aRnl !== bRnl) return aRnl - bRnl;
+      const aRL = a.avgRackLoad ?? 999999;
+      const bRL = b.avgRackLoad ?? 999999;
+      if (aRL !== bRL) return aRL - bRL;
 
       return a.name.localeCompare(b.name);
     });
@@ -480,8 +487,10 @@ export default function ServiceDashboardPage() {
               </div>
 
               <div className="card kpi">
-                <p className="kpi-title">Avg R&amp;L</p>
-                <p className="kpi-value">{formatMinutes(areaKpis.avgRnL, 2)}</p>
+                <p className="kpi-title">Avg Rack &amp; Load</p>
+                <p className="kpi-value">
+                  {formatMinutes(areaKpis.avgRackLoad, 2)}
+                </p>
                 <p className="kpi-sub">Lower is better</p>
               </div>
 
@@ -532,8 +541,8 @@ export default function ServiceDashboardPage() {
 
                   <div className="store-rows">
                     <p className="metric">
-                      <span>Avg R&amp;L</span>
-                      <strong>{formatMinutes(st.avgRnL, 2)}</strong>
+                      <span>Avg Rack &amp; Load</span>
+                      <strong>{formatMinutes(st.avgRackLoad, 2)}</strong>
                     </p>
                     <p className="metric">
                       <span>Avg Extremes &gt;40</span>
@@ -591,15 +600,14 @@ export default function ServiceDashboardPage() {
                     </div>
 
                     <div className="store-rows">
-                      {/* ✅ NEW: Shifts worked tally */}
                       <p className="metric">
                         <span>Shifts worked</span>
                         <strong>{mgr.shiftsWorked}</strong>
                       </p>
 
                       <p className="metric">
-                        <span>Avg R&amp;L</span>
-                        <strong>{formatMinutes(mgr.avgRnL, 2)}</strong>
+                        <span>Avg Rack &amp; Load</span>
+                        <strong>{formatMinutes(mgr.avgRackLoad, 2)}</strong>
                       </p>
                       <p className="metric">
                         <span>Avg Extremes &gt;40</span>
