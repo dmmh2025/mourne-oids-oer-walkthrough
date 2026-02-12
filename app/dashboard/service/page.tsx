@@ -34,7 +34,6 @@ type ShiftRow = {
   actual_drivers: number | null;
 
   dot_pct: number | null;
-
   extreme_over_40: number | null;
 
   sbr_pct: number | null;
@@ -164,65 +163,69 @@ export default function ServiceDashboardPage() {
     return dateFilteredRows.filter((r) => r.store === selectedStore);
   }, [dateFilteredRows, selectedStore]);
 
-  // AREA OVERVIEW: Avg DOT, Avg Labour, Avg Extremes >40%, Additional hours used (TOTAL)
+  // AREA OVERVIEW: Avg DOT, Avg R&L, Avg Extremes >40%, Additional hours used (TOTAL)
   const areaKpis = useMemo(() => {
-    const labourVals: number[] = [];
     const dotVals: number[] = [];
     const extVals: number[] = [];
+    const rnlVals: number[] = [];
     let totalAddHours = 0;
 
     for (const r of filteredRows) {
-      const labour = normalisePct(r.labour_pct);
-      if (labour != null) labourVals.push(labour);
-
       const dot = normalisePct(r.dot_pct);
       if (dot != null) dotVals.push(dot);
 
       const ext = normalisePct(r.extreme_over_40);
       if (ext != null) extVals.push(ext);
 
-      if (typeof r.additional_hours === "number" && Number.isFinite(r.additional_hours)) {
+      if (typeof r.rnl_minutes === "number" && Number.isFinite(r.rnl_minutes)) {
+        rnlVals.push(r.rnl_minutes);
+      }
+
+      if (
+        typeof r.additional_hours === "number" &&
+        Number.isFinite(r.additional_hours)
+      ) {
         totalAddHours += r.additional_hours;
       }
     }
 
     return {
-      avgLabour: avg(labourVals),
       avgDOT: avg(dotVals),
       avgExtremes: avg(extVals),
+      avgRnL: avg(rnlVals),
       totalAddHours,
     };
   }, [filteredRows]);
 
-  // STORE OVERVIEW (rank by DOT desc, Labour asc)
+  // STORE OVERVIEW (rank by DOT desc, Extremes asc)
   const storeData = useMemo(() => {
     const out = STORES.map((storeName) => {
       const rowsForStore = dateFilteredRows.filter((r) => r.store === storeName);
 
-      const lab: number[] = [];
       const dot: number[] = [];
       const rnl: number[] = [];
       const ext: number[] = [];
       let totalAddHours = 0;
 
       for (const r of rowsForStore) {
-        const l = normalisePct(r.labour_pct);
         const d = normalisePct(r.dot_pct);
         const e = normalisePct(r.extreme_over_40);
 
-        if (l != null) lab.push(l);
         if (d != null) dot.push(d);
-        if (typeof r.rnl_minutes === "number" && Number.isFinite(r.rnl_minutes)) rnl.push(r.rnl_minutes);
+        if (typeof r.rnl_minutes === "number" && Number.isFinite(r.rnl_minutes))
+          rnl.push(r.rnl_minutes);
         if (e != null) ext.push(e);
 
-        if (typeof r.additional_hours === "number" && Number.isFinite(r.additional_hours)) {
+        if (
+          typeof r.additional_hours === "number" &&
+          Number.isFinite(r.additional_hours)
+        ) {
           totalAddHours += r.additional_hours;
         }
       }
 
       return {
         store: storeName,
-        avgLabour: avg(lab),
         avgDOT: avg(dot),
         avgRnL: avg(rnl),
         avgExtremes: avg(ext),
@@ -230,26 +233,29 @@ export default function ServiceDashboardPage() {
       };
     });
 
-    // rank: higher DOT first, tie-break lower labour
+    // rank: higher DOT first, tie-break lower extremes, then lower R&L
     out.sort((a, b) => {
       const aDot = a.avgDOT ?? -1;
       const bDot = b.avgDOT ?? -1;
       if (bDot !== aDot) return bDot - aDot;
 
-      const aLab = a.avgLabour ?? 999;
-      const bLab = b.avgLabour ?? 999;
-      return aLab - bLab;
+      const aExt = a.avgExtremes ?? 999;
+      const bExt = b.avgExtremes ?? 999;
+      if (aExt !== bExt) return aExt - bExt;
+
+      const aRnl = a.avgRnL ?? 999999;
+      const bRnl = b.avgRnL ?? 999999;
+      return aRnl - bRnl;
     });
 
     return out;
   }, [dateFilteredRows]);
 
-  // MANAGER OVERVIEW (rank by DOT desc, Labour asc)
+  // MANAGER OVERVIEW (rank by DOT desc, Extremes asc)
   const managerData = useMemo(() => {
     const bucket: Record<
       string,
       {
-        labour: number[];
         dot: number[];
         rnl: number[];
         ext: number[];
@@ -262,7 +268,6 @@ export default function ServiceDashboardPage() {
 
       if (!bucket[name]) {
         bucket[name] = {
-          labour: [],
           dot: [],
           rnl: [],
           ext: [],
@@ -270,37 +275,45 @@ export default function ServiceDashboardPage() {
         };
       }
 
-      const l = normalisePct(r.labour_pct);
       const d = normalisePct(r.dot_pct);
       const e = normalisePct(r.extreme_over_40);
 
-      if (l != null) bucket[name].labour.push(l);
       if (d != null) bucket[name].dot.push(d);
-      if (typeof r.rnl_minutes === "number" && Number.isFinite(r.rnl_minutes)) bucket[name].rnl.push(r.rnl_minutes);
+      if (typeof r.rnl_minutes === "number" && Number.isFinite(r.rnl_minutes))
+        bucket[name].rnl.push(r.rnl_minutes);
       if (e != null) bucket[name].ext.push(e);
 
-      if (typeof r.additional_hours === "number" && Number.isFinite(r.additional_hours)) {
+      if (
+        typeof r.additional_hours === "number" &&
+        Number.isFinite(r.additional_hours)
+      ) {
         bucket[name].totalAddHours += r.additional_hours;
       }
     }
 
     const arr = Object.entries(bucket).map(([name, v]) => ({
       name,
-      avgLabour: avg(v.labour),
       avgDOT: avg(v.dot),
       avgRnL: avg(v.rnl),
       avgExtremes: avg(v.ext),
       totalAddHours: v.totalAddHours,
     }));
 
+    // ✅ Team member ranking: DOT desc, Extremes asc (then R&L asc, then name)
     arr.sort((a, b) => {
       const aDot = a.avgDOT ?? -1;
       const bDot = b.avgDOT ?? -1;
       if (bDot !== aDot) return bDot - aDot;
 
-      const aLab = a.avgLabour ?? 999;
-      const bLab = b.avgLabour ?? 999;
-      return aLab - bLab;
+      const aExt = a.avgExtremes ?? 999;
+      const bExt = b.avgExtremes ?? 999;
+      if (aExt !== bExt) return aExt - bExt;
+
+      const aRnl = a.avgRnL ?? 999999;
+      const bRnl = b.avgRnL ?? 999999;
+      if (aRnl !== bRnl) return aRnl - bRnl;
+
+      return a.name.localeCompare(b.name);
     });
 
     return arr;
@@ -354,7 +367,7 @@ export default function ServiceDashboardPage() {
         <h1>Mourne-oids Service Dashboard</h1>
         <p className="subtitle">
           Area, store and manager performance — ranked by <b>higher DOT%</b> then{" "}
-          <b>lower labour%</b>.
+          <b>lower Extremes &gt;40</b>.
         </p>
       </header>
 
@@ -366,7 +379,9 @@ export default function ServiceDashboardPage() {
             <div className="filters">
               <button
                 onClick={() => setSelectedStore("all")}
-                className={`chip ${selectedStore === "all" ? "chip--active" : ""}`}
+                className={`chip ${
+                  selectedStore === "all" ? "chip--active" : ""
+                }`}
               >
                 All stores
               </button>
@@ -387,7 +402,9 @@ export default function ServiceDashboardPage() {
             <div className="filters">
               <button
                 onClick={() => setDateRange("yesterday")}
-                className={`chip small ${dateRange === "yesterday" ? "chip--active" : ""}`}
+                className={`chip small ${
+                  dateRange === "yesterday" ? "chip--active" : ""
+                }`}
               >
                 Yesterday
               </button>
@@ -411,7 +428,9 @@ export default function ServiceDashboardPage() {
               </button>
               <button
                 onClick={() => setDateRange("custom")}
-                className={`chip small ${dateRange === "custom" ? "chip--active" : ""}`}
+                className={`chip small ${
+                  dateRange === "custom" ? "chip--active" : ""
+                }`}
               >
                 Custom
               </button>
@@ -469,17 +488,9 @@ export default function ServiceDashboardPage() {
                 <p className="kpi-sub">Higher is better</p>
               </div>
 
-              <div
-                className={`card kpi ${
-                  (areaKpis.avgLabour ?? 999) <= 0.25
-                    ? "kpi--green"
-                    : (areaKpis.avgLabour ?? 999) <= 0.28
-                    ? "kpi--amber"
-                    : "kpi--red"
-                }`}
-              >
-                <p className="kpi-title">Avg Labour %</p>
-                <p className="kpi-value">{formatPct(areaKpis.avgLabour, 2)}</p>
+              <div className="card kpi">
+                <p className="kpi-title">Avg R&amp;L</p>
+                <p className="kpi-value">{formatMinutes(areaKpis.avgRnL, 2)}</p>
                 <p className="kpi-sub">Lower is better</p>
               </div>
 
@@ -499,7 +510,9 @@ export default function ServiceDashboardPage() {
             {/* STORE OVERVIEW */}
             <div className="section-head mt">
               <h2>Store overview</h2>
-              <p className="section-sub">{periodLabel} • ranked by DOT then labour</p>
+              <p className="section-sub">
+                {periodLabel} • ranked by DOT then Extremes &gt;40
+              </p>
             </div>
 
             <div className="store-grid">
@@ -529,10 +542,6 @@ export default function ServiceDashboardPage() {
 
                   <div className="store-rows">
                     <p className="metric">
-                      <span>Avg Labour</span>
-                      <strong>{formatPct(st.avgLabour, 2)}</strong>
-                    </p>
-                    <p className="metric">
                       <span>Avg R&amp;L</span>
                       <strong>{formatMinutes(st.avgRnL, 2)}</strong>
                     </p>
@@ -552,7 +561,9 @@ export default function ServiceDashboardPage() {
             {/* MANAGER OVERVIEW */}
             <div className="section-head mt">
               <h2>Manager overview</h2>
-              <p className="section-sub">{periodLabel} • ranked by DOT then labour</p>
+              <p className="section-sub">
+                {periodLabel} • ranked by DOT then Extremes &gt;40
+              </p>
             </div>
 
             <div className="manager-grid">
@@ -592,20 +603,12 @@ export default function ServiceDashboardPage() {
 
                     <div className="store-rows">
                       <p className="metric">
-                        <span>Avg Labour</span>
-                        <strong>{formatPct(mgr.avgLabour, 2)}</strong>
-                      </p>
-                      <p className="metric">
                         <span>Avg R&amp;L</span>
                         <strong>{formatMinutes(mgr.avgRnL, 2)}</strong>
                       </p>
                       <p className="metric">
                         <span>Avg Extremes &gt;40</span>
                         <strong>{formatPct(mgr.avgExtremes, 2)}</strong>
-                      </p>
-                      <p className="metric">
-                        <span>Additional hours</span>
-                        <strong>{formatHours(mgr.totalAddHours)}</strong>
                       </p>
                     </div>
                   </div>
