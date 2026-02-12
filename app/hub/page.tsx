@@ -410,14 +410,17 @@ export default function HubPage() {
         setOsaHighlightError(null);
 
         const now = new Date();
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        monthStart.setHours(0, 0, 0, 0);
-        const monthStartStr = monthStart.toISOString().slice(0, 10);
+        const day = now.getDay();
+        const mondayOffset = day === 0 ? 6 : day - 1;
+        const weekStart = new Date(now);
+        weekStart.setDate(now.getDate() - mondayOffset);
+        weekStart.setHours(0, 0, 0, 0);
+        const weekStartStr = weekStart.toISOString().slice(0, 10);
 
         const { data, error } = await supabase
           .from("osa_internal_results")
           .select("shift_date, team_member_name, points_lost")
-          .gte("shift_date", monthStartStr);
+          .gte("shift_date", weekStartStr);
 
         if (error) throw error;
 
@@ -890,8 +893,8 @@ export default function HubPage() {
 
               <div className={`highlight-card${osaHighlightError ? " warning" : ""}`}>
                 <div className="highlight-top">
-                  <span className="highlight-title">🛡️ Best OSA Performance (This month)</span>
-                  <span className="highlight-pill">MTD</span>
+                  <span className="highlight-title">🛡️ Best OSA Performance (This week)</span>
+                  <span className="highlight-pill">WTD</span>
                 </div>
                 <div className="highlight-main">
                   <div className="highlight-name">
