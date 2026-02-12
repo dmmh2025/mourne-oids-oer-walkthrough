@@ -156,9 +156,9 @@ type Agg = {
   labourPct: number; // labour / sales
   foodVarPctSales: number; // (actual - ideal) / sales
 
-  // Ranking metrics
+  // Ranking helpers
   labourDelta: number; // amount ABOVE target (0 if <= target). Lower is better.
-  foodVarDelta: number; // distance to 0 (absolute). Lower is better.
+  foodVarAbs: number; // absolute distance to 0. Lower is better.
 };
 
 function sum(arr: number[]) {
@@ -169,6 +169,57 @@ function sum(arr: number[]) {
 const LABOUR_TARGET = 0.25; // 25%
 const FOODVAR_MIN = -0.0025; // -0.25%
 const FOODVAR_MAX = 0.0025; // +0.25%
+
+function aggregate(rows: CostRow[], key: "store" | "manager_name"): Agg[] {
+  const bucket: Record<string, CostRow[]> = {};
+
+  for (const r of rows) {
+    const name = String((r as any)[key] || "").trim() || "Unknown";
+    if (!bucket[name]) bucket[name] = [];
+    bucket[name].push(r);
+  }
+
+  return Object.entries(bucket).map(([name, items]) => {
+    const sales = sum(items.map((x) => Number(x.sales_gbp || 0)));
+    const labour = sum(items.map((x) => Number(x.labour_cost_gbp || 0)));
+    const idealFood = sum(items.map((x) => Number(x.ideal_food_cost_gbp || 0)));
+    const actualFood = sum(items.map((x) => Number(x.actual_food_cost_gbp || 0)));
+
+    const labourPct = sales > 0 ? labour / sales : 0;
+    const foodVarPctSales = sales > 0 ? (actualFood - idealFood) / sales : 0;
+
+    const days = new Set(items.map((x) => x.shift_date)).size;
+
+    const labourDelta = Math.max(0, labourPct - LABOUR_TARGET);
+    const foodVarAbs = Math.abs(foodVarPctSales);
+
+    return {
+      name,
+      days,
+      sales,
+      labour,
+      idealFood,
+      actualFood,
+      labourPct,
+      foodVarPctSales,
+      labourDelta,
+      foodVarAbs,
+    };
+  });
+}
+
+// ✅ Labour ranking: <=25% first, then lowest labour%, then sales tiebreak
+function sortByLabour(a: Agg, b: Agg) {
+  if (a.labourDelta !== b.labourDelta) return a.labourDelta - b.labourDelta;
+  if (a.labourPct !== b.labourPct) return a.labourPct - b.labourPct;
+  return b.sales - a.sales;
+}
+
+// ✅ Food ranking: closest to 0% wins, then sales tiebreak
+function sortByFood(a: Agg, b: Agg) {
+  if (a.foodVarAbs !== b.foodVarAbs) return a.foodVarAbs - b.foodVarAbs;
+  return b.sales - a.sales;
+}
 
 export default function CostControlsPage() {
   const router = useRouter();
@@ -291,39 +342,20 @@ export default function CostControlsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rangeWindow.from, rangeWindow.to]);
 
-  const storeAgg = useMemo(() => aggregate(rows, "store"), [rows]);
-  const mgrAgg = useMemo(() => aggregate(rows, "manager_name"), [rows]);
+  const storeBase = useMemo(() => aggregate(rows, "store"), [rows]);
+  const mgrBase = useMemo(() => aggregate(rows, "manager_name"), [rows]);
 
-  // Highlights: labour (unchanged)
-  const topStoreLabour = useMemo(() => {
-    if (!storeAgg.length) return null;
+  const storeLabour = useMemo(
+    () => storeBase.slice().sort(sortByLabour),
+    [storeBase]
+  );
+  const storeFood = useMemo(() => storeBase.slice().sort(sortByFood), [storeBase]);
 
-    const sorted = storeAgg.slice().sort((a, b) => {
-      const aOver = a.labourPct > LABOUR_TARGET ? 1 : 0;
-      const bOver = b.labourPct > LABOUR_TARGET ? 1 : 0;
-      if (aOver !== bOver) return aOver - bOver;
+  const mgrLabour = useMemo(() => mgrBase.slice().sort(sortByLabour), [mgrBase]);
+  const mgrFood = useMemo(() => mgrBase.slice().sort(sortByFood), [mgrBase]);
 
-      if (a.labourPct !== b.labourPct) return a.labourPct - b.labourPct;
-
-      return b.sales - a.sales;
-    });
-
-    return sorted[0] || null;
-  }, [storeAgg]);
-
-  // Highlights: food (closest to 0 wins)
-  const topStoreFood = useMemo(() => {
-    if (!storeAgg.length) return null;
-
-    const sorted = storeAgg.slice().sort((a, b) => {
-      const aAbs = Math.abs(a.foodVarPctSales);
-      const bAbs = Math.abs(b.foodVarPctSales);
-      if (aAbs !== bAbs) return aAbs - bAbs;
-      return b.sales - a.sales;
-    });
-
-    return sorted[0] || null;
-  }, [storeAgg]);
+  const topStoreLabour = storeLabour[0] || null;
+  const topStoreFood = storeFood[0] || null;
 
   return (
     <main className="wrap">
@@ -352,8 +384,8 @@ export default function CostControlsPage() {
         <header className="header">
           <h1>Cost Controls</h1>
           <p className="subtitle">
-            Ranked by targets — Labour <b>≤ {fmtPct(LABOUR_TARGET, 0)}</b> (lower
-            is better) and Food Variance band{" "}
+            Targets — Labour <b>≤ {fmtPct(LABOUR_TARGET, 0)}</b> and Food Variance
+            band{" "}
             <b>
               {fmtPct(FOODVAR_MIN, 2)} → {fmtPct(FOODVAR_MAX, 2)}
             </b>{" "}
@@ -440,8 +472,8 @@ export default function CostControlsPage() {
               <div className="highlightsGrid">
                 <div className="hlCard">
                   <div className="hlTop">
-                    <span className="hlTitle">🏆 Labour Target</span>
-                    <span className="hlPill">≤ 25% (lower wins)</span>
+                    <span className="hlTitle">🏆 Labour Winner</span>
+                    <span className="hlPill">≤ 25% then lowest</span>
                   </div>
                   <div className="hlMain">
                     <div className="hlName">
@@ -460,8 +492,8 @@ export default function CostControlsPage() {
 
                 <div className="hlCard">
                   <div className="hlTop">
-                    <span className="hlTitle">🥇 Food Variance Band</span>
-                    <span className="hlPill">Within ±0.25%</span>
+                    <span className="hlTitle">🥇 Food Winner</span>
+                    <span className="hlPill">Closest to 0%</span>
                   </div>
                   <div className="hlMain">
                     <div className="hlName">
@@ -494,13 +526,11 @@ export default function CostControlsPage() {
             </section>
 
             <section className="boards">
+              {/* STORES - LABOUR */}
               <div className="board">
                 <div className="boardHead">
-                  <h2>Store Rankings</h2>
-                  <p>
-                    Ranked by: Labour (≤25% then lowest) → Food Var (closest to
-                    0%)
-                  </p>
+                  <h2>Store • Labour Rankings</h2>
+                  <p>≤ 25% first → lowest labour% wins</p>
                 </div>
 
                 <div className="tableWrap">
@@ -515,7 +545,7 @@ export default function CostControlsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {storeAgg.map((a, idx) => (
+                      {storeLabour.map((a, idx) => (
                         <tr key={a.name}>
                           <td className="rank">{idx + 1}</td>
                           <td className="name">{a.name}</td>
@@ -524,7 +554,7 @@ export default function CostControlsPage() {
                           <td className="num">{fmtPct(a.foodVarPctSales, 2)}</td>
                         </tr>
                       ))}
-                      {storeAgg.length === 0 && (
+                      {storeLabour.length === 0 && (
                         <tr>
                           <td className="empty" colSpan={5}>
                             No cost control entries found for this period.
@@ -536,13 +566,51 @@ export default function CostControlsPage() {
                 </div>
               </div>
 
+              {/* STORES - FOOD */}
               <div className="board">
                 <div className="boardHead">
-                  <h2>Manager Rankings</h2>
-                  <p>
-                    Ranked by: Labour (≤25% then lowest) → Food Var (closest to
-                    0%)
-                  </p>
+                  <h2>Store • Food Rankings</h2>
+                  <p>Closest to 0% food variance wins</p>
+                </div>
+
+                <div className="tableWrap">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 70 }}>Rank</th>
+                        <th>Store</th>
+                        <th style={{ width: 130 }}>Days</th>
+                        <th style={{ width: 210 }}>Food Var %</th>
+                        <th style={{ width: 170 }}>Labour %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {storeFood.map((a, idx) => (
+                        <tr key={a.name}>
+                          <td className="rank">{idx + 1}</td>
+                          <td className="name">{a.name}</td>
+                          <td className="num">{a.days}</td>
+                          <td className="num">{fmtPct(a.foodVarPctSales, 2)}</td>
+                          <td className="num">{fmtPct(a.labourPct, 1)}</td>
+                        </tr>
+                      ))}
+                      {storeFood.length === 0 && (
+                        <tr>
+                          <td className="empty" colSpan={5}>
+                            No cost control entries found for this period.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* MANAGERS - LABOUR */}
+              <div className="board">
+                <div className="boardHead">
+                  <h2>Manager • Labour Rankings</h2>
+                  <p>≤ 25% first → lowest labour% wins</p>
                 </div>
 
                 <div className="tableWrap">
@@ -557,7 +625,7 @@ export default function CostControlsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {mgrAgg.map((a, idx) => (
+                      {mgrLabour.map((a, idx) => (
                         <tr key={a.name}>
                           <td className="rank">{idx + 1}</td>
                           <td className="name">{a.name}</td>
@@ -566,7 +634,47 @@ export default function CostControlsPage() {
                           <td className="num">{fmtPct(a.foodVarPctSales, 2)}</td>
                         </tr>
                       ))}
-                      {mgrAgg.length === 0 && (
+                      {mgrLabour.length === 0 && (
+                        <tr>
+                          <td className="empty" colSpan={5}>
+                            No cost control entries found for this period.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* MANAGERS - FOOD */}
+              <div className="board">
+                <div className="boardHead">
+                  <h2>Manager • Food Rankings</h2>
+                  <p>Closest to 0% food variance wins</p>
+                </div>
+
+                <div className="tableWrap">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 70 }}>Rank</th>
+                        <th>Manager</th>
+                        <th style={{ width: 130 }}>Days</th>
+                        <th style={{ width: 210 }}>Food Var %</th>
+                        <th style={{ width: 170 }}>Labour %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mgrFood.map((a, idx) => (
+                        <tr key={a.name}>
+                          <td className="rank">{idx + 1}</td>
+                          <td className="name">{a.name}</td>
+                          <td className="num">{a.days}</td>
+                          <td className="num">{fmtPct(a.foodVarPctSales, 2)}</td>
+                          <td className="num">{fmtPct(a.labourPct, 1)}</td>
+                        </tr>
+                      ))}
+                      {mgrFood.length === 0 && (
                         <tr>
                           <td className="empty" colSpan={5}>
                             No cost control entries found for this period.
@@ -940,55 +1048,4 @@ export default function CostControlsPage() {
       `}</style>
     </main>
   );
-}
-
-function aggregate(rows: CostRow[], key: "store" | "manager_name"): Agg[] {
-  const bucket: Record<string, CostRow[]> = {};
-
-  for (const r of rows) {
-    const name = String((r as any)[key] || "").trim() || "Unknown";
-    if (!bucket[name]) bucket[name] = [];
-    bucket[name].push(r);
-  }
-
-  const out: Agg[] = Object.entries(bucket).map(([name, items]) => {
-    const sales = sum(items.map((x) => Number(x.sales_gbp || 0)));
-    const labour = sum(items.map((x) => Number(x.labour_cost_gbp || 0)));
-    const idealFood = sum(items.map((x) => Number(x.ideal_food_cost_gbp || 0)));
-    const actualFood = sum(items.map((x) => Number(x.actual_food_cost_gbp || 0)));
-
-    const labourPct = sales > 0 ? labour / sales : 0;
-    const foodVarPctSales = sales > 0 ? (actualFood - idealFood) / sales : 0;
-
-    const days = new Set(items.map((x) => x.shift_date)).size;
-
-    const labourDelta = Math.max(0, labourPct - LABOUR_TARGET);
-
-    // ✅ Food ranking: closest to 0 wins
-    const foodVarDelta = Math.abs(foodVarPctSales);
-
-    return {
-      name,
-      days,
-      sales,
-      labour,
-      idealFood,
-      actualFood,
-      labourPct,
-      foodVarPctSales,
-      labourDelta,
-      foodVarDelta,
-    };
-  });
-
-  out.sort((a, b) => {
-    if (a.labourDelta !== b.labourDelta) return a.labourDelta - b.labourDelta;
-    if (a.labourPct !== b.labourPct) return a.labourPct - b.labourPct;
-
-    if (a.foodVarDelta !== b.foodVarDelta) return a.foodVarDelta - b.foodVarDelta;
-
-    return b.sales - a.sales;
-  });
-
-  return out;
 }
