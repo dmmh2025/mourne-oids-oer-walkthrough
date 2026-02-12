@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { useRouter } from "next/navigation";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,36 +16,62 @@ type ShiftRow = {
   shift_date: string;
   day_name: string | null;
   store: string;
-
-  forecast_sales: number | null;
-  actual_sales: number | null;
-
   labour_pct: number | null;
   additional_hours: number | null;
-
   opening_manager: string | null;
   closing_manager: string | null;
-
-  // newer schema sometimes uses this
   manager?: string | null;
-
-  instores_scheduled: number | null;
-  actual_instores: number | null;
-  drivers_scheduled: number | null;
-  actual_drivers: number | null;
-
   dot_pct: number | null;
   extreme_over_40: number | null;
-
-  sbr_pct: number | null;
   rnl_minutes: number | null;
-
-  food_variance_pct: number | null;
 };
 
 type DateRange = "yesterday" | "wtd" | "mtd" | "ytd" | "custom";
 
+const normalisePct = (v: number | null) => {
+  if (v == null || !Number.isFinite(v)) return null;
+  return v > 1 ? v / 100 : v;
+};
+
+const normalizeRackLoad = (v: number | null) => {
+  if (v == null || !Number.isFinite(v) || v <= 0) return null;
+  const raw = Number(v);
+  const minutes = raw > 60 && raw <= 3600 ? raw / 60 : raw;
+  if (!Number.isFinite(minutes) || minutes <= 0 || minutes > 60) return null;
+  return minutes;
+};
+
+const avg = (arr: number[]) =>
+  arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+
+const getManagerName = (r: ShiftRow) => {
+  const m = (r.manager || "").trim();
+  return m || "Unknown";
+};
+
+const pillClassFromDot = (v: number | null) => {
+  if (v == null) return "pill";
+  if (v >= 0.8) return "pill green";
+  if (v >= 0.75) return "pill amber";
+  return "pill red";
+};
+
+const pillClassFromExtremes = (v: number | null) => {
+  if (v == null) return "pill";
+  if (v <= 0.03) return "pill green";
+  if (v <= 0.05) return "pill amber";
+  return "pill red";
+};
+
+const pillClassFromRackLoad = (v: number | null) => {
+  if (v == null) return "pill";
+  if (v <= 10) return "pill green";
+  if (v <= 20) return "pill amber";
+  return "pill red";
+};
+
 export default function ServiceDashboardPage() {
+  const router = useRouter();
   const [rows, setRows] = useState<ShiftRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -52,35 +79,6 @@ export default function ServiceDashboardPage() {
   const [dateRange, setDateRange] = useState<DateRange>("wtd");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
-
-  const normalisePct = (v: number | null) => {
-    if (v == null) return null;
-    if (!Number.isFinite(v)) return null;
-    return v > 1 ? v / 100 : v; // accept 78 or 0.78
-  };
-
-  // ✅ Fix mixed units: if rnl_minutes is accidentally stored in seconds, convert to minutes.
-  // Anything >180 is almost certainly seconds (e.g. 787 -> 13.1m).
-  const normaliseMinutes = (v: number | null) => {
-    if (v == null || !Number.isFinite(v)) return null;
-    return v > 180 ? v / 60 : v;
-  };
-
-  const avg = (arr: number[]) =>
-    arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
-
-  const getManagerName = (r: ShiftRow) => {
-    const c = (r.closing_manager || "").trim();
-    if (c) return c;
-
-    const m = ((r as any).manager || "").trim();
-    if (m) return m;
-
-    const o = (r.opening_manager || "").trim();
-    if (o) return o;
-
-    return "Unknown";
-  };
 
   useEffect(() => {
     const load = async () => {
@@ -117,7 +115,6 @@ export default function ServiceDashboardPage() {
       const monday = new Date(now);
       monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
       monday.setHours(0, 0, 0, 0);
-
       return rows.filter((r) => {
         const d = new Date(r.shift_date);
         return d >= monday && d <= now;
@@ -175,17 +172,11 @@ export default function ServiceDashboardPage() {
     for (const r of filteredRows) {
       const dot = normalisePct(r.dot_pct);
       if (dot != null) dotVals.push(dot);
-
       const ext = normalisePct(r.extreme_over_40);
       if (ext != null) extVals.push(ext);
-
-      const rl = normaliseMinutes(r.rnl_minutes);
+      const rl = normalizeRackLoad(r.rnl_minutes);
       if (rl != null) rackLoadVals.push(rl);
-
-      if (
-        typeof r.additional_hours === "number" &&
-        Number.isFinite(r.additional_hours)
-      ) {
+      if (typeof r.additional_hours === "number" && Number.isFinite(r.additional_hours)) {
         totalAddHours += r.additional_hours;
       }
     }
@@ -201,7 +192,6 @@ export default function ServiceDashboardPage() {
   const storeData = useMemo(() => {
     const out = STORES.map((storeName) => {
       const rowsForStore = dateFilteredRows.filter((r) => r.store === storeName);
-
       const dot: number[] = [];
       const rackLoad: number[] = [];
       const ext: number[] = [];
@@ -210,16 +200,13 @@ export default function ServiceDashboardPage() {
       for (const r of rowsForStore) {
         const d = normalisePct(r.dot_pct);
         const e = normalisePct(r.extreme_over_40);
-        const rl = normaliseMinutes(r.rnl_minutes);
+        const rl = normalizeRackLoad(r.rnl_minutes);
 
         if (d != null) dot.push(d);
         if (rl != null) rackLoad.push(rl);
         if (e != null) ext.push(e);
 
-        if (
-          typeof r.additional_hours === "number" &&
-          Number.isFinite(r.additional_hours)
-        ) {
+        if (typeof r.additional_hours === "number" && Number.isFinite(r.additional_hours)) {
           totalAddHours += r.additional_hours;
         }
       }
@@ -233,16 +220,13 @@ export default function ServiceDashboardPage() {
       };
     });
 
-    // rank: higher DOT first, tie-break lower extremes, then lower Rack & Load
     out.sort((a, b) => {
       const aDot = a.avgDOT ?? -1;
       const bDot = b.avgDOT ?? -1;
       if (bDot !== aDot) return bDot - aDot;
-
       const aExt = a.avgExtremes ?? 999;
       const bExt = b.avgExtremes ?? 999;
       if (aExt !== bExt) return aExt - bExt;
-
       const aRL = a.avgRackLoad ?? 999999;
       const bRL = b.avgRackLoad ?? 999999;
       return aRL - bRL;
@@ -251,46 +235,27 @@ export default function ServiceDashboardPage() {
     return out;
   }, [dateFilteredRows]);
 
-  // ✅ MANAGER OVERVIEW: include shifts worked
   const managerData = useMemo(() => {
-    const bucket: Record<
-      string,
-      {
-        dot: number[];
-        rackLoad: number[];
-        ext: number[];
-        totalAddHours: number;
-        shifts: number;
-      }
-    > = {};
+    const bucket: Record<string, { dot: number[]; labour: number[]; rackLoad: number[]; ext: number[]; totalAddHours: number; shifts: number }> = {};
 
     for (const r of filteredRows) {
       const name = getManagerName(r);
-
       if (!bucket[name]) {
-        bucket[name] = {
-          dot: [],
-          rackLoad: [],
-          ext: [],
-          totalAddHours: 0,
-          shifts: 0,
-        };
+        bucket[name] = { dot: [], labour: [], rackLoad: [], ext: [], totalAddHours: 0, shifts: 0 };
       }
 
       bucket[name].shifts += 1;
-
       const d = normalisePct(r.dot_pct);
+      const l = normalisePct(r.labour_pct);
       const e = normalisePct(r.extreme_over_40);
-      const rl = normaliseMinutes(r.rnl_minutes);
+      const rl = normalizeRackLoad(r.rnl_minutes);
 
       if (d != null) bucket[name].dot.push(d);
+      if (l != null) bucket[name].labour.push(l);
       if (rl != null) bucket[name].rackLoad.push(rl);
       if (e != null) bucket[name].ext.push(e);
 
-      if (
-        typeof r.additional_hours === "number" &&
-        Number.isFinite(r.additional_hours)
-      ) {
+      if (typeof r.additional_hours === "number" && Number.isFinite(r.additional_hours)) {
         bucket[name].totalAddHours += r.additional_hours;
       }
     }
@@ -299,34 +264,27 @@ export default function ServiceDashboardPage() {
       name,
       shiftsWorked: v.shifts,
       avgDOT: avg(v.dot),
+      avgLabour: avg(v.labour),
       avgRackLoad: avg(v.rackLoad),
       avgExtremes: avg(v.ext),
       totalAddHours: v.totalAddHours,
     }));
 
-    // rank: DOT desc, Extremes asc, Rack & Load asc, then name
     arr.sort((a, b) => {
       const aDot = a.avgDOT ?? -1;
       const bDot = b.avgDOT ?? -1;
       if (bDot !== aDot) return bDot - aDot;
-
       const aExt = a.avgExtremes ?? 999;
       const bExt = b.avgExtremes ?? 999;
       if (aExt !== bExt) return aExt - bExt;
-
       const aRL = a.avgRackLoad ?? 999999;
       const bRL = b.avgRackLoad ?? 999999;
       if (aRL !== bRL) return aRL - bRL;
-
       return a.name.localeCompare(b.name);
     });
 
     return arr;
   }, [filteredRows]);
-
-  const handleBack = () => {
-    if (typeof window !== "undefined") window.history.back();
-  };
 
   const periodLabel =
     dateRange === "yesterday"
@@ -341,676 +299,191 @@ export default function ServiceDashboardPage() {
 
   const formatPct = (v: number | null, dp = 1) =>
     v == null || !Number.isFinite(v) ? "—" : (v * 100).toFixed(dp) + "%";
-
-  const formatHours = (n: number) =>
-    Number.isFinite(n) ? n.toFixed(1) : "0.0";
-
+  const formatHours = (n: number) => (Number.isFinite(n) ? n.toFixed(1) : "0.0");
   const formatMinutes = (v: number | null, dp = 1) =>
     v == null || !Number.isFinite(v) ? "—" : v.toFixed(dp) + "m";
 
   return (
     <main className="wrap">
       <div className="banner">
-        <img
-          src="/mourneoids_forms_header_1600x400.png"
-          alt="Mourne-oids Header Banner"
-        />
+        <img src="/mourneoids_forms_header_1600x400.png" alt="Mourne-oids Header Banner" />
       </div>
 
-      <div className="nav-row">
-        <button onClick={handleBack} className="btn btn--ghost">
-          ← Back
-        </button>
-        <a href="/" className="btn btn--brand">
-          🏠 Home
-        </a>
-      </div>
+      <div className="shell">
+        <div className="topbar">
+          <button className="navbtn" type="button" onClick={() => router.back()}>
+            ← Back
+          </button>
+          <div className="topbar-spacer" />
+          <button className="navbtn solid" type="button" onClick={() => router.push("/")}>
+            🏠 Home
+          </button>
+        </div>
 
-      <header className="header">
-        <h1>Mourne-oids Service Dashboard</h1>
-        <p className="subtitle">
-          Area, store and manager performance — ranked by <b>higher DOT%</b> then{" "}
-          <b>lower Extremes &gt;40</b>.
-        </p>
-      </header>
+        <header className="header">
+          <h1>Mourne-oids Service Dashboard</h1>
+          <p className="subtitle">
+            Area, store and manager performance — ranked by <b>higher DOT%</b> then <b>lower Extremes &gt;40</b> and <b>lower Rack &amp; Load</b>.
+          </p>
+        </header>
 
-      <section className="container wide">
-        <div className="filters-panel card soft">
-          <div className="filters-block">
-            <p className="filters-title">Stores</p>
-            <div className="filters">
-              <button
-                onClick={() => setSelectedStore("all")}
-                className={`chip ${selectedStore === "all" ? "chip--active" : ""}`}
-              >
-                All stores
-              </button>
+        <div className="filter-card">
+          <div className="filter-row">
+            <span className="filter-label">Store</span>
+            <div className="quick-row">
+              <button onClick={() => setSelectedStore("all")} className={`quick ${selectedStore === "all" ? "active" : ""}`}>All stores</button>
               {STORES.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setSelectedStore(s)}
-                  className={`chip ${selectedStore === s ? "chip--active" : ""}`}
-                >
-                  {s}
-                </button>
+                <button key={s} onClick={() => setSelectedStore(s)} className={`quick ${selectedStore === s ? "active" : ""}`}>{s}</button>
               ))}
             </div>
           </div>
 
-          <div className="filters-block">
-            <p className="filters-title">Period</p>
-            <div className="filters">
-              <button
-                onClick={() => setDateRange("yesterday")}
-                className={`chip small ${
-                  dateRange === "yesterday" ? "chip--active" : ""
-                }`}
-              >
-                Yesterday
-              </button>
-              <button
-                onClick={() => setDateRange("wtd")}
-                className={`chip small ${dateRange === "wtd" ? "chip--active" : ""}`}
-              >
-                WTD
-              </button>
-              <button
-                onClick={() => setDateRange("mtd")}
-                className={`chip small ${dateRange === "mtd" ? "chip--active" : ""}`}
-              >
-                MTD
-              </button>
-              <button
-                onClick={() => setDateRange("ytd")}
-                className={`chip small ${dateRange === "ytd" ? "chip--active" : ""}`}
-              >
-                YTD
-              </button>
-              <button
-                onClick={() => setDateRange("custom")}
-                className={`chip small ${
-                  dateRange === "custom" ? "chip--active" : ""
-                }`}
-              >
-                Custom
-              </button>
+          <div className="filter-row">
+            <span className="filter-label">Period</span>
+            <div className="quick-row">
+              <button onClick={() => setDateRange("yesterday")} className={`quick ${dateRange === "yesterday" ? "active" : ""}`}>Yesterday</button>
+              <button onClick={() => setDateRange("wtd")} className={`quick ${dateRange === "wtd" ? "active" : ""}`}>WTD</button>
+              <button onClick={() => setDateRange("mtd")} className={`quick ${dateRange === "mtd" ? "active" : ""}`}>MTD</button>
+              <button onClick={() => setDateRange("ytd")} className={`quick ${dateRange === "ytd" ? "active" : ""}`}>YTD</button>
+              <button onClick={() => setDateRange("custom")} className={`quick ${dateRange === "custom" ? "active" : ""}`}>Custom</button>
             </div>
           </div>
 
           {dateRange === "custom" && (
-            <div className="custom-row">
-              <div className="date-field">
-                <label>From</label>
-                <input
-                  type="date"
-                  value={customFrom}
-                  onChange={(e) => setCustomFrom(e.target.value)}
-                />
-              </div>
-              <div className="date-field">
-                <label>To</label>
-                <input
-                  type="date"
-                  value={customTo}
-                  onChange={(e) => setCustomTo(e.target.value)}
-                />
-              </div>
+            <div className="custom-grid">
+              <label>
+                <span>From</span>
+                <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+              </label>
+              <label>
+                <span>To</span>
+                <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+              </label>
             </div>
           )}
         </div>
-      </section>
 
-      <section className="container wide content">
-        {loading && <div className="card">Loading Mourne-oids data…</div>}
-        {errorMsg && <div className="card error">Error: {errorMsg}</div>}
+        {loading && <div className="alert">Loading Mourne-oids data…</div>}
+        {errorMsg && <div className="alert error">Error: {errorMsg}</div>}
 
         {!loading && !errorMsg && (
           <>
-            <div className="section-head">
-              <h2>Area overview</h2>
-              <p className="section-sub">{periodLabel}</p>
-            </div>
-
-            <div className="kpi-grid">
-              <div
-                className={`card kpi ${
-                  (areaKpis.avgDOT ?? 0) >= 0.8
-                    ? "kpi--green"
-                    : (areaKpis.avgDOT ?? 0) >= 0.75
-                    ? "kpi--amber"
-                    : "kpi--red"
-                }`}
-              >
-                <p className="kpi-title">Avg DOT %</p>
-                <p className="kpi-value">{formatPct(areaKpis.avgDOT, 1)}</p>
-                <p className="kpi-sub">Higher is better</p>
+            <section className="section">
+              <div className="section-head"><h2>Area overview</h2><p>{periodLabel}</p></div>
+              <div className="podium-grid four">
+                <div className="podium-card"><div className="podium-top"><span className="rank-badge">Area</span></div><div className="podium-name">Avg DOT %</div><div className="podium-metrics"><p><span>Performance</span><span className={pillClassFromDot(areaKpis.avgDOT)}>{formatPct(areaKpis.avgDOT,1)}</span></p></div></div>
+                <div className="podium-card"><div className="podium-top"><span className="rank-badge">Area</span></div><div className="podium-name">Avg Rack &amp; Load</div><div className="podium-metrics"><p><span>Minutes</span><span className={pillClassFromRackLoad(areaKpis.avgRackLoad)}>{formatMinutes(areaKpis.avgRackLoad,2)}</span></p></div></div>
+                <div className="podium-card"><div className="podium-top"><span className="rank-badge">Area</span></div><div className="podium-name">Avg Extremes &gt;40 %</div><div className="podium-metrics"><p><span>Performance</span><span className={pillClassFromExtremes(areaKpis.avgExtremes)}>{formatPct(areaKpis.avgExtremes,2)}</span></p></div></div>
+                <div className="podium-card"><div className="podium-top"><span className="rank-badge">Area</span></div><div className="podium-name">Additional hours used</div><div className="podium-metrics"><p><span>Total</span><span className="pill neutral">{formatHours(areaKpis.totalAddHours)}h</span></p></div></div>
               </div>
+            </section>
 
-              <div className="card kpi">
-                <p className="kpi-title">Avg Rack &amp; Load</p>
-                <p className="kpi-value">
-                  {formatMinutes(areaKpis.avgRackLoad, 2)}
-                </p>
-                <p className="kpi-sub">Lower is better</p>
-              </div>
-
-              <div className="card kpi">
-                <p className="kpi-title">Avg Extremes &gt;40 %</p>
-                <p className="kpi-value">{formatPct(areaKpis.avgExtremes, 2)}</p>
-                <p className="kpi-sub">Lower is better</p>
-              </div>
-
-              <div className="card kpi">
-                <p className="kpi-title">Additional hours used</p>
-                <p className="kpi-value">{formatHours(areaKpis.totalAddHours)}</p>
-                <p className="kpi-sub">Total for selected period</p>
-              </div>
-            </div>
-
-            <div className="section-head mt">
-              <h2>Store overview</h2>
-              <p className="section-sub">
-                {periodLabel} • ranked by DOT then Extremes &gt;40
-              </p>
-            </div>
-
-            <div className="store-grid">
-              {storeData.map((st, idx) => (
-                <div key={st.store} className="card store-card">
-                  <div className="store-card__header">
-                    <div className="store-card__title">
-                      <span className="rank-badge" title="Rank">
-                        #{idx + 1}
-                      </span>
-                      <h3>{st.store}</h3>
-                    </div>
-
-                    <span
-                      className={`pill ${
-                        (st.avgDOT ?? 0) >= 0.8
-                          ? "pill--green"
-                          : (st.avgDOT ?? 0) >= 0.75
-                          ? "pill--amber"
-                          : "pill--red"
-                      }`}
-                      title="Average DOT"
-                    >
-                      {formatPct(st.avgDOT, 1)} DOT
-                    </span>
-                  </div>
-
-                  <div className="store-rows">
-                    <p className="metric">
-                      <span>Avg Rack &amp; Load</span>
-                      <strong>{formatMinutes(st.avgRackLoad, 2)}</strong>
-                    </p>
-                    <p className="metric">
-                      <span>Avg Extremes &gt;40</span>
-                      <strong>{formatPct(st.avgExtremes, 2)}</strong>
-                    </p>
-                    <p className="metric">
-                      <span>Additional hours</span>
-                      <strong>{formatHours(st.totalAddHours)}</strong>
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="section-head mt">
-              <h2>Manager overview</h2>
-              <p className="section-sub">
-                {periodLabel} • ranked by DOT then Extremes &gt;40
-              </p>
-            </div>
-
-            <div className="manager-grid">
-              {managerData.length === 0 ? (
-                <div className="card store-card">
-                  <div className="store-rows">
-                    <p className="metric">
-                      <span>No data for this period.</span>
-                      <strong>—</strong>
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                managerData.map((mgr, idx) => (
-                  <div key={`${mgr.name}-${idx}`} className="card store-card">
-                    <div className="store-card__header">
-                      <div className="store-card__title">
-                        <span className="rank-badge" title="Rank">
-                          #{idx + 1}
-                        </span>
-                        <h3>{mgr.name}</h3>
-                      </div>
-
-                      <span
-                        className={`pill ${
-                          (mgr.avgDOT ?? 0) >= 0.8
-                            ? "pill--green"
-                            : (mgr.avgDOT ?? 0) >= 0.75
-                            ? "pill--amber"
-                            : "pill--red"
-                        }`}
-                        title="Average DOT"
-                      >
-                        {formatPct(mgr.avgDOT, 1)} DOT
-                      </span>
-                    </div>
-
-                    <div className="store-rows">
-                      <p className="metric">
-                        <span>Shifts worked</span>
-                        <strong>{mgr.shiftsWorked}</strong>
-                      </p>
-
-                      <p className="metric">
-                        <span>Avg Rack &amp; Load</span>
-                        <strong>{formatMinutes(mgr.avgRackLoad, 2)}</strong>
-                      </p>
-                      <p className="metric">
-                        <span>Avg Extremes &gt;40</span>
-                        <strong>{formatPct(mgr.avgExtremes, 2)}</strong>
-                      </p>
+            <section className="section">
+              <div className="section-head"><h2>Store overview</h2><p>{periodLabel} • ranked by DOT then Extremes &gt;40</p></div>
+              <div className="podium-grid">
+                {storeData.map((st, idx) => (
+                  <div key={st.store} className={`podium-card rank-${idx + 1}`}>
+                    <div className="podium-top"><span className="rank-badge">Rank #{idx + 1}</span></div>
+                    <div className="podium-name" title={st.store}>{st.store}</div>
+                    <div className="podium-metrics">
+                      <p><span>Avg DOT %</span><span className={pillClassFromDot(st.avgDOT)}>{formatPct(st.avgDOT, 1)}</span></p>
+                      <p><span>Avg Rack &amp; Load</span><span className={pillClassFromRackLoad(st.avgRackLoad)}>{formatMinutes(st.avgRackLoad, 2)}</span></p>
+                      <p><span>Avg Extremes &gt;40 %</span><span className={pillClassFromExtremes(st.avgExtremes)}>{formatPct(st.avgExtremes, 2)}</span></p>
+                      <p><span>Additional hours</span><span className="pill neutral">{formatHours(st.totalAddHours)}h</span></p>
                     </div>
                   </div>
-                ))
-              )}
-            </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="section">
+              <div className="section-head"><h2>Manager overview</h2><p>{periodLabel} • ranked by DOT then Extremes &gt;40</p></div>
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Rank</th><th>Manager</th><th>Avg DOT %</th><th>Avg Labour %</th><th>Avg Rack &amp; Load</th><th>Avg Extremes &gt;40 %</th><th>Shifts worked</th><th>Additional hours</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {managerData.map((mgr, idx) => (
+                      <tr key={`${mgr.name}-${idx}`}>
+                        <td>{idx + 1}</td>
+                        <td>{mgr.name}</td>
+                        <td><span className={pillClassFromDot(mgr.avgDOT)}>{formatPct(mgr.avgDOT, 1)}</span></td>
+                        <td>{formatPct(mgr.avgLabour, 1)}</td>
+                        <td><span className={pillClassFromRackLoad(mgr.avgRackLoad)}>{formatMinutes(mgr.avgRackLoad, 2)}</span></td>
+                        <td><span className={pillClassFromExtremes(mgr.avgExtremes)}>{formatPct(mgr.avgExtremes, 2)}</span></td>
+                        <td>{mgr.shiftsWorked}</td>
+                        <td>{formatHours(mgr.totalAddHours)}h</td>
+                      </tr>
+                    ))}
+                    {managerData.length === 0 && (
+                      <tr><td className="empty" colSpan={8}>No manager data for this period.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
           </>
         )}
-      </section>
+      </div>
 
-      <footer className="footer">
-        <p>© 2025 Mourne-oids | Domino’s Pizza | Racz Group</p>
-      </footer>
+      <footer className="footer"><p>© 2025 Mourne-oids | Domino’s Pizza | Racz Group</p></footer>
 
-      {/* styles (unchanged) */}
       <style jsx>{`
-        :root {
-          --bg: #f2f5f9;
-          --paper: #ffffff;
-          --text: #0f172a;
-          --muted: #475569;
-          --brand: #006491;
-          --brand-dark: #004b75;
-          --shadow-card: 0 10px 18px rgba(2, 6, 23, 0.08),
-            0 1px 3px rgba(2, 6, 23, 0.06);
-          --border: rgba(15, 23, 42, 0.06);
-        }
-
-        .wrap {
-          background: var(--bg);
-          min-height: 100dvh;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          padding-bottom: 40px;
-        }
-
-        .banner {
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          background: #fff;
-          border-bottom: 3px solid var(--brand);
-          box-shadow: var(--shadow-card);
-          width: 100%;
-        }
-
-        .banner img {
-          max-width: 92%;
-          height: auto;
-        }
-
-        .nav-row {
-          width: 100%;
-          max-width: 1100px;
-          display: flex;
-          gap: 10px;
-          justify-content: flex-start;
-          margin-top: 16px;
-          padding: 0 16px;
-        }
-
-        .header {
-          text-align: center;
-          margin: 16px 16px 8px;
-        }
-
-        .header h1 {
-          font-size: 26px;
-          font-weight: 900;
-          color: var(--text);
-        }
-
-        .subtitle {
-          color: var(--muted);
-          font-size: 14px;
-          margin-top: 3px;
-        }
-
-        .container {
-          width: 100%;
-          max-width: 420px;
-          margin-top: 16px;
-          display: flex;
-          justify-content: center;
-        }
-
-        .container.wide {
-          max-width: 1100px;
-          flex-direction: column;
-          gap: 16px;
-        }
-
-        .filters-panel {
-          display: flex;
-          gap: 24px;
-          align-items: center;
-          justify-content: space-between;
-        }
-
-        .filters-panel.soft {
-          background: rgba(255, 255, 255, 0.6);
-          backdrop-filter: blur(4px);
-        }
-
-        .filters-block {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-
-        .filters-title {
-          font-size: 12px;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-          color: var(--muted);
-          font-weight: 600;
-        }
-
-        .filters {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-        }
-
-        .chip {
-          background: #fff;
-          border: 1px solid rgba(0, 0, 0, 0.03);
-          border-radius: 999px;
-          padding: 6px 14px;
-          font-size: 13px;
-          font-weight: 600;
-          color: #0f172a;
-          cursor: pointer;
-          transition: 0.15s ease;
-        }
-        .chip.small {
-          padding: 5px 11px;
-          font-size: 12px;
-        }
-        .chip--active {
-          background: var(--brand);
-          color: #fff;
-          border-color: #004b75;
-          box-shadow: 0 6px 10px rgba(0, 100, 145, 0.26);
-        }
-
-        .custom-row {
-          display: flex;
-          gap: 14px;
-          align-items: flex-end;
-        }
-
-        .date-field {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-
-        .date-field label {
-          font-size: 12px;
-          color: var(--muted);
-          font-weight: 500;
-        }
-
-        .date-field input {
-          border: 1px solid rgba(15, 23, 42, 0.12);
-          border-radius: 10px;
-          padding: 5px 8px;
-          font-size: 13px;
-        }
-
-        .content {
-          gap: 20px;
-        }
-
-        .section-head {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-top: 8px;
-        }
-
-        .section-head.mt {
-          margin-top: 26px;
-        }
-
-        .section-head h2 {
-          font-size: 16px;
-          font-weight: 700;
-        }
-
-        .section-sub {
-          font-size: 12px;
-          color: var(--muted);
-        }
-
-        .kpi-grid {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 14px;
-        }
-
-        .card {
-          background: #fff;
-          border-radius: 18px;
-          box-shadow: var(--shadow-card);
-          border: 1px solid rgba(0, 0, 0, 0.02);
-        }
-
-        .card.soft {
-          box-shadow: none;
-        }
-
-        .kpi {
-          padding: 14px 16px;
-        }
-
-        .kpi-title {
-          font-size: 12px;
-          text-transform: uppercase;
-          letter-spacing: 0.03em;
-          color: var(--muted);
-          margin-bottom: 2px;
-        }
-
-        .kpi-value {
-          font-size: 22px;
-          font-weight: 800;
-        }
-
-        .kpi-sub {
-          font-size: 12px;
-          color: var(--muted);
-          margin-top: 4px;
-        }
-
-        .kpi--green {
-          border-left: 4px solid #22c55e;
-        }
-        .kpi--amber {
-          border-left: 4px solid #f97316;
-        }
-        .kpi--red {
-          border-left: 4px solid #ef4444;
-        }
-
-        .store-grid {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 14px;
-        }
-
-        .manager-grid {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 14px;
-        }
-
-        .store-card {
-          padding: 12px 14px 10px;
-        }
-
-        .store-card__header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 6px;
-          gap: 10px;
-        }
-
-        .store-card__title {
-          display: inline-flex;
-          align-items: center;
-          gap: 10px;
-          min-width: 0;
-        }
-
-        .rank-badge {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          height: 26px;
-          min-width: 44px;
-          padding: 0 10px;
-          border-radius: 999px;
-          background: rgba(0, 100, 145, 0.1);
-          color: var(--brand-dark);
-          border: 1px solid rgba(0, 100, 145, 0.18);
-          font-weight: 800;
-          font-size: 12px;
-          letter-spacing: 0.01em;
-          flex: 0 0 auto;
-        }
-
-        .store-card h3 {
-          margin: 0;
-          font-size: 14px;
-          font-weight: 800;
-          color: var(--text);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .store-rows {
-          display: flex;
-          flex-direction: column;
-          gap: 3px;
-        }
-
-        .metric {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          font-size: 13px;
-        }
-        .metric span {
-          color: var(--muted);
-        }
-
-        .pill {
-          font-size: 11px;
-          font-weight: 600;
-          padding: 3px 10px;
-          border-radius: 999px;
-          flex: 0 0 auto;
-          white-space: nowrap;
-        }
-        .pill--green {
-          background: rgba(34, 197, 94, 0.12);
-          color: #166534;
-        }
-        .pill--amber {
-          background: rgba(249, 115, 22, 0.12);
-          color: #9a3412;
-        }
-        .pill--red {
-          background: rgba(239, 68, 68, 0.12);
-          color: #991b1b;
-        }
-
-        .btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          text-align: center;
-          padding: 10px 14px;
-          border-radius: 14px;
-          font-weight: 700;
-          font-size: 14px;
-          text-decoration: none;
-          border: 2px solid transparent;
-          transition: background 0.2s, transform 0.1s;
-          cursor: pointer;
-        }
-
-        .btn--brand {
-          background: var(--brand);
-          border-color: var(--brand-dark);
-          color: #fff;
-        }
-
-        .btn--ghost {
-          background: #fff;
-          border-color: rgba(0, 0, 0, 0.02);
-          color: #0f172a;
-        }
-
-        .footer {
-          text-align: center;
-          margin-top: 36px;
-          color: var(--muted);
-          font-size: 13px;
-        }
-
-        @media (max-width: 1100px) {
-          .kpi-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-          .store-grid,
-          .manager-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-          .filters-panel {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-        }
-
-        @media (max-width: 700px) {
-          .store-grid,
-          .manager-grid {
-            grid-template-columns: 1fr;
-          }
-          .container.wide {
-            max-width: 94%;
-          }
-        }
+        .wrap { min-height: 100dvh; background: radial-gradient(circle at top, rgba(0,100,145,0.08), transparent 45%), linear-gradient(180deg,#e3edf4 0%,#f2f5f9 30%,#f2f5f9 100%); display: flex; flex-direction: column; align-items: center; color: #0f172a; padding-bottom: 40px; }
+        .banner { display: flex; justify-content: center; align-items: center; background: #fff; border-bottom: 3px solid #006491; box-shadow: 0 12px 35px rgba(2, 6, 23, 0.08); width: 100%; }
+        .banner img { max-width: min(1160px, 92%); height: auto; display: block; }
+        .shell { width: min(1100px, 94vw); margin-top: 18px; background: rgba(255, 255, 255, 0.65); backdrop-filter: saturate(160%) blur(6px); border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 1.5rem; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.05); padding: 18px 22px 26px; }
+        .topbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .topbar-spacer { flex: 1; }
+        .navbtn { border-radius: 14px; border: 2px solid #006491; background: #fff; color: #006491; font-weight: 900; font-size: 14px; padding: 8px 12px; cursor: pointer; box-shadow: 0 6px 14px rgba(0,100,145,0.12); }
+        .navbtn.solid { background: #006491; color: #fff; }
+        .header { text-align: center; margin-bottom: 12px; }
+        .header h1 { font-size: clamp(2rem, 3vw, 2.3rem); font-weight: 900; margin: 0; }
+        .subtitle { margin: 6px 0 0; color: #64748b; font-weight: 700; font-size: 0.95rem; }
+        .filter-card { margin-top: 14px; display: grid; gap: 12px; padding: 14px; border-radius: 16px; background: rgba(255,255,255,0.92); border: 1px solid rgba(0,100,145,0.14); box-shadow: 0 12px 28px rgba(2,6,23,0.05); }
+        .filter-row { display: grid; gap: 8px; }
+        .filter-label { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #475569; font-weight: 700; }
+        .quick-row { display: flex; flex-wrap: wrap; gap: 8px; }
+        .quick { border: 1px solid rgba(15,23,42,0.08); background: #fff; border-radius: 999px; padding: 8px 12px; font-weight: 900; font-size: 13px; cursor: pointer; color: #0f172a; }
+        .quick.active { background: rgba(0,100,145,0.1); border-color: rgba(0,100,145,0.25); color: #004b75; }
+        .custom-grid { display: flex; gap: 12px; flex-wrap: wrap; }
+        .custom-grid label { display: grid; gap: 6px; font-size: 12px; font-weight: 700; color: #334155; }
+        .custom-grid input { border-radius: 12px; border: 1px solid rgba(15,23,42,0.14); padding: 8px 10px; font-weight: 700; background: #fff; }
+        .alert { margin-top: 12px; border-radius: 14px; padding: 12px 14px; font-weight: 800; background: rgba(255, 255, 255, 0.85); border: 1px solid rgba(15, 23, 42, 0.1); color: #334155; }
+        .alert.error { background: rgba(254,242,242,0.9); border-color: rgba(239,68,68,0.25); color: #7f1d1d; }
+        .section { margin-top: 18px; }
+        .section-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; margin-bottom: 10px; }
+        .section-head h2 { margin: 0; font-size: 15px; font-weight: 900; }
+        .section-head p { margin: 0; font-size: 12px; color: #64748b; font-weight: 700; }
+        .podium-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+        .podium-grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        .podium-card { background: rgba(255,255,255,0.92); border-radius: 18px; border: 1px solid rgba(0,100,145,0.14); box-shadow: 0 12px 28px rgba(2,6,23,0.05); padding: 12px 14px; }
+        .podium-card.rank-1 { border-color: rgba(34,197,94,0.35); }
+        .podium-card.rank-2 { border-color: rgba(245,158,11,0.35); }
+        .podium-card.rank-3 { border-color: rgba(249,115,22,0.35); }
+        .podium-top { display: flex; justify-content: space-between; margin-bottom: 8px; }
+        .rank-badge { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: rgba(0,100,145,0.1); border: 1px solid rgba(0,100,145,0.18); color: #004b75; font-weight: 800; font-size: 12px; }
+        .podium-name { font-size: 18px; font-weight: 900; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .podium-metrics { display: grid; gap: 6px; }
+        .podium-metrics p { margin: 0; display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: #334155; }
+        .table-wrap { overflow-x: auto; border-radius: 16px; border: 1px solid rgba(15,23,42,0.08); background: rgba(255,255,255,0.9); box-shadow: 0 12px 28px rgba(2,6,23,0.05); }
+        .table { width: 100%; border-collapse: collapse; }
+        .table th, .table td { padding: 12px; text-align: left; font-size: 13px; }
+        .table th { background: rgba(0,100,145,0.08); font-weight: 900; }
+        .table tr + tr td { border-top: 1px solid rgba(15,23,42,0.06); }
+        .table td:nth-child(n+3) { text-align: right; font-variant-numeric: tabular-nums; }
+        .table td.empty { text-align: left !important; color: #475569; font-weight: 700; }
+        .pill { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(15,23,42,.12); background: rgba(241,245,249,.9); color: #334155; white-space: nowrap; }
+        .pill.green { background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.25); color: #166534; }
+        .pill.amber { background: rgba(245,158,11,0.14); border-color: rgba(245,158,11,0.28); color: #92400e; }
+        .pill.red { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.26); color: #991b1b; }
+        .pill.neutral { background: rgba(0,100,145,0.1); border-color: rgba(0,100,145,0.2); color: #004b75; }
+        .footer { text-align: center; margin-top: 18px; color: #94a3b8; font-size: 0.8rem; }
+        @media (max-width: 980px) { .section-head { flex-direction: column; align-items: flex-start; } .podium-grid, .podium-grid.four { grid-template-columns: 1fr 1fr; } }
+        @media (max-width: 700px) { .shell { width: min(1100px, 96vw); padding: 14px; } .podium-grid, .podium-grid.four { grid-template-columns: 1fr; } }
       `}</style>
     </main>
   );
