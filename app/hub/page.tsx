@@ -30,8 +30,6 @@ type ServiceRowMini = {
   labour_pct: number | null;
   rnl_minutes?: number | null;
   manager: string | null;
-  opening_manager?: string | null;
-  closing_manager?: string | null;
   created_at?: string | null;
   shift_date?: string | null;
 };
@@ -339,7 +337,7 @@ export default function HubPage() {
         const { data, error } = await supabase
           .from("service_shifts")
           .select(
-            "store, dot_pct, labour_pct, rnl_minutes, manager, opening_manager, closing_manager, created_at, shift_date"
+            "store, dot_pct, labour_pct, rnl_minutes, manager, created_at, shift_date"
           )
           .gte("shift_date", fromStr)
           .order("shift_date", { ascending: false });
@@ -399,10 +397,7 @@ export default function HubPage() {
       const name =
         key === "store"
           ? (r.store || "").trim()
-          : (
-              (r.closing_manager || r.manager || r.opening_manager || "Unknown")
-                .trim() || "Unknown"
-            );
+          : ((r.manager || "Unknown").trim() || "Unknown");
 
       if (!name) continue;
 
