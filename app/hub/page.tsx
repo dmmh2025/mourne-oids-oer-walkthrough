@@ -49,6 +49,33 @@ type ImprovedItem = {
   monthDOT: number;
 };
 
+type OsaInternalRow = {
+  shift_date: string;
+  team_member_name: string | null;
+  points_lost: number | null;
+};
+
+type CostControlRowMini = {
+  store: string | null;
+  shift_date: string;
+  sales_gbp: number | null;
+  labour_cost_gbp: number | null;
+  ideal_food_cost_gbp: number | null;
+  actual_food_cost_gbp: number | null;
+};
+
+type OsaWinner = {
+  name: string;
+  avgPointsLost: number | null;
+};
+
+type CostWinner = {
+  labourName: string;
+  labourPct: number | null;
+  foodName: string;
+  foodVarPctSales: number | null;
+};
+
 type TileVariant =
   | "service"
   | "standards"
@@ -210,6 +237,10 @@ export default function HubPage() {
 
   const [svcRows, setSvcRows] = useState<ServiceRowMini[]>([]);
   const [highlightsError, setHighlightsError] = useState<string | null>(null);
+  const [osaWinner, setOsaWinner] = useState<OsaWinner | null>(null);
+  const [osaHighlightError, setOsaHighlightError] = useState<string | null>(null);
+  const [costWinner, setCostWinner] = useState<CostWinner | null>(null);
+  const [costHighlightError, setCostHighlightError] = useState<string | null>(null);
 
   const normalisePct = (v: number | null) => {
     if (v == null) return null;
@@ -230,6 +261,9 @@ export default function HubPage() {
 
   const formatPct = (v: number | null, dp = 0) =>
     v == null ? "—" : (v * 100).toFixed(dp) + "%";
+
+  const formatAvgPointsLost = (v: number | null) =>
+    v == null ? "—" : v.toFixed(1);
 
   const getCategoryColor = (cat?: string | null) => {
     const c = (cat || "").toLowerCase();
@@ -362,6 +396,170 @@ export default function HubPage() {
     };
 
     loadHighlights();
+  }, []);
+
+
+  useEffect(() => {
+    const loadBestOsaPerformer = async () => {
+      if (!supabase) {
+        setOsaHighlightError("Supabase client not available");
+        return;
+      }
+
+      try {
+        setOsaHighlightError(null);
+
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        monthStart.setHours(0, 0, 0, 0);
+        const monthStartStr = monthStart.toISOString().slice(0, 10);
+
+        const { data, error } = await supabase
+          .from("osa_internal_results")
+          .select("shift_date, team_member_name, points_lost")
+          .gte("shift_date", monthStartStr);
+
+        if (error) throw error;
+
+        const bucket: Record<string, { total: number; count: number }> = {};
+
+        for (const row of (data || []) as OsaInternalRow[]) {
+          const name = (row.team_member_name || "").trim() || "Unknown";
+          const pointsLost = Number(row.points_lost);
+          if (!Number.isFinite(pointsLost)) continue;
+
+          if (!bucket[name]) bucket[name] = { total: 0, count: 0 };
+          bucket[name].total += pointsLost;
+          bucket[name].count += 1;
+        }
+
+        const ranked = Object.entries(bucket)
+          .filter(([, v]) => v.count > 0)
+          .map(([name, v]) => ({
+            name,
+            avgPointsLost: v.total / v.count,
+          }))
+          .sort((a, b) => a.avgPointsLost - b.avgPointsLost);
+
+        setOsaWinner(
+          ranked[0]
+            ? { name: ranked[0].name, avgPointsLost: ranked[0].avgPointsLost }
+            : { name: "No data", avgPointsLost: null }
+        );
+      } catch (e: any) {
+        setOsaHighlightError(e?.message || "Could not load OSA highlight");
+        setOsaWinner(null);
+      }
+    };
+
+    loadBestOsaPerformer();
+  }, []);
+
+  useEffect(() => {
+    const loadCostHighlights = async () => {
+      if (!supabase) {
+        setCostHighlightError("Supabase client not available");
+        return;
+      }
+
+      try {
+        setCostHighlightError(null);
+
+        const now = new Date();
+        const day = now.getDay();
+        const mondayOffset = day === 0 ? 6 : day - 1;
+
+        const weekStart = new Date(now);
+        weekStart.setDate(now.getDate() - mondayOffset);
+        weekStart.setHours(0, 0, 0, 0);
+
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 7);
+
+        const weekStartStr = weekStart.toISOString().slice(0, 10);
+        const weekEndStr = weekEnd.toISOString().slice(0, 10);
+
+        const { data, error } = await supabase
+          .from("cost_control_entries")
+          .select(
+            "store, shift_date, sales_gbp, labour_cost_gbp, ideal_food_cost_gbp, actual_food_cost_gbp"
+          )
+          .gte("shift_date", weekStartStr)
+          .lt("shift_date", weekEndStr);
+
+        if (error) throw error;
+
+        const bucket: Record<
+          string,
+          { sales: number; labour: number; idealFood: number; actualFood: number }
+        > = {};
+
+        for (const row of (data || []) as CostControlRowMini[]) {
+          const name = (row.store || "").trim() || "Unknown";
+          if (!bucket[name]) {
+            bucket[name] = { sales: 0, labour: 0, idealFood: 0, actualFood: 0 };
+          }
+
+          const sales = Number(row.sales_gbp);
+          const labour = Number(row.labour_cost_gbp);
+          const idealFood = Number(row.ideal_food_cost_gbp);
+          const actualFood = Number(row.actual_food_cost_gbp);
+
+          if (Number.isFinite(sales)) bucket[name].sales += sales;
+          if (Number.isFinite(labour)) bucket[name].labour += labour;
+          if (Number.isFinite(idealFood)) bucket[name].idealFood += idealFood;
+          if (Number.isFinite(actualFood)) bucket[name].actualFood += actualFood;
+        }
+
+        const ranked = Object.entries(bucket).map(([name, totals]) => {
+          const labourPct = totals.sales > 0 ? totals.labour / totals.sales : null;
+          const foodVarPctSales =
+            totals.sales > 0
+              ? (totals.actualFood - totals.idealFood) / totals.sales
+              : null;
+
+          return {
+            name,
+            sumSales: totals.sales,
+            labourPct,
+            foodVarPctSales,
+            labourDelta:
+              labourPct == null
+                ? Number.POSITIVE_INFINITY
+                : Math.max(0, labourPct - 0.25),
+            foodVarDelta:
+              foodVarPctSales == null
+                ? Number.POSITIVE_INFINITY
+                : Math.abs(foodVarPctSales),
+          };
+        });
+
+        const labourRanked = [...ranked].sort((a, b) => {
+          if (a.labourDelta !== b.labourDelta) return a.labourDelta - b.labourDelta;
+          if (a.labourPct !== b.labourPct) {
+            return (a.labourPct ?? Infinity) - (b.labourPct ?? Infinity);
+          }
+          return b.sumSales - a.sumSales;
+        });
+
+        const foodRanked = [...ranked].sort((a, b) => {
+          if (a.foodVarDelta !== b.foodVarDelta) return a.foodVarDelta - b.foodVarDelta;
+          return b.sumSales - a.sumSales;
+        });
+
+        setCostWinner({
+          labourName: labourRanked[0]?.name || "No data",
+          labourPct: labourRanked[0]?.labourPct ?? null,
+          foodName: foodRanked[0]?.name || "No data",
+          foodVarPctSales: foodRanked[0]?.foodVarPctSales ?? null,
+        });
+      } catch (e: any) {
+        setCostHighlightError(e?.message || "Could not load cost highlights");
+        setCostWinner(null);
+      }
+    };
+
+    loadCostHighlights();
   }, []);
 
   const splitSvcRows = useMemo(() => {
@@ -583,8 +781,8 @@ export default function HubPage() {
               <p>This week to date • ranked by DOT, labour, then RNL</p>
             </div>
 
-            {highlightsError ? (
-              <div className="highlight-card warning">
+            {highlightsError && (
+              <div className="highlight-card warning" style={{ marginBottom: 12 }}>
                 <div className="highlight-top">
                   <span className="highlight-title">⚠️ Highlights</span>
                 </div>
@@ -592,92 +790,167 @@ export default function HubPage() {
                   Could not load highlights: {highlightsError}
                 </div>
               </div>
-            ) : (
-              <div className="highlights-grid">
-                <div className="highlight-card">
-                  <div className="highlight-top">
-                    <span className="highlight-title">🏆 Top Store </span>
-                    <span className="highlight-pill">WTD</span>
-                  </div>
-                  <div className="highlight-main">
-                    <div className="highlight-name">
-                      {topStore ? topStore.name : "No data"}
-                    </div>
-                    <div className="highlight-metrics">
-                      <span>
-                        DOT:{" "}
-                        <b>{topStore ? formatPct(topStore.avgDOT, 0) : "—"}</b>
-                      </span>
-                      <span>
-                        Labour:{" "}
-                        <b>
-                          {topStore ? formatPct(topStore.avgLabour, 1) : "—"}
-                        </b>
-                      </span>
-                    </div>
-                  </div>
-                </div>
+            )}
 
-                <div className="highlight-card">
-                  <div className="highlight-top">
-                    <span className="highlight-title">🥇 Top Manager </span>
-                    <span className="highlight-pill">WTD</span>
-                  </div>
-                  <div className="highlight-main">
-                    <div className="highlight-name">
-                      {topManager ? topManager.name : "No data"}
-                    </div>
-                    <div className="highlight-metrics">
-                      <span>
-                        DOT:{" "}
-                        <b>{topManager ? formatPct(topManager.avgDOT, 0) : "—"}</b>
-                      </span>
-                      <span>
-                        Labour:{" "}
-                        <b>
-                          {topManager ? formatPct(topManager.avgLabour, 1) : "—"}
-                        </b>
-                      </span>
-                      <span>
-                        Shifts: <b>{topManager ? topManager.shifts : "—"}</b>
-                      </span>
-                    </div>
-                  </div>
+            <div className="highlights-grid">
+              <div className="highlight-card">
+                <div className="highlight-top">
+                  <span className="highlight-title">🏆 Top Store </span>
+                  <span className="highlight-pill">WTD</span>
                 </div>
-
-                <div className="highlight-card">
-                  <div className="highlight-top">
-                    <span className="highlight-title">
-                      📈 Best Improved Store 
+                <div className="highlight-main">
+                  <div className="highlight-name">
+                    {topStore && !highlightsError ? topStore.name : "No data"}
+                  </div>
+                  <div className="highlight-metrics">
+                    <span>
+                      DOT:{" "}
+                      <b>
+                        {topStore && !highlightsError
+                          ? formatPct(topStore.avgDOT, 0)
+                          : "—"}
+                      </b>
                     </span>
-                    <span className="highlight-pill">WTD vs prev week</span>
-                  </div>
-                  <div className="highlight-main">
-                    <div className="highlight-name">
-                      {mostImprovedStore ? mostImprovedStore.name : "No data"}
-                    </div>
-                    <div className="highlight-metrics">
-                      <span>
-                        DOT gain:{" "}
-                        <b>
-                          {mostImprovedStore
-                            ? (mostImprovedStore.dotDelta * 100).toFixed(1) + "pp"
-                            : "—"}
-                        </b>
-                      </span>
-                      <span>
-                        Month DOT:{" "}
-                        <b>
-                          {mostImprovedStore
-                            ? formatPct(mostImprovedStore.monthDOT, 0)
-                            : "—"}
-                        </b>
-                      </span>
-                    </div>
+                    <span>
+                      Labour:{" "}
+                      <b>
+                        {topStore && !highlightsError
+                          ? formatPct(topStore.avgLabour, 1)
+                          : "—"}
+                      </b>
+                    </span>
                   </div>
                 </div>
               </div>
-            )}
+
+              <div className="highlight-card">
+                <div className="highlight-top">
+                  <span className="highlight-title">🥇 Top Manager </span>
+                  <span className="highlight-pill">WTD</span>
+                </div>
+                <div className="highlight-main">
+                  <div className="highlight-name">
+                    {topManager && !highlightsError ? topManager.name : "No data"}
+                  </div>
+                  <div className="highlight-metrics">
+                    <span>
+                      DOT:{" "}
+                      <b>
+                        {topManager && !highlightsError
+                          ? formatPct(topManager.avgDOT, 0)
+                          : "—"}
+                      </b>
+                    </span>
+                    <span>
+                      Labour:{" "}
+                      <b>
+                        {topManager && !highlightsError
+                          ? formatPct(topManager.avgLabour, 1)
+                          : "—"}
+                      </b>
+                    </span>
+                    <span>
+                      Shifts: <b>{topManager && !highlightsError ? topManager.shifts : "—"}</b>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="highlight-card">
+                <div className="highlight-top">
+                  <span className="highlight-title">📈 Best Improved Store </span>
+                  <span className="highlight-pill">WTD vs prev week</span>
+                </div>
+                <div className="highlight-main">
+                  <div className="highlight-name">
+                    {mostImprovedStore && !highlightsError
+                      ? mostImprovedStore.name
+                      : "No data"}
+                  </div>
+                  <div className="highlight-metrics">
+                    <span>
+                      DOT gain:{" "}
+                      <b>
+                        {mostImprovedStore && !highlightsError
+                          ? (mostImprovedStore.dotDelta * 100).toFixed(1) + "pp"
+                          : "—"}
+                      </b>
+                    </span>
+                    <span>
+                      Month DOT:{" "}
+                      <b>
+                        {mostImprovedStore && !highlightsError
+                          ? formatPct(mostImprovedStore.monthDOT, 0)
+                          : "—"}
+                      </b>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className={`highlight-card${osaHighlightError ? " warning" : ""}`}>
+                <div className="highlight-top">
+                  <span className="highlight-title">🛡️ Best OSA Performance (This month)</span>
+                  <span className="highlight-pill">MTD</span>
+                </div>
+                <div className="highlight-main">
+                  <div className="highlight-name">
+                    {osaHighlightError ? "Error" : osaWinner?.name || "No data"}
+                  </div>
+                  <div className="highlight-metrics">
+                    {osaHighlightError ? (
+                      <span>Could not load OSA highlight: <b>{osaHighlightError}</b></span>
+                    ) : (
+                      <span>
+                        Avg points lost: <b>{formatAvgPointsLost(osaWinner?.avgPointsLost ?? null)}</b>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className={`highlight-card${costHighlightError ? " warning" : ""}`}>
+                <div className="highlight-top">
+                  <span className="highlight-title">💷 Store Labour (This week)</span>
+                  <span className="highlight-pill">WTD</span>
+                </div>
+                <div className="highlight-main">
+                  <div className="highlight-name">
+                    {costHighlightError ? "Error" : costWinner?.labourName || "No data"}
+                  </div>
+                  <div className="highlight-metrics">
+                    {costHighlightError ? (
+                      <span>Could not load labour highlight: <b>{costHighlightError}</b></span>
+                    ) : (
+                      <span>
+                        Labour: <b>{formatPct(costWinner?.labourPct ?? null, 1)}</b>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className={`highlight-card${costHighlightError ? " warning" : ""}`}>
+                <div className="highlight-top">
+                  <span className="highlight-title">🍕 Store Food (This week)</span>
+                  <span className="highlight-pill">WTD</span>
+                </div>
+                <div className="highlight-main">
+                  <div className="highlight-name">
+                    {costHighlightError ? "Error" : costWinner?.foodName || "No data"}
+                  </div>
+                  <div className="highlight-metrics">
+                    {costHighlightError ? (
+                      <span>Could not load food highlight: <b>{costHighlightError}</b></span>
+                    ) : (
+                      <span>
+                        Variance: <b>{formatPct(costWinner?.foodVarPctSales ?? null, 2)}</b>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </header>
 
