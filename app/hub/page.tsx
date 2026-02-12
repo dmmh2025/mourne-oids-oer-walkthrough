@@ -596,7 +596,7 @@ export default function HubPage() {
               <div className="highlights-grid">
                 <div className="highlight-card">
                   <div className="highlight-top">
-                    <span className="highlight-title">🏆 Top Store (This week)</span>
+                    <span className="highlight-title">🏆 Top Store </span>
                     <span className="highlight-pill">WTD</span>
                   </div>
                   <div className="highlight-main">
@@ -620,7 +620,7 @@ export default function HubPage() {
 
                 <div className="highlight-card">
                   <div className="highlight-top">
-                    <span className="highlight-title">🥇 Top Manager (This week)</span>
+                    <span className="highlight-title">🥇 Top Manager </span>
                     <span className="highlight-pill">WTD</span>
                   </div>
                   <div className="highlight-main">
@@ -648,7 +648,7 @@ export default function HubPage() {
                 <div className="highlight-card">
                   <div className="highlight-top">
                     <span className="highlight-title">
-                      📈 Best Improved Store (This week vs Last week)
+                      📈 Best Improved Store 
                     </span>
                     <span className="highlight-pill">WTD vs prev week</span>
                   </div>
