@@ -532,37 +532,36 @@ export default function CostControlsPage() {
                   <h2>Store • Labour Rankings</h2>
                   <p>≤ 25% first → lowest labour% wins</p>
                 </div>
-
-                <div className="table-wrap">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: 70 }}>Rank</th>
-                        <th>Store</th>
-                        <th style={{ width: 130 }}>Days</th>
-                        <th style={{ width: 170 }}>Labour %</th>
-                        <th style={{ width: 210 }}>Food Var %</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {storeLabour.map((a, idx) => (
-                        <tr key={a.name}>
-                          <td className="rank">{idx + 1}</td>
-                          <td className="name">{a.name}</td>
-                          <td className="num">{a.days}</td>
-                          <td className="num">{fmtPct(a.labourPct, 1)}</td>
-                          <td className="num">{fmtPct(a.foodVarPctSales, 2)}</td>
-                        </tr>
-                      ))}
-                      {storeLabour.length === 0 && (
-                        <tr>
-                          <td className="empty" colSpan={5}>
-                            No cost control entries found for this period.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                <div className="podium-grid">
+                  {storeLabour.map((a, idx) => (
+                    <div key={a.name} className={`podium-card rank-${idx + 1}`}>
+                      <div className="podium-top">
+                        <span className="rank-badge">Rank #{idx + 1}</span>
+                      </div>
+                      <div className="podium-name">{a.name}</div>
+                      <div className="podium-metrics">
+                        <p>
+                          <span>Days</span>
+                          <span className="pill neutral">{a.days}</span>
+                        </p>
+                        <p>
+                          <span>Labour %</span>
+                          <span className="pill neutral">{fmtPct(a.labourPct, 1)}</span>
+                        </p>
+                        <p>
+                          <span>Food Var %</span>
+                          <span className="pill neutral">{fmtPct(a.foodVarPctSales, 2)}</span>
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                  {storeLabour.length === 0 && (
+                    <div className="podium-card">
+                      <div className="podium-metrics">
+                        <p className="empty">No cost control entries found for this period.</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -572,37 +571,36 @@ export default function CostControlsPage() {
                   <h2>Store • Food Rankings</h2>
                   <p>Closest to 0% food variance wins</p>
                 </div>
-
-                <div className="table-wrap">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: 70 }}>Rank</th>
-                        <th>Store</th>
-                        <th style={{ width: 130 }}>Days</th>
-                        <th style={{ width: 210 }}>Food Var %</th>
-                        <th style={{ width: 170 }}>Labour %</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {storeFood.map((a, idx) => (
-                        <tr key={a.name}>
-                          <td className="rank">{idx + 1}</td>
-                          <td className="name">{a.name}</td>
-                          <td className="num">{a.days}</td>
-                          <td className="num">{fmtPct(a.foodVarPctSales, 2)}</td>
-                          <td className="num">{fmtPct(a.labourPct, 1)}</td>
-                        </tr>
-                      ))}
-                      {storeFood.length === 0 && (
-                        <tr>
-                          <td className="empty" colSpan={5}>
-                            No cost control entries found for this period.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                <div className="podium-grid">
+                  {storeFood.map((a, idx) => (
+                    <div key={a.name} className={`podium-card rank-${idx + 1}`}>
+                      <div className="podium-top">
+                        <span className="rank-badge">Rank #{idx + 1}</span>
+                      </div>
+                      <div className="podium-name">{a.name}</div>
+                      <div className="podium-metrics">
+                        <p>
+                          <span>Days</span>
+                          <span className="pill neutral">{a.days}</span>
+                        </p>
+                        <p>
+                          <span>Food Var %</span>
+                          <span className="pill neutral">{fmtPct(a.foodVarPctSales, 2)}</span>
+                        </p>
+                        <p>
+                          <span>Labour %</span>
+                          <span className="pill neutral">{fmtPct(a.labourPct, 1)}</span>
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                  {storeFood.length === 0 && (
+                    <div className="podium-card">
+                      <div className="podium-metrics">
+                        <p className="empty">No cost control entries found for this period.</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -734,11 +732,16 @@ export default function CostControlsPage() {
 
         .podium-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
         .podium-card { background:rgba(255,255,255,.92); border-radius:18px; border:1px solid rgba(0,100,145,.14); box-shadow:0 12px 28px rgba(2,6,23,.05); padding:12px 14px; }
+        .podium-card.rank-1 { border-color: rgba(34,197,94,0.35); }
+        .podium-card.rank-2 { border-color: rgba(245,158,11,0.35); }
+        .podium-card.rank-3 { border-color: rgba(249,115,22,0.35); }
         .podium-top { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }
+        .rank-badge { display:inline-flex; align-items:center; height:26px; padding:0 10px; border-radius:999px; background:rgba(0,100,145,.1); border:1px solid rgba(0,100,145,.18); color:#004b75; font-weight:800; font-size:12px; }
         .metric-title { font-size:12px; font-weight:900; letter-spacing:.02em; text-transform:uppercase; color:#0f172a; }
         .podium-name { font-size:18px; font-weight:900; color:#0f172a; margin-bottom:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .podium-metrics { display:grid; gap:6px; }
         .metric-row { font-size:13px; color:#334155; font-weight:800; }
+        .podium-metrics p { margin:0; display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13px; color:#334155; }
 
         .pill { font-size:11px; font-weight:700; padding:4px 10px; border-radius:999px; border:1px solid rgba(15,23,42,.12); background:rgba(241,245,249,.9); color:#334155; white-space:nowrap; }
         .pill.green { background:rgba(34,197,94,.12); border-color:rgba(34,197,94,.25); color:#166534; }
