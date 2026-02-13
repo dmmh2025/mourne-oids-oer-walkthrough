@@ -221,6 +221,23 @@ function sortByFood(a: Agg, b: Agg) {
   return b.sales - a.sales;
 }
 
+function labourTrafficClass(labourPct: number) {
+  if (labourPct > 0.25) return "red";
+  if (labourPct >= 0.2 && labourPct <= 0.25) return "green";
+  return "amber";
+}
+
+function foodTrafficClass(foodVariancePct: number) {
+  if (foodVariancePct >= -0.0025 && foodVariancePct <= 0.0025) return "green";
+  if (
+    (foodVariancePct >= -0.004 && foodVariancePct < -0.0025) ||
+    (foodVariancePct > 0.0025 && foodVariancePct <= 0.004)
+  ) {
+    return "amber";
+  }
+  return "red";
+}
+
 export default function CostControlsPage() {
   const router = useRouter();
 
@@ -472,8 +489,16 @@ export default function CostControlsPage() {
               <div className="podium-grid">
                 <div className="podium-card">
                   <div className="podium-top">
-                    <span className="metric-title">🏆 Labour Winner</span>
-                    <span className="pill neutral">≤ 25% then lowest</span>
+                    <span className="metric-title">🏆 Store Labour Winner</span>
+                    <span
+                      className={`pill ${
+                        topStoreLabour
+                          ? labourTrafficClass(topStoreLabour.labourPct)
+                          : "neutral"
+                      }`}
+                    >
+                      ≤ 25% then lowest
+                    </span>
                   </div>
                   <div className="podium-metrics">
                     <div className="podium-name">
@@ -490,10 +515,19 @@ export default function CostControlsPage() {
                   </div>
                 </div>
 
+
                 <div className="podium-card">
                   <div className="podium-top">
-                    <span className="metric-title">🥇 Food Winner</span>
-                    <span className="pill neutral">Closest to 0%</span>
+                    <span className="metric-title">🥇 Store Food Winner</span>
+                    <span
+                      className={`pill ${
+                        topStoreFood
+                          ? foodTrafficClass(topStoreFood.foodVarPctSales)
+                          : "neutral"
+                      }`}
+                    >
+                      Closest to 0%
+                    </span>
                   </div>
                   <div className="podium-metrics">
                     <div className="podium-name">
@@ -541,7 +575,6 @@ export default function CostControlsPage() {
                         <th>Store</th>
                         <th style={{ width: 130 }}>Days</th>
                         <th style={{ width: 170 }}>Labour %</th>
-                        <th style={{ width: 210 }}>Food Var %</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -550,53 +583,14 @@ export default function CostControlsPage() {
                           <td className="rank">{idx + 1}</td>
                           <td className="name">{a.name}</td>
                           <td className="num">{a.days}</td>
-                          <td className="num">{fmtPct(a.labourPct, 1)}</td>
-                          <td className="num">{fmtPct(a.foodVarPctSales, 2)}</td>
+                          <td className={`num traffic ${labourTrafficClass(a.labourPct)}`}>
+                            {fmtPct(a.labourPct, 1)}
+                          </td>
                         </tr>
                       ))}
                       {storeLabour.length === 0 && (
                         <tr>
-                          <td className="empty" colSpan={5}>
-                            No cost control entries found for this period.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* STORES - FOOD */}
-              <div className="board">
-                <div className="boardHead">
-                  <h2>Store • Food Rankings</h2>
-                  <p>Closest to 0% food variance wins</p>
-                </div>
-
-                <div className="table-wrap">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: 70 }}>Rank</th>
-                        <th>Store</th>
-                        <th style={{ width: 130 }}>Days</th>
-                        <th style={{ width: 210 }}>Food Var %</th>
-                        <th style={{ width: 170 }}>Labour %</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {storeFood.map((a, idx) => (
-                        <tr key={a.name}>
-                          <td className="rank">{idx + 1}</td>
-                          <td className="name">{a.name}</td>
-                          <td className="num">{a.days}</td>
-                          <td className="num">{fmtPct(a.foodVarPctSales, 2)}</td>
-                          <td className="num">{fmtPct(a.labourPct, 1)}</td>
-                        </tr>
-                      ))}
-                      {storeFood.length === 0 && (
-                        <tr>
-                          <td className="empty" colSpan={5}>
+                          <td className="empty" colSpan={4}>
                             No cost control entries found for this period.
                           </td>
                         </tr>
@@ -621,7 +615,6 @@ export default function CostControlsPage() {
                         <th>Manager</th>
                         <th style={{ width: 130 }}>Days</th>
                         <th style={{ width: 170 }}>Labour %</th>
-                        <th style={{ width: 210 }}>Food Var %</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -630,13 +623,54 @@ export default function CostControlsPage() {
                           <td className="rank">{idx + 1}</td>
                           <td className="name">{a.name}</td>
                           <td className="num">{a.days}</td>
-                          <td className="num">{fmtPct(a.labourPct, 1)}</td>
-                          <td className="num">{fmtPct(a.foodVarPctSales, 2)}</td>
+                          <td className={`num traffic ${labourTrafficClass(a.labourPct)}`}>
+                            {fmtPct(a.labourPct, 1)}
+                          </td>
                         </tr>
                       ))}
                       {mgrLabour.length === 0 && (
                         <tr>
-                          <td className="empty" colSpan={5}>
+                          <td className="empty" colSpan={4}>
+                            No cost control entries found for this period.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* STORES - FOOD */}
+              <div className="board">
+                <div className="boardHead">
+                  <h2>Store • Food Rankings</h2>
+                  <p>Closest to 0% food variance wins</p>
+                </div>
+
+                <div className="table-wrap">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 70 }}>Rank</th>
+                        <th>Store</th>
+                        <th style={{ width: 130 }}>Days</th>
+                        <th style={{ width: 210 }}>Food Var %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {storeFood.map((a, idx) => (
+                        <tr key={a.name}>
+                          <td className="rank">{idx + 1}</td>
+                          <td className="name">{a.name}</td>
+                          <td className="num">{a.days}</td>
+                          <td className={`num traffic ${foodTrafficClass(a.foodVarPctSales)}`}>
+                            {fmtPct(a.foodVarPctSales, 2)}
+                          </td>
+                        </tr>
+                      ))}
+                      {storeFood.length === 0 && (
+                        <tr>
+                          <td className="empty" colSpan={4}>
                             No cost control entries found for this period.
                           </td>
                         </tr>
@@ -661,7 +695,6 @@ export default function CostControlsPage() {
                         <th>Manager</th>
                         <th style={{ width: 130 }}>Days</th>
                         <th style={{ width: 210 }}>Food Var %</th>
-                        <th style={{ width: 170 }}>Labour %</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -670,13 +703,14 @@ export default function CostControlsPage() {
                           <td className="rank">{idx + 1}</td>
                           <td className="name">{a.name}</td>
                           <td className="num">{a.days}</td>
-                          <td className="num">{fmtPct(a.foodVarPctSales, 2)}</td>
-                          <td className="num">{fmtPct(a.labourPct, 1)}</td>
+                          <td className={`num traffic ${foodTrafficClass(a.foodVarPctSales)}`}>
+                            {fmtPct(a.foodVarPctSales, 2)}
+                          </td>
                         </tr>
                       ))}
                       {mgrFood.length === 0 && (
                         <tr>
-                          <td className="empty" colSpan={5}>
+                          <td className="empty" colSpan={4}>
                             No cost control entries found for this period.
                           </td>
                         </tr>
@@ -753,6 +787,9 @@ export default function CostControlsPage() {
         .table th { background:rgba(0,100,145,.08); font-weight:900; letter-spacing:.02em; }
         .table tr + tr td { border-top:1px solid rgba(15,23,42,.06); }
         td.num { text-align:right; font-variant-numeric:tabular-nums; font-weight:900; }
+        td.traffic.green { color:#166534; background:rgba(34,197,94,.1); }
+        td.traffic.amber { color:#92400e; background:rgba(245,158,11,.14); }
+        td.traffic.red { color:#991b1b; background:rgba(239,68,68,.12); }
         td.rank, td.name { font-weight:900; }
         td.empty { padding:16px 12px; color:#475569; font-weight:800; }
 
