@@ -22,7 +22,7 @@ type ServiceShiftRow = {
   shift_date: string;
   store: string | null;
 
-  // IMPORTANT: if your column is manager_name instead of manager, rename here + in select().
+  // If your column is manager_name instead of manager, rename here + in select().
   manager: string | null;
 
   dot_pct: number | null;
@@ -32,10 +32,8 @@ type ServiceShiftRow = {
 };
 
 type CostControlRow = {
-  // you confirmed this exists
   manager_profile_id: string | null;
 
-  // also exists in your schema
   manager_name: string | null;
   store: string | null;
   shift_date: string;
@@ -57,7 +55,7 @@ type OsaRow = {
 type LeaderRow = {
   key: string;
   manager: string;
-  store: string;
+  storeLabel: string;
   linkedProfileId: string | null;
 
   service: number | null;
@@ -70,6 +68,8 @@ type LeaderRow = {
     cost: number;
     osa: number;
   };
+
+  stores: string[];
 };
 
 const toISODateUK = (date: Date) => {
@@ -100,19 +100,17 @@ const avg = (values: number[]) =>
 
 const normalisePct01 = (value: number | null): number | null => {
   if (value == null || !Number.isFinite(value)) return null;
-  // accept 82 or 0.82
   return value > 1 ? value / 100 : value;
 };
 
 const normaliseMinutes = (value: number | null): number | null => {
   if (value == null || !Number.isFinite(value) || value <= 0) return null;
   const minutes = value > 60 && value <= 3600 ? value / 60 : value;
-  if (!Number.isFinite(minutes) || minutes <= 0 || minutes > 120) return null;
+  if (!Number.isFinite(minutes) || minutes <= 0 || minutes > 240) return null;
   return minutes;
 };
 
-const keyFromNameStore = (name: string, store: string) =>
-  `${name.trim().toLowerCase()}::${store.trim().toLowerCase()}`;
+const keyFromName = (name: string) => name.trim().toLowerCase();
 
 const safeDiv = (num: number, den: number) => {
   if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) return null;
@@ -142,16 +140,24 @@ const weightFromSales = (row: CostControlRow): number | null => {
   return w != null && w > 0 ? w : null;
 };
 
-/* -------------------- Scoring (matches your visual rules) -------------------- */
+/* -------------------- Scoring -------------------- */
 
-const scoreBand = (value: number, bands: Array<{ test: (v: number) => boolean; score: number }>) => {
+const scoreBand = (
+  value: number,
+  bands: Array<{ test: (v: number) => boolean; score: number }>
+) => {
   for (const b of bands) if (b.test(value)) return b.score;
   return 0;
 };
 
-const scoreService100 = (dotAvg01: number | null, extremesAvg01: number | null, rnlAvgMin: number | null, addHoursAvg: number | null) => {
-  // If no service data at all, return null
-  if (dotAvg01 == null && extremesAvg01 == null && rnlAvgMin == null && addHoursAvg == null) return null;
+const scoreService100 = (
+  dotAvg01: number | null,
+  extremesAvg01: number | null,
+  rnlAvgMin: number | null,
+  addHoursAvg: number | null
+) => {
+  if (dotAvg01 == null && extremesAvg01 == null && rnlAvgMin == null && addHoursAvg == null)
+    return null;
 
   const dotScore =
     dotAvg01 == null
@@ -189,7 +195,6 @@ const scoreService100 = (dotAvg01: number | null, extremesAvg01: number | null, 
           { test: (v) => v <= 4, score: 60 },
         ]);
 
-  // weights: DOT 40%, Extremes 30%, R&L 20%, AddHours 10%
   return Math.round(dotScore * 0.4 + extremesScore * 0.3 + rnlScore * 0.2 + addHoursScore * 0.1);
 };
 
@@ -242,12 +247,9 @@ const scoreOsa100 = (starsAvg: number | null, pointsLostAvg: number | null) => {
 };
 
 const scoreMpi = (service: number | null, cost: number | null, osa: number | null) => {
-  const hasAny = service != null || cost != null || osa != null;
-  if (!hasAny) return null;
+  if (service == null && cost == null && osa == null) return null;
   return Math.round((service ?? 0) * 0.5 + (cost ?? 0) * 0.3 + (osa ?? 0) * 0.2);
 };
-
-/* -------------------- UI helpers -------------------- */
 
 const pillClass = (score: number) => {
   if (score >= 80) return "pill green";
@@ -324,70 +326,72 @@ export default function ManagerPerformanceIndexPage() {
   }, [todayIso, yearStartIso]);
 
   const ranked = useMemo<LeaderRow[]>(() => {
-    // 1) Build profile lookups + excluded roles
     const excludedRoles = new Set(["Area Manager", "OEC"]);
 
     const profileById = new Map<string, ProfileRow>();
-    const profileByNameStore = new Map<string, ProfileRow>();
+    const profilesByName = new Map<string, ProfileRow[]>();
 
     for (const p of profiles) {
       profileById.set(p.id, p);
       const name = (p.display_name || "").trim();
-      const store = (p.store || "").trim();
-      if (name && store) profileByNameStore.set(keyFromNameStore(name, store), p);
+      if (!name) continue;
+      const k = keyFromName(name);
+      const arr = profilesByName.get(k) || [];
+      arr.push(p);
+      profilesByName.set(k, arr);
     }
 
     const isExcludedProfile = (p: ProfileRow | undefined | null) => {
       if (!p) return false;
-      const role = (p.job_role || "").trim();
-      return excludedRoles.has(role);
+      return excludedRoles.has((p.job_role || "").trim());
     };
 
-    // 2) Buckets for ALL “manager identities”
+    const shouldExcludeNameGroup = (nameKey: string) => {
+      const arr = profilesByName.get(nameKey) || [];
+      if (!arr.length) return false;
+      // if ALL profiles with that name are excluded, exclude the group
+      return arr.every((p) => isExcludedProfile(p));
+    };
+
     type Bucket = {
       key: string;
       manager: string;
-      store: string;
       linkedProfileId: string | null;
 
       serviceRows: ServiceShiftRow[];
       costRows: CostControlRow[];
       osaRows: OsaRow[];
+
+      stores: Set<string>;
     };
 
     const buckets = new Map<string, Bucket>();
 
-    const ensureBucket = (key: string, manager: string, store: string, linkedProfileId: string | null) => {
+    const ensureBucket = (key: string, manager: string, linkedProfileId: string | null) => {
       const existing = buckets.get(key);
       if (existing) return existing;
       const b: Bucket = {
         key,
         manager,
-        store,
         linkedProfileId,
         serviceRows: [],
         costRows: [],
         osaRows: [],
+        stores: new Set<string>(),
       };
       buckets.set(key, b);
       return b;
     };
 
-    // 3) Add buckets from PROFILES first (linked identities)
+    // Create buckets for linked profiles first (excluding roles)
     for (const p of profiles) {
       if (isExcludedProfile(p)) continue;
-
       const name = (p.display_name || "").trim();
-      const store = (p.store || "-").trim() || "-";
       if (!name) continue;
-
-      const key = `profile::${p.id}`;
-      ensureBucket(key, name, store, p.id);
+      ensureBucket(`profile::${p.id}`, name, p.id);
     }
 
-    // 4) Feed SERVICE rows:
-    // - if manager_profile_id exists and matches a profile bucket, use it
-    // - else fallback to manager name + store
+    // SERVICE rows -> profile bucket if possible, else name bucket (name-only)
     for (const r of serviceRows) {
       const store = (r.store || "").trim();
       const mgrName = (r.manager || "").trim();
@@ -395,24 +399,28 @@ export default function ManagerPerformanceIndexPage() {
       if (r.manager_profile_id && profileById.has(r.manager_profile_id)) {
         const p = profileById.get(r.manager_profile_id)!;
         if (isExcludedProfile(p)) continue;
-        const b = ensureBucket(`profile::${p.id}`, (p.display_name || mgrName || "Unknown").trim(), (p.store || store || "-").trim() || "-", p.id);
+
+        const b = ensureBucket(`profile::${p.id}`, (p.display_name || mgrName || "Unknown").trim(), p.id);
         b.serviceRows.push(r);
+        if (store) b.stores.add(store);
         continue;
       }
 
-      // fallback identity (unlinked)
-      if (mgrName && store) {
-        const possibleProfile = profileByNameStore.get(keyFromNameStore(mgrName, store));
-        if (isExcludedProfile(possibleProfile)) continue;
+      if (mgrName) {
+        const nameKey = keyFromName(mgrName);
+        if (shouldExcludeNameGroup(nameKey)) continue;
 
-        const b = ensureBucket(`name::${keyFromNameStore(mgrName, store)}`, mgrName, store, possibleProfile?.id ?? null);
+        // If there's exactly one non-excluded profile with this name, we can treat it as linked-ish
+        const candidates = (profilesByName.get(nameKey) || []).filter((p) => !isExcludedProfile(p));
+        const linkedId = candidates.length === 1 ? candidates[0].id : null;
+
+        const b = ensureBucket(`name::${nameKey}`, mgrName, linkedId);
         b.serviceRows.push(r);
+        if (store) b.stores.add(store);
       }
     }
 
-    // 5) Feed COST rows:
-    // - use manager_profile_id when valid
-    // - else fallback manager_name + store
+    // COST rows -> profile bucket if possible, else name bucket (name-only)
     for (const r of costRows) {
       const store = (r.store || "").trim();
       const mgrName = (r.manager_name || "").trim();
@@ -421,43 +429,47 @@ export default function ManagerPerformanceIndexPage() {
         const p = profileById.get(r.manager_profile_id)!;
         if (isExcludedProfile(p)) continue;
 
-        const b = ensureBucket(`profile::${p.id}`, (p.display_name || mgrName || "Unknown").trim(), (p.store || store || "-").trim() || "-", p.id);
+        const b = ensureBucket(`profile::${p.id}`, (p.display_name || mgrName || "Unknown").trim(), p.id);
         b.costRows.push(r);
+        if (store) b.stores.add(store);
         continue;
       }
 
-      if (mgrName && store) {
-        const possibleProfile = profileByNameStore.get(keyFromNameStore(mgrName, store));
-        if (isExcludedProfile(possibleProfile)) continue;
+      if (mgrName) {
+        const nameKey = keyFromName(mgrName);
+        if (shouldExcludeNameGroup(nameKey)) continue;
 
-        const b = ensureBucket(`name::${keyFromNameStore(mgrName, store)}`, mgrName, store, possibleProfile?.id ?? null);
+        const candidates = (profilesByName.get(nameKey) || []).filter((p) => !isExcludedProfile(p));
+        const linkedId = candidates.length === 1 ? candidates[0].id : null;
+
+        const b = ensureBucket(`name::${nameKey}`, mgrName, linkedId);
         b.costRows.push(r);
+        if (store) b.stores.add(store);
       }
     }
 
-    // 6) Feed OSA rows (best-effort):
-    // We can only confidently attach OSA to a profile if team_member_profile_id matches a profile.
-    // If it's actually “manager being assessed”, this will work for linked accounts.
+    // OSA rows: only reliably attach by profile id
     for (const r of osaRows) {
       if (!r.team_member_profile_id) continue;
       const p = profileById.get(r.team_member_profile_id);
-      if (!p) continue;
-      if (isExcludedProfile(p)) continue;
+      if (!p || isExcludedProfile(p)) continue;
 
-      const b = ensureBucket(`profile::${p.id}`, (p.display_name || "Unknown").trim(), (p.store || "-").trim() || "-", p.id);
+      const b = ensureBucket(`profile::${p.id}`, (p.display_name || "Unknown").trim(), p.id);
       b.osaRows.push(r);
+      const store = (r.store || "").trim();
+      if (store) b.stores.add(store);
     }
 
-    // 7) Convert buckets -> leaderboard rows with scoring
+    // Now score buckets
     const out: LeaderRow[] = [];
 
     for (const b of buckets.values()) {
-      // Exclude anyone with NO service AND NO cost (your requirement)
       const hasService = b.serviceRows.length > 0;
       const hasCost = b.costRows.length > 0;
+
+      // Exclude anyone who does not have a service OR cost entry
       if (!hasService && !hasCost) continue;
 
-      // SERVICE averages
       const dotAvg = avg(
         b.serviceRows
           .map((r) => normalisePct01(r.dot_pct))
@@ -481,7 +493,6 @@ export default function ManagerPerformanceIndexPage() {
 
       const serviceScore = scoreService100(dotAvg, extremesAvg, rnlAvg, addHoursAvg);
 
-      // COST averages (sales-weighted)
       let labourWeightedTotal = 0;
       let labourWeightSum = 0;
       const labourFallback: number[] = [];
@@ -517,7 +528,6 @@ export default function ManagerPerformanceIndexPage() {
 
       const costScore = scoreCost100(labourAvg, foodVarAvg);
 
-      // OSA averages (profile-only unless your table provides manager_name/store)
       const starsAvg = avg(
         b.osaRows
           .map((r) => (isFiniteNumber(r.stars) ? r.stars : null))
@@ -530,25 +540,27 @@ export default function ManagerPerformanceIndexPage() {
       );
 
       const osaScore = scoreOsa100(starsAvg, pointsLostAvg);
-
       const mpi = scoreMpi(serviceScore, costScore, osaScore);
+
+      const stores = Array.from(b.stores).sort((a, c) => a.localeCompare(c));
+      let storeLabel = "-";
+      if (stores.length === 1) storeLabel = stores[0];
+      else if (stores.length > 1) {
+        const shown = stores.slice(0, 2).join(", ");
+        storeLabel = stores.length <= 2 ? `Multi-store (${shown})` : `Multi-store (${shown} +${stores.length - 2})`;
+      }
 
       out.push({
         key: b.key,
         manager: b.manager || "Unknown",
-        store: b.store || "-",
+        storeLabel,
         linkedProfileId: b.linkedProfileId,
-
         service: serviceScore,
         cost: costScore,
         osa: osaScore,
         mpi,
-
-        counts: {
-          service: b.serviceRows.length,
-          cost: b.costRows.length,
-          osa: b.osaRows.length,
-        },
+        counts: { service: b.serviceRows.length, cost: b.costRows.length, osa: b.osaRows.length },
+        stores,
       });
     }
 
@@ -559,10 +571,7 @@ export default function ManagerPerformanceIndexPage() {
   return (
     <main className="wrap">
       <div className="banner">
-        <img
-          src="/mourneoids_forms_header_1600x400.png"
-          alt="Mourne-oids Header Banner"
-        />
+        <img src="/mourneoids_forms_header_1600x400.png" alt="Mourne-oids Header Banner" />
       </div>
 
       <div className="shell">
@@ -595,8 +604,8 @@ export default function ManagerPerformanceIndexPage() {
               <div className="section-head">
                 <h2>Leaderboard</h2>
                 <p>
-                  Included: approved profiles (excluding Area Manager/OEC) + unlinked managers
-                  (name+store) with at least one Service or Cost entry.
+                  Included: approved profiles (excluding Area Manager/OEC) + unlinked managers (grouped across stores by name)
+                  with at least one Service or Cost entry.
                 </p>
               </div>
 
@@ -606,7 +615,7 @@ export default function ManagerPerformanceIndexPage() {
                     <tr>
                       <th>Rank</th>
                       <th>Manager</th>
-                      <th>Store</th>
+                      <th>Store(s)</th>
                       <th>MPI</th>
                       <th>Service</th>
                       <th>Cost</th>
@@ -619,41 +628,18 @@ export default function ManagerPerformanceIndexPage() {
                         <td style={{ fontWeight: 900 }}>{idx + 1}</td>
                         <td style={{ fontWeight: 900 }}>
                           {row.manager}
-                          {row.linkedProfileId ? <span className="mini"> • linked</span> : <span className="mini"> • unlinked</span>}
-                        </td>
-                        <td>{row.store}</td>
-
-                        <td>
-                          {row.mpi == null ? (
-                            <span className="pill">—</span>
+                          {row.linkedProfileId ? (
+                            <span className="mini"> • linked</span>
                           ) : (
-                            <span className={pillClass(row.mpi)}>{row.mpi}</span>
+                            <span className="mini"> • unlinked</span>
                           )}
                         </td>
+                        <td title={row.stores.join(", ")}>{row.storeLabel}</td>
 
-                        <td>
-                          {row.service == null ? (
-                            <span className="pill">—</span>
-                          ) : (
-                            <span className={pillClass(row.service)}>{row.service}</span>
-                          )}
-                        </td>
-
-                        <td>
-                          {row.cost == null ? (
-                            <span className="pill">—</span>
-                          ) : (
-                            <span className={pillClass(row.cost)}>{row.cost}</span>
-                          )}
-                        </td>
-
-                        <td>
-                          {row.osa == null ? (
-                            <span className="pill">—</span>
-                          ) : (
-                            <span className={pillClass(row.osa)}>{row.osa}</span>
-                          )}
-                        </td>
+                        <td>{row.mpi == null ? <span className="pill">—</span> : <span className={pillClass(row.mpi)}>{row.mpi}</span>}</td>
+                        <td>{row.service == null ? <span className="pill">—</span> : <span className={pillClass(row.service)}>{row.service}</span>}</td>
+                        <td>{row.cost == null ? <span className="pill">—</span> : <span className={pillClass(row.cost)}>{row.cost}</span>}</td>
+                        <td>{row.osa == null ? <span className="pill">—</span> : <span className={pillClass(row.osa)}>{row.osa}</span>}</td>
                       </tr>
                     ))}
 
@@ -859,7 +845,7 @@ export default function ManagerPerformanceIndexPage() {
           font-size: 12px;
           color: #64748b;
           font-weight: 700;
-          max-width: 680px;
+          max-width: 720px;
         }
 
         .table-wrap {
