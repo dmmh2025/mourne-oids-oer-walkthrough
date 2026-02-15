@@ -790,6 +790,7 @@ export default function InternalOsaScorecardPage() {
                       <tr key={`${m.name}-${i}`}>
                         <td className="rank">{i + 1}</td>
                         <td className="name">
+ codex/refactor-manager-name-cell-structure
                           <div className="nameCell">
                             <span className="nameTrigger">{m.name}</span>
                             <div className="hoverWrap">
@@ -800,6 +801,15 @@ export default function InternalOsaScorecardPage() {
                               />
                             </div>
                           </div>
+
+                          <HoverStatPanel
+                            label={m.name}
+                            mtd={managerStatWindows[m.name]?.mtd ?? { visits: 0, avgScore: null }}
+                            ytd={managerStatWindows[m.name]?.ytd ?? { visits: 0, avgScore: null }}
+                          >
+                            <span>{m.name}</span>
+                          </HoverStatPanel>
+ main
                         </td>
                         <td className="num">
                           <span className={pillClassFromPointsLost(m.avgPointsLost)}>
