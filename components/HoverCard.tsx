@@ -27,6 +27,9 @@ type Position = {
 
 const VIEWPORT_PADDING = 8;
 
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(Math.max(value, min), max);
+
 export function HoverCard({
   anchorRect,
   open,
@@ -47,20 +50,37 @@ export function HoverCard({
       return;
     }
 
-    const cardRect = cardRef.current.getBoundingClientRect();
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
+    const reposition = () => {
+      if (!cardRef.current) return;
 
-    const desiredLeft = anchorRect.left;
-    const desiredTop = anchorRect.bottom + offset;
+      const cardRect = cardRef.current.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
 
-    const maxLeft = Math.max(VIEWPORT_PADDING, viewportWidth - cardRect.width - VIEWPORT_PADDING);
-    const maxTop = Math.max(VIEWPORT_PADDING, viewportHeight - cardRect.height - VIEWPORT_PADDING);
+      const desiredLeft = anchorRect.left;
+      const desiredTop = anchorRect.bottom + offset;
 
-    setPosition({
-      left: Math.min(Math.max(desiredLeft, VIEWPORT_PADDING), maxLeft),
-      top: Math.min(Math.max(desiredTop, VIEWPORT_PADDING), maxTop),
-    });
+      const maxLeft = Math.max(
+        VIEWPORT_PADDING,
+        viewportWidth - cardRect.width - VIEWPORT_PADDING,
+      );
+      const maxTop = Math.max(
+        VIEWPORT_PADDING,
+        viewportHeight - cardRect.height - VIEWPORT_PADDING,
+      );
+
+      setPosition({
+        left: clamp(desiredLeft, VIEWPORT_PADDING, maxLeft),
+        top: clamp(desiredTop, VIEWPORT_PADDING, maxTop),
+      });
+    };
+
+    reposition();
+    window.addEventListener("resize", reposition);
+
+    return () => {
+      window.removeEventListener("resize", reposition);
+    };
   }, [anchorRect, offset, open, children, error, loading, title]);
 
   const style = useMemo<CSSProperties | undefined>(() => {
