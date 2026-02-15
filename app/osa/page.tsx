@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
+import HoverStatPanel from "@/components/HoverStatPanel";
 
 const supabase =
   typeof window !== "undefined"
@@ -26,6 +27,11 @@ type LeaderAgg = {
   avgStars: number; // 0..5
 
   lastShiftAt: string | null; // uses shift_date if available, else created_at
+};
+
+type StatWindow = {
+  visits: number;
+  avgScore: number | null;
 };
 
 const toNumber = (v: any): number | null => {
@@ -184,6 +190,18 @@ const toISODateLocal = (date: Date) => {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+};
+
+const emptyStatWindow: StatWindow = {
+  visits: 0,
+  avgScore: null,
+};
+
+const getTomorrowStart = () => {
+  const tomorrow = new Date();
+  tomorrow.setHours(0, 0, 0, 0);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return tomorrow;
 };
 
 const getWeekRange = () => {
@@ -438,6 +456,93 @@ export default function InternalOsaScorecardPage() {
     );
   }, [rows, debugKeys, effectiveDateKey]);
 
+  const { storeStats, personStats } = useMemo(() => {
+    const monthStart = new Date();
+    monthStart.setHours(0, 0, 0, 0);
+    monthStart.setDate(1);
+
+    const yearStart = new Date(monthStart.getFullYear(), 0, 1);
+    yearStart.setHours(0, 0, 0, 0);
+
+    const tomorrowStart = getTomorrowStart();
+
+    const makeBuckets = () => ({
+      mtd: { visits: 0, totalScore: 0, scoredVisits: 0 },
+      ytd: { visits: 0, totalScore: 0, scoredVisits: 0 },
+    });
+
+    const storeBucket: Record<string, ReturnType<typeof makeBuckets>> = {};
+    const personBucket: Record<string, ReturnType<typeof makeBuckets>> = {};
+
+    for (const row of rows) {
+      const rawDate = cleanName(
+        (effectiveDateKey ? row[effectiveDateKey] : null) || row.created_at
+      );
+      if (!rawDate) continue;
+
+      const rowDate = isYYYYMMDD(rawDate)
+        ? new Date(`${rawDate}T00:00:00`)
+        : new Date(rawDate);
+      if (isNaN(rowDate.getTime())) continue;
+      if (rowDate >= tomorrowStart) continue;
+
+      const scoreRaw = debugKeys.starsKey ? toNumber(row[debugKeys.starsKey]) : null;
+      const score = scoreRaw === null ? null : clampStars(scoreRaw);
+
+      const apply = (target: ReturnType<typeof makeBuckets>) => {
+        if (rowDate >= monthStart) {
+          target.mtd.visits += 1;
+          if (score !== null) {
+            target.mtd.totalScore += score;
+            target.mtd.scoredVisits += 1;
+          }
+        }
+        if (rowDate >= yearStart) {
+          target.ytd.visits += 1;
+          if (score !== null) {
+            target.ytd.totalScore += score;
+            target.ytd.scoredVisits += 1;
+          }
+        }
+      };
+
+      const storeName =
+        cleanName(debugKeys.storeKey ? row[debugKeys.storeKey] : null) || "Unknown store";
+      if (!storeBucket[storeName]) storeBucket[storeName] = makeBuckets();
+      apply(storeBucket[storeName]);
+
+      const personName = cleanName(row.team_member_name) || "Unknown";
+      if (!personBucket[personName]) personBucket[personName] = makeBuckets();
+      apply(personBucket[personName]);
+    }
+
+    const toStatMap = (bucket: Record<string, ReturnType<typeof makeBuckets>>) =>
+      Object.fromEntries(
+        Object.entries(bucket).map(([name, windows]) => [
+          name,
+          {
+            mtd: {
+              visits: windows.mtd.visits,
+              avgScore: windows.mtd.scoredVisits
+                ? windows.mtd.totalScore / windows.mtd.scoredVisits
+                : null,
+            },
+            ytd: {
+              visits: windows.ytd.visits,
+              avgScore: windows.ytd.scoredVisits
+                ? windows.ytd.totalScore / windows.ytd.scoredVisits
+                : null,
+            },
+          },
+        ])
+      ) as Record<string, { mtd: StatWindow; ytd: StatWindow }>;
+
+    return {
+      storeStats: toStatMap(storeBucket),
+      personStats: toStatMap(personBucket),
+    };
+  }, [rows, debugKeys.storeKey, debugKeys.starsKey, effectiveDateKey]);
+
   const mgrPodium = managerAgg.items.slice(0, 3);
   const mgrTable = managerAgg.items;
 
@@ -608,7 +713,13 @@ export default function InternalOsaScorecardPage() {
                       </div>
 
                       <div className="podium-name" title={p.name}>
-                        {p.name}
+                        <HoverStatPanel
+                          label={p.name}
+                          mtd={personStats[p.name]?.mtd || emptyStatWindow}
+                          ytd={personStats[p.name]?.ytd || emptyStatWindow}
+                        >
+                          <span>{p.name}</span>
+                        </HoverStatPanel>
                       </div>
 
                       <div className="podium-metrics">
@@ -655,7 +766,15 @@ export default function InternalOsaScorecardPage() {
                     {mgrTable.map((m, i) => (
                       <tr key={`${m.name}-${i}`}>
                         <td className="rank">{i + 1}</td>
-                        <td className="name">{m.name}</td>
+                        <td className="name">
+                          <HoverStatPanel
+                            label={m.name}
+                            mtd={personStats[m.name]?.mtd || emptyStatWindow}
+                            ytd={personStats[m.name]?.ytd || emptyStatWindow}
+                          >
+                            <span>{m.name}</span>
+                          </HoverStatPanel>
+                        </td>
                         <td className="num">
                           <span className={pillClassFromPointsLost(m.avgPointsLost)}>
                             {m.avgPointsLost.toFixed(1)}
@@ -716,7 +835,13 @@ export default function InternalOsaScorecardPage() {
                       </div>
 
                       <div className="podium-name" title={p.name}>
-                        {p.name}
+                        <HoverStatPanel
+                          label={p.name}
+                          mtd={storeStats[p.name]?.mtd || emptyStatWindow}
+                          ytd={storeStats[p.name]?.ytd || emptyStatWindow}
+                        >
+                          <span>{p.name}</span>
+                        </HoverStatPanel>
                       </div>
 
                       <div className="podium-metrics">
@@ -763,7 +888,15 @@ export default function InternalOsaScorecardPage() {
                     {storeTable.map((s, i) => (
                       <tr key={`${s.name}-${i}`}>
                         <td className="rank">{i + 1}</td>
-                        <td className="name">{s.name}</td>
+                        <td className="name">
+                          <HoverStatPanel
+                            label={s.name}
+                            mtd={storeStats[s.name]?.mtd || emptyStatWindow}
+                            ytd={storeStats[s.name]?.ytd || emptyStatWindow}
+                          >
+                            <span>{s.name}</span>
+                          </HoverStatPanel>
+                        </td>
                         <td className="num">
                           <span className={pillClassFromPointsLost(s.avgPointsLost)}>
                             {s.avgPointsLost.toFixed(1)}
