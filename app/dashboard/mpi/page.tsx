@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { scoreCost, scoreOsa, scoreService } from "@/lib/mpi/scoring";
+import { scoreCost, scoreMpi, scoreOsa, scoreService } from "@/lib/mpi/scoring";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -48,10 +48,11 @@ type LeaderRow = {
   profileId: string;
   manager: string;
   store: string;
-  service: number;
-  cost: number;
-  osa: number;
-  mpi: number;
+
+  service: number | null;
+  cost: number | null;
+  osa: number | null;
+  mpi: number | null;
 };
 
 const toISODateUK = (date: Date) => {
@@ -75,26 +76,31 @@ const startOfYearUKISO = () => {
   return `${year || new Date().getFullYear()}-01-01`;
 };
 
-const avg = (values: number[]) =>
-  values.length ? values.reduce((sum, val) => sum + val, 0) / values.length : 0;
+// IMPORTANT: return null if no values (prevents fake "0" averages)
+const avgOrNull = (values: number[]) =>
+  values.length ? values.reduce((sum, val) => sum + val, 0) / values.length : null;
 
-const normalizePct = (value: number | null) => {
+const normalizePct01 = (value: number | null) => {
   if (value == null || !Number.isFinite(value)) return null;
+  // supports 0..1 or 0..100
   return value > 1 ? value / 100 : value;
 };
 
 const normalizeRackLoadMinutes = (value: number | null) => {
   if (value == null || !Number.isFinite(value) || value <= 0) return null;
   const minutes = value > 60 && value <= 3600 ? value / 60 : value;
-  if (!Number.isFinite(minutes)) return null;
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
   return minutes;
 };
 
-const pillClass = (score: number) => {
+const pillClass = (score: number | null) => {
+  if (score == null) return "pill";
   if (score >= 80) return "pill green";
   if (score >= 60) return "pill amber";
   return "pill red";
 };
+
+const formatScore = (score: number | null) => (score == null ? "—" : String(score));
 
 export default function ManagerPerformanceIndexPage() {
   const [loading, setLoading] = useState(true);
@@ -191,52 +197,57 @@ export default function ManagerPerformanceIndexPage() {
       const managerCostRows = byManagerCost.get(profile.id) || [];
       const managerOsaRows = byManagerOsa.get(profile.id) || [];
 
-      // ----- SERVICE -----
-      const dotAvg = avg(
+      // ---------- SERVICE ----------
+      const dotAvg = avgOrNull(
         managerServiceRows
-          .map((r) => normalizePct(r.dot_pct))
+          .map((r) => normalizePct01(r.dot_pct))
           .filter((v): v is number => v != null)
       );
-      const extremesAvg = avg(
+
+      const extremesAvg = avgOrNull(
         managerServiceRows
-          .map((r) => normalizePct(r.extreme_over_40))
+          .map((r) => normalizePct01(r.extreme_over_40))
           .filter((v): v is number => v != null)
       );
-      const rnlAvg = avg(
+
+      const rnlAvg = avgOrNull(
         managerServiceRows
           .map((r) => normalizeRackLoadMinutes(r.rnl_minutes))
           .filter((v): v is number => v != null)
       );
-      const additionalHoursAvg = avg(
+
+      const additionalHoursAvg = avgOrNull(
         managerServiceRows
           .map((r) => r.additional_hours)
           .filter((v): v is number => typeof v === "number" && Number.isFinite(v))
       );
 
-      const serviceScore = Math.round(
-        scoreService({
-          dot: dotAvg,
-          extremeOver40: extremesAvg,
-          rnlMinutes: rnlAvg,
-          additionalHours: additionalHoursAvg,
-        }) ?? 0
-      );
+      const serviceScoreRaw = scoreService({
+        dot: dotAvg,
+        extremeOver40: extremesAvg,
+        rnlMinutes: rnlAvg,
+        additionalHours: additionalHoursAvg,
+      });
 
-      // ----- OSA (50% stars, 50% lowest avg points lost) -----
-      const starsAvg = avg(
+      const serviceScore = serviceScoreRaw == null ? null : Math.round(serviceScoreRaw);
+
+      // ---------- OSA ----------
+      const starsAvg = avgOrNull(
         managerOsaRows
           .map((r) => r.stars)
           .filter((v): v is number => typeof v === "number" && Number.isFinite(v))
       );
-      const pointsLostAvg = avg(
+
+      const pointsLostAvg = avgOrNull(
         managerOsaRows
           .map((r) => r.points_lost)
           .filter((v): v is number => typeof v === "number" && Number.isFinite(v))
       );
 
-      const osaScore = Math.round(scoreOsa(starsAvg, pointsLostAvg) ?? 0);
+      const osaScoreRaw = scoreOsa(starsAvg, pointsLostAvg);
+      const osaScore = osaScoreRaw == null ? null : Math.round(osaScoreRaw);
 
-      // ----- COST (sales-weighted if possible) -----
+      // ---------- COST (sales-weighted if possible) ----------
       let labourWeightedTotal = 0;
       let labourWeightSum = 0;
       const labourFallback: number[] = [];
@@ -284,17 +295,28 @@ export default function ManagerPerformanceIndexPage() {
       }
 
       const labourYtd =
-        labourWeightSum > 0 ? labourWeightedTotal / labourWeightSum : avg(labourFallback);
+        labourWeightSum > 0
+          ? labourWeightedTotal / labourWeightSum
+          : avgOrNull(labourFallback);
 
       const foodVariancePctYtd =
-        foodWeightSum > 0 ? foodWeightedTotal / foodWeightSum : avg(foodFallback);
+        foodWeightSum > 0 ? foodWeightedTotal / foodWeightSum : avgOrNull(foodFallback);
 
-      const costScore = Math.round(
-        scoreCost({ labourPct: labourYtd, foodVariancePct: foodVariancePctYtd }) ?? 0
-      );
+      const costScoreRaw = scoreCost({
+        labourPct: labourYtd,
+        foodVariancePct: foodVariancePctYtd,
+      });
 
-      // ----- MPI TOTAL -----
-      const mpi = Math.round(serviceScore * 0.5 + costScore * 0.3 + osaScore * 0.2);
+      const costScore = costScoreRaw == null ? null : Math.round(costScoreRaw);
+
+      // ---------- MPI TOTAL (use helper weighting) ----------
+      const mpiRaw = scoreMpi({
+        service: serviceScore,
+        cost: costScore,
+        osa: osaScore,
+      });
+
+      const mpi = mpiRaw == null ? null : Math.round(mpiRaw);
 
       return {
         profileId: profile.id,
@@ -308,10 +330,21 @@ export default function ManagerPerformanceIndexPage() {
     });
   }, [costRows, osaRows, profiles, serviceRows]);
 
-  const ranked = useMemo(
-    () => [...leaderboard].sort((a, b) => b.mpi - a.mpi || b.service - a.service),
-    [leaderboard]
-  );
+  const ranked = useMemo(() => {
+    const base = [...leaderboard];
+    base.sort((a, b) => {
+      const aMpi = a.mpi ?? -1;
+      const bMpi = b.mpi ?? -1;
+      if (bMpi !== aMpi) return bMpi - aMpi;
+
+      const aSvc = a.service ?? -1;
+      const bSvc = b.service ?? -1;
+      if (bSvc !== aSvc) return bSvc - aSvc;
+
+      return (a.manager || "").localeCompare(b.manager || "");
+    });
+    return base;
+  }, [leaderboard]);
 
   return (
     <main style={{ maxWidth: 1200, margin: "0 auto", padding: 16 }}>
@@ -356,22 +389,27 @@ export default function ManagerPerformanceIndexPage() {
                     <td style={{ fontWeight: 800 }}>{row.manager}</td>
                     <td>{row.store}</td>
                     <td>
-                      <span className={pillClass(row.mpi)}>{row.mpi}</span>
+                      <span className={pillClass(row.mpi)}>{formatScore(row.mpi)}</span>
                     </td>
                     <td>
-                      <span className={pillClass(row.service)}>{row.service}</span>
+                      <span className={pillClass(row.service)}>
+                        {formatScore(row.service)}
+                      </span>
                     </td>
                     <td>
-                      <span className={pillClass(row.cost)}>{row.cost}</span>
+                      <span className={pillClass(row.cost)}>{formatScore(row.cost)}</span>
                     </td>
                     <td>
-                      <span className={pillClass(row.osa)}>{row.osa}</span>
+                      <span className={pillClass(row.osa)}>{formatScore(row.osa)}</span>
                     </td>
                   </tr>
                 ))}
                 {ranked.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ padding: 14, color: "#64748b", fontWeight: 700 }}>
+                    <td
+                      colSpan={7}
+                      style={{ padding: 14, color: "#64748b", fontWeight: 700 }}
+                    >
                       No approved profiles found (or no data in range).
                     </td>
                   </tr>
