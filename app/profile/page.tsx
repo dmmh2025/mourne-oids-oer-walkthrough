@@ -17,6 +17,7 @@ export default function ProfilePage() {
   const [pwdMsg, setPwdMsg] = useState<string | null>(null);
 
   const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [jobRole, setJobRole] = useState("");
   const [store, setStore] = useState<"" | string>("");
 
@@ -59,10 +60,12 @@ export default function ProfilePage() {
       if (profErr) {
         setErrorMsg(profErr.message);
       } else if (prof) {
+        setDisplayName((prof as any).display_name || "");
         setJobRole((prof as any).job_role || "");
         setStore((prof as any).store || "");
       } else {
         // no profile yet
+        setDisplayName("");
         setStore("");
       }
 
@@ -89,10 +92,11 @@ export default function ProfilePage() {
       return;
     }
 
-    // only send columns that exist in your table: id, email, job_role, store
+    // only send columns that exist in your table: id, email, display_name, job_role, store
     const payload = {
       id: user.id,
       email: user.email,
+      display_name: displayName.trim() || null,
       job_role: jobRole,
       store: store || null,
     };
@@ -185,6 +189,16 @@ export default function ProfilePage() {
                   <label>Email (login)</label>
                   <input type="text" value={email} disabled />
                   <p className="hint">This is your hub / Supabase login.</p>
+                </div>
+
+                <div className="field">
+                  <label>Display name</label>
+                  <input
+                    type="text"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="e.g. Jane D"
+                  />
                 </div>
 
                 <div className="field">
