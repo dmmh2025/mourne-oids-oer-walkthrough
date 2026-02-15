@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { scoreCost, scoreOsa, scoreService } from "@/lib/mpi/scoring";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -87,67 +88,6 @@ const normalizeRackLoadMinutes = (value: number | null) => {
   const minutes = value > 60 && value <= 3600 ? value / 60 : value;
   if (!Number.isFinite(minutes)) return null;
   return minutes;
-};
-
-// ===== SCORING =====
-
-// Internal OSA stars weighting (as agreed: 5=100, 4=80, 3=60, <3=0)
-const scoreStars = (stars: number) => {
-  if (stars >= 5) return 100;
-  if (stars >= 4) return 80;
-  if (stars >= 3) return 60;
-  return 0;
-};
-
-// Points lost: lower is better
-const scorePointsLost = (pointsLost: number) => {
-  if (pointsLost <= 10) return 100;
-  if (pointsLost <= 20) return 80;
-  if (pointsLost <= 30) return 60;
-  return 0;
-};
-
-const scoreDot = (dot: number) => {
-  if (dot >= 0.8) return 100;
-  if (dot >= 0.75) return 80;
-  if (dot >= 0.7) return 60;
-  return 0;
-};
-
-const scoreExtremes = (extremes: number) => {
-  if (extremes <= 0.03) return 100;
-  if (extremes <= 0.05) return 80;
-  if (extremes <= 0.08) return 60;
-  return 0;
-};
-
-const scoreRnl = (rnlMinutes: number) => {
-  if (rnlMinutes <= 10) return 100;
-  if (rnlMinutes <= 15) return 80;
-  if (rnlMinutes <= 20) return 60;
-  return 0;
-};
-
-const scoreAdditionalHours = (additionalHours: number) => {
-  if (additionalHours <= 1) return 100;
-  if (additionalHours <= 2.5) return 80;
-  if (additionalHours <= 4) return 60;
-  return 0;
-};
-
-const scoreLabour = (labourPct: number) => {
-  if (labourPct <= 22) return 100;
-  if (labourPct <= 24) return 80;
-  if (labourPct <= 26) return 60;
-  return 0;
-};
-
-const scoreFoodVariance = (foodVariance: number) => {
-  const absVariance = Math.abs(foodVariance);
-  if (absVariance <= 0.5) return 100;
-  if (absVariance <= 1.0) return 80;
-  if (absVariance <= 1.5) return 60;
-  return 0;
 };
 
 const pillClass = (score: number) => {
@@ -274,10 +214,12 @@ export default function ManagerPerformanceIndexPage() {
       );
 
       const serviceScore = Math.round(
-        scoreDot(dotAvg) * 0.4 +
-          scoreExtremes(extremesAvg) * 0.3 +
-          scoreRnl(rnlAvg) * 0.2 +
-          scoreAdditionalHours(additionalHoursAvg) * 0.1
+        scoreService({
+          dot: dotAvg,
+          extremeOver40: extremesAvg,
+          rnlMinutes: rnlAvg,
+          additionalHours: additionalHoursAvg,
+        }) ?? 0
       );
 
       // ----- OSA (50% stars, 50% lowest avg points lost) -----
@@ -292,12 +234,7 @@ export default function ManagerPerformanceIndexPage() {
           .filter((v): v is number => typeof v === "number" && Number.isFinite(v))
       );
 
-      // stars are stored as int4; we round avg to nearest whole star for the mapping
-      const starsRounded = Math.round(starsAvg);
-
-      const osaScore = Math.round(
-        scoreStars(starsRounded) * 0.5 + scorePointsLost(pointsLostAvg) * 0.5
-      );
+      const osaScore = Math.round(scoreOsa(starsAvg, pointsLostAvg) ?? 0);
 
       // ----- COST (sales-weighted if possible) -----
       let labourWeightedTotal = 0;
@@ -353,7 +290,7 @@ export default function ManagerPerformanceIndexPage() {
         foodWeightSum > 0 ? foodWeightedTotal / foodWeightSum : avg(foodFallback);
 
       const costScore = Math.round(
-        scoreLabour(labourYtd) * 0.6 + scoreFoodVariance(foodYtd) * 0.4
+        scoreCost({ labourPct: labourYtd, foodVariancePct: foodYtd }) ?? 0
       );
 
       // ----- MPI TOTAL -----
