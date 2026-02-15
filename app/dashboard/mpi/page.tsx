@@ -27,7 +27,7 @@ type ServiceShiftRow = {
 };
 
 type CostControlRow = {
-  manager_user_id: string | null; // ✅ this matches your schema
+  manager_user_id: string | null; // ✅ matches your schema
   shift_date: string;
 
   // ✅ your schema columns
@@ -96,7 +96,7 @@ const normalizeRackLoadMinutes = (value: number | null) => {
   return minutes;
 };
 
-const isFiniteNumber = (n: any): n is number =>
+const isFiniteNumber = (n: unknown): n is number =>
   typeof n === "number" && Number.isFinite(n);
 
 const safeDiv = (num: number, den: number) => {
@@ -188,7 +188,7 @@ export default function ManagerPerformanceIndexPage() {
           .gte("shift_date", yearStartIso)
           .lte("shift_date", todayIso),
 
-        // ✅ only select the columns that exist in your cost table
+        // ✅ FIX: correct table name
         supabase
           .from("cost_control_entries")
           .select(
@@ -258,32 +258,30 @@ export default function ManagerPerformanceIndexPage() {
       const dotVals = managerServiceRows
         .map((r) => normalizePct(r.dot_pct))
         .filter((v): v is number => v != null);
+
       const extremesVals = managerServiceRows
         .map((r) => normalizePct(r.extreme_over_40))
         .filter((v): v is number => v != null);
+
       const rnlVals = managerServiceRows
         .map((r) => normalizeRackLoadMinutes(r.rnl_minutes))
-        .filter((v): v is number => v != null);
-      const addHoursVals = managerServiceRows
-        .map((r) => (isFiniteNumber(r.additional_hours) ? r.additional_hours : null))
         .filter((v): v is number => v != null);
 
       const dotAvg = dotVals.length ? avg(dotVals) : null;
       const extremesAvg = extremesVals.length ? avg(extremesVals) : null;
       const rnlAvg = rnlVals.length ? avg(rnlVals) : null;
-      const additionalHoursAvg = addHoursVals.length ? avg(addHoursVals) : null;
 
       const serviceScore = scoreService({
         dot: dotAvg,
         extremeOver40: extremesAvg,
         rnlMinutes: rnlAvg,
-               additionalHours: additionalHoursAvg,
       });
 
       // ----- OSA -----
       const starsVals = managerOsaRows
         .map((r) => (isFiniteNumber(r.stars) ? r.stars : null))
         .filter((v): v is number => v != null);
+
       const pointsLostVals = managerOsaRows
         .map((r) => (isFiniteNumber(r.points_lost) ? r.points_lost : null))
         .filter((v): v is number => v != null);
@@ -325,10 +323,18 @@ export default function ManagerPerformanceIndexPage() {
       }
 
       const labourYtd =
-        labourWeightSum > 0 ? labourWeightedTotal / labourWeightSum : labourFallback.length ? avg(labourFallback) : null;
+        labourWeightSum > 0
+          ? labourWeightedTotal / labourWeightSum
+          : labourFallback.length
+            ? avg(labourFallback)
+            : null;
 
       const foodVariancePctYtd =
-        foodWeightSum > 0 ? foodWeightedTotal / foodWeightSum : foodFallback.length ? avg(foodFallback) : null;
+        foodWeightSum > 0
+          ? foodWeightedTotal / foodWeightSum
+          : foodFallback.length
+            ? avg(foodFallback)
+            : null;
 
       const costScore = scoreCost({
         labourPct: labourYtd,
@@ -336,23 +342,23 @@ export default function ManagerPerformanceIndexPage() {
       });
 
       // ----- MPI TOTAL (weights) -----
-      const serviceN = serviceScore ?? null;
-      const costN = costScore ?? null;
-      const osaN = osaScore ?? null;
+      const s = serviceScore ?? null;
+      const c = costScore ?? null;
+      const o = osaScore ?? null;
 
-      const hasAny = serviceN != null || costN != null || osaN != null;
+      const hasAny = s != null || c != null || o != null;
 
       const mpi = hasAny
-        ? Math.round((serviceN ?? 0) * 0.5 + (costN ?? 0) * 0.3 + (osaN ?? 0) * 0.2)
+        ? Math.round((s ?? 0) * 0.5 + (c ?? 0) * 0.3 + (o ?? 0) * 0.2)
         : null;
 
       return {
         profileId: profile.id,
         manager: profile.display_name || "Unknown",
         store: profile.store || "-",
-        service: serviceN != null ? Math.round(serviceN) : null,
-        cost: costN != null ? Math.round(costN) : null,
-        osa: osaN != null ? Math.round(osaN) : null,
+        service: s != null ? Math.round(s) : null,
+        cost: c != null ? Math.round(c) : null,
+        osa: o != null ? Math.round(o) : null,
         mpi,
       };
     });
@@ -474,19 +480,18 @@ export default function ManagerPerformanceIndexPage() {
           </p>
 
           <p style={{ margin: 0 }}>
-            <strong>Internal OSA (0–100):</strong> 50% stars and 50% points lost.
-            Stars mapping: 5=100, 4=80, 3=60, below 3=0. Points lost mapping:
-            ≤10=100, ≤20=80, ≤30=60, &gt;30=0.
+            <strong>Internal OSA (0–100):</strong> Uses your scoring function in{" "}
+            <code>/lib/mpi/scoring</code>.
           </p>
 
           <p style={{ margin: 0 }}>
-            <strong>Service (0–100):</strong> Your scoring function in{" "}
-            <code>/lib/mpi/scoring</code> is used (DOT, extremes &gt;40, R&amp;L).
+            <strong>Service (0–100):</strong> Uses your scoring function in{" "}
+            <code>/lib/mpi/scoring</code>.
           </p>
 
           <p style={{ margin: 0 }}>
-            <strong>Cost (0–100):</strong> Your scoring function in{" "}
-            <code>/lib/mpi/scoring</code> is used (labour + food variance).
+            <strong>Cost (0–100):</strong> Uses your scoring function in{" "}
+            <code>/lib/mpi/scoring</code> (labour + food variance).
           </p>
         </div>
       </section>
