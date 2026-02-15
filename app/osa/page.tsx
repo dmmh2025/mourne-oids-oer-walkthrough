@@ -790,19 +790,16 @@ export default function InternalOsaScorecardPage() {
                       <tr key={`${m.name}-${i}`}>
                         <td className="rank">{i + 1}</td>
                         <td className="name">
- codex/locate-and-update-table/list-wrapper
-                          <span className="name-cell">
-                            <span className="name-text">{m.name}</span>
-                            <span className="name-hover-panel">{m.name}</span>
-                          </span>
-                  <HoverStatPanel
+                          <HoverStatPanel
                             label={m.name}
                             mtd={managerStatWindows[m.name]?.mtd ?? { visits: 0, avgScore: null }}
                             ytd={managerStatWindows[m.name]?.ytd ?? { visits: 0, avgScore: null }}
                           >
-                            <span>{m.name}</span>
+                            <span className="nameCell">
+                              <span className="name-text">{m.name}</span>
+                              <span className="hoverWrap">{m.name}</span>
+                            </span>
                           </HoverStatPanel>
- main
                         </td>
                         <td className="num">
                           <span className={pillClassFromPointsLost(m.avgPointsLost)}>
@@ -910,9 +907,9 @@ export default function InternalOsaScorecardPage() {
                       <tr key={`${s.name}-${i}`}>
                         <td className="rank">{i + 1}</td>
                         <td className="name">
-                          <span className="name-cell">
+                          <span className="nameCell">
                             <span className="name-text">{s.name}</span>
-                            <span className="name-hover-panel">{s.name}</span>
+                            <span className="hoverWrap">{s.name}</span>
                           </span>
                         </td>
                         <td className="num">
@@ -1311,7 +1308,7 @@ export default function InternalOsaScorecardPage() {
           box-shadow: 0 12px 28px rgba(2, 6, 23, 0.05);
         }
 
-        .name-cell {
+        .nameCell {
           position: relative;
           display: inline-block;
           max-width: 220px;
@@ -1326,7 +1323,7 @@ export default function InternalOsaScorecardPage() {
           vertical-align: bottom;
         }
 
-        .name-hover-panel {
+        .hoverWrap {
           position: absolute;
           z-index: 9999;
           left: 0;
@@ -1344,7 +1341,7 @@ export default function InternalOsaScorecardPage() {
           line-height: 1.35;
         }
 
-        .name-cell:hover .name-hover-panel {
+        .nameCell:hover .hoverWrap {
           display: block;
         }
 
