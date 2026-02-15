@@ -14,14 +14,16 @@ type HoverStatPanelProps = PropsWithChildren<{
   ytd: StatWindow;
 }>;
 
+const DEBUG_ALWAYS_OPEN = true;
+
 const panelStyle: CSSProperties = {
   position: "absolute",
   top: "calc(100% + 8px)",
   left: 0,
-  zIndex: 40,
+  zIndex: 9999,
   minWidth: 240,
-  background: "#ffffff",
-  border: "1px solid #d8dde6",
+  background: "white",
+  border: "1px solid #ccc",
   borderRadius: 10,
   boxShadow: "0 10px 30px rgba(0, 0, 0, 0.15)",
   padding: 12,
@@ -49,6 +51,7 @@ export default function HoverStatPanel({
   children,
 }: HoverStatPanelProps) {
   const [open, setOpen] = useState(false);
+  const isPanelVisible = DEBUG_ALWAYS_OPEN || open;
 
   return (
     <span
@@ -59,7 +62,7 @@ export default function HoverStatPanel({
       onBlur={() => setOpen(false)}
     >
       {children}
-      {open ? (
+      {isPanelVisible ? (
         <span role="dialog" aria-live="polite" style={panelStyle}>
           <span style={titleStyle}>{label}</span>
           <span style={lineStyle}>
