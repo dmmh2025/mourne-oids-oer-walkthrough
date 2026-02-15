@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
+import { HoverCard } from "@/components/HoverCard";
 
 const supabase =
   typeof window !== "undefined"
@@ -28,6 +29,24 @@ type CostRow = {
   actual_food_cost_gbp: number;
 
   created_at?: string | null;
+};
+
+type EntityType = "store" | "manager";
+
+type StatBlock = {
+  labourPct: number;
+  foodVarPctSales: number;
+};
+
+type NameStats = {
+  monthToDate: StatBlock;
+  yearToDate: StatBlock;
+};
+
+type NameStatsCacheEntry = {
+  loading: boolean;
+  error: string | null;
+  data: NameStats | null;
 };
 
 function isYYYYMMDD(v: string) {
@@ -218,6 +237,18 @@ function aggregate(rows: CostRow[], key: "store" | "manager_name"): Agg[] {
   });
 }
 
+function calcWeightedStats(items: CostRow[]): StatBlock {
+  const sales = sum(items.map((x) => Number(x.sales_gbp || 0)));
+  const labour = sum(items.map((x) => Number(x.labour_cost_gbp || 0)));
+  const idealFood = sum(items.map((x) => Number(x.ideal_food_cost_gbp || 0)));
+  const actualFood = sum(items.map((x) => Number(x.actual_food_cost_gbp || 0)));
+
+  return {
+    labourPct: sales > 0 ? labour / sales : 0,
+    foodVarPctSales: sales > 0 ? (actualFood - idealFood) / sales : 0,
+  };
+}
+
 // ✅ Labour ranking: <=25% first, then lowest labour%, then sales tiebreak
 function sortByLabour(a: Agg, b: Agg) {
   if (a.labourDelta !== b.labourDelta) return a.labourDelta - b.labourDelta;
@@ -296,6 +327,81 @@ export default function CostControlsPage() {
   const [rows, setRows] = useState<CostRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
+  const [statsCache, setStatsCache] = useState<Record<string, NameStatsCacheEntry>>({});
+  const [hovered, setHovered] = useState<{
+    key: string;
+    name: string;
+    entityType: EntityType;
+    anchorRect: DOMRect;
+  } | null>(null);
+
+  function statsKey(entityType: EntityType, name: string) {
+    return `${entityType}:${name}`;
+  }
+
+  async function loadNameStats(entityType: EntityType, name: string) {
+    const key = statsKey(entityType, name);
+    if (statsCache[key]?.loading || statsCache[key]?.data || statsCache[key]?.error) {
+      return;
+    }
+
+    setStatsCache((prev) => ({
+      ...prev,
+      [key]: { loading: true, error: null, data: null },
+    }));
+
+    try {
+      if (!supabase) throw new Error("Supabase client not available");
+
+      const yearStart = `${new Date().getFullYear()}-01-01`;
+      const monthStart = toYYYYMMDDLocal(startOfThisMonthLocal());
+      const endExclusive = toYYYYMMDDLocal(startOfTodayLocal());
+      const matchColumn = entityType === "store" ? "store" : "manager_name";
+
+      const { data, error } = await supabase
+        .from("cost_control_entries")
+        .select("*")
+        .eq(matchColumn, name)
+        .gte("shift_date", yearStart)
+        .lt("shift_date", endExclusive);
+
+      if (error) throw new Error(error.message);
+
+      const normalised = (data || []).map(normaliseRow);
+      const monthRows = normalised.filter((r) => r.shift_date >= monthStart);
+
+      setStatsCache((prev) => ({
+        ...prev,
+        [key]: {
+          loading: false,
+          error: null,
+          data: {
+            monthToDate: calcWeightedStats(monthRows),
+            yearToDate: calcWeightedStats(normalised),
+          },
+        },
+      }));
+    } catch (e: any) {
+      setStatsCache((prev) => ({
+        ...prev,
+        [key]: {
+          loading: false,
+          error: e?.message || "Failed to load stats",
+          data: null,
+        },
+      }));
+    }
+  }
+
+  function openNameHover(
+    event: React.MouseEvent<HTMLSpanElement>,
+    entityType: EntityType,
+    name: string
+  ) {
+    const key = statsKey(entityType, name);
+    setHovered({ key, name, entityType, anchorRect: event.currentTarget.getBoundingClientRect() });
+    loadNameStats(entityType, name);
+  }
 
   async function load() {
     try {
@@ -366,6 +472,7 @@ export default function CostControlsPage() {
 
   const topStoreLabour = storeLabour[0] || null;
   const topStoreFood = storeFood[0] || null;
+  const hoveredStats = hovered ? statsCache[hovered.key] : null;
 
   return (
     <main className="wrap">
@@ -550,7 +657,15 @@ export default function CostControlsPage() {
                       <div className="podium-top">
                         <span className="rank-badge">Rank #{idx + 1}</span>
                       </div>
-                      <div className="podium-name">{a.name}</div>
+                      <div className="podium-name">
+                        <span
+                          className="hoverable-name"
+                          onMouseEnter={(event) => openNameHover(event, "store", a.name)}
+                          onMouseLeave={() => setHovered(null)}
+                        >
+                          {a.name}
+                        </span>
+                      </div>
                       <div className="podium-metrics">
                         <p>
                           <span>Days</span>
@@ -587,7 +702,15 @@ export default function CostControlsPage() {
                       <div className="podium-top">
                         <span className="rank-badge">Rank #{idx + 1}</span>
                       </div>
-                      <div className="podium-name">{a.name}</div>
+                      <div className="podium-name">
+                        <span
+                          className="hoverable-name"
+                          onMouseEnter={(event) => openNameHover(event, "store", a.name)}
+                          onMouseLeave={() => setHovered(null)}
+                        >
+                          {a.name}
+                        </span>
+                      </div>
                       <div className="podium-metrics">
                         <p>
                           <span>Days</span>
@@ -633,7 +756,15 @@ export default function CostControlsPage() {
                       {mgrLabour.map((a, idx) => (
                         <tr key={a.name}>
                           <td className="rank">{idx + 1}</td>
-                          <td className="name">{a.name}</td>
+                          <td className="name">
+                            <span
+                              className="hoverable-name"
+                              onMouseEnter={(event) => openNameHover(event, "manager", a.name)}
+                              onMouseLeave={() => setHovered(null)}
+                            >
+                              {a.name}
+                            </span>
+                          </td>
                           <td className="num">{a.days}</td>
                           <td className={`num metric-${labourTrafficClass(a.labourPct)}`}>
                             {fmtPct(a.labourPct, 1)}
@@ -673,7 +804,15 @@ export default function CostControlsPage() {
                       {mgrFood.map((a, idx) => (
                         <tr key={a.name}>
                           <td className="rank">{idx + 1}</td>
-                          <td className="name">{a.name}</td>
+                          <td className="name">
+                            <span
+                              className="hoverable-name"
+                              onMouseEnter={(event) => openNameHover(event, "manager", a.name)}
+                              onMouseLeave={() => setHovered(null)}
+                            >
+                              {a.name}
+                            </span>
+                          </td>
                           <td className="num">{a.days}</td>
                           <td className={`num metric-${foodTrafficClass(a.foodVarPctSales)}`}>
                             {fmtPct(a.foodVarPctSales, 2)}
@@ -699,6 +838,29 @@ export default function CostControlsPage() {
       <footer className="footer">
         <p>© 2025 Mourne-oids | Domino’s Pizza | Racz Group</p>
       </footer>
+
+      <HoverCard
+        open={Boolean(hovered)}
+        anchorRect={hovered?.anchorRect ?? null}
+        title={hovered ? `${hovered.name} stats` : "Stats"}
+        loading={hovered ? hoveredStats?.loading ?? true : false}
+        error={hovered ? hoveredStats?.error ?? null : null}
+      >
+        {hovered && hoveredStats?.data && (
+          <div className="hovercard-grid">
+            <div className="hovercard-block">
+              <div className="hovercard-title">Month-to-date</div>
+              <div>Weighted labour%: <b>{fmtPct(hoveredStats.data.monthToDate.labourPct, 1)}</b></div>
+              <div>Weighted food variance: <b>{fmtPct(hoveredStats.data.monthToDate.foodVarPctSales, 2)}</b></div>
+            </div>
+            <div className="hovercard-block">
+              <div className="hovercard-title">Year-to-date</div>
+              <div>Weighted labour%: <b>{fmtPct(hoveredStats.data.yearToDate.labourPct, 1)}</b></div>
+              <div>Weighted food variance: <b>{fmtPct(hoveredStats.data.yearToDate.foodVarPctSales, 2)}</b></div>
+            </div>
+          </div>
+        )}
+      </HoverCard>
 
       <style jsx>{`
         .wrap {
@@ -751,6 +913,11 @@ export default function CostControlsPage() {
         .metric-row { font-size:13px; color:#334155; font-weight:800; }
         .podium-metrics p { margin:0; display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13px; color:#334155; }
         .metric-value b { font-size:13px; }
+        .hoverable-name { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
+
+        .hovercard-grid { display:grid; gap:10px; }
+        .hovercard-block { display:grid; gap:4px; font-size:13px; color:#334155; }
+        .hovercard-title { font-size:12px; font-weight:900; color:#0f172a; text-transform:uppercase; letter-spacing:.02em; }
 
         .pill { font-size:11px; font-weight:700; padding:4px 10px; border-radius:999px; border:1px solid rgba(15,23,42,.12); background:rgba(241,245,249,.9); color:#334155; white-space:nowrap; }
         .pill.green { background:rgba(34,197,94,.12); border-color:rgba(34,197,94,.25); color:#166534; }
