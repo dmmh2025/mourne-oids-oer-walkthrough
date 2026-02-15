@@ -790,6 +790,24 @@ export default function InternalOsaScorecardPage() {
                       <tr key={`${m.name}-${i}`}>
                         <td className="rank">{i + 1}</td>
                         <td className="name">
+ codex/find-and-update-table-wrapper-styles
+          max-width: none;
+        }
+
+        .name-text {
+          display: inline-block;
+          max-width: none;
+          white-space: normal;
+          overflow: visible;
+          text-overflow: clip;
+          word-break: break-word;
+          vertical-align: bottom;
+
+        }
+
+        .nameTrigger {
+          font-weight: 800;
+main
                           <HoverStatPanel
                             label={m.name}
                             mtd={managerStatWindows[m.name]?.mtd ?? { visits: 0, avgScore: null }}
@@ -1300,8 +1318,7 @@ export default function InternalOsaScorecardPage() {
 
         /* Table */
         .table-wrap {
-          overflow-x: auto;
-          overflow-y: visible;
+          overflow: visible;
           border-radius: 16px;
           border: 1px solid rgba(15, 23, 42, 0.08);
           background: rgba(255, 255, 255, 0.9);
@@ -1311,22 +1328,16 @@ export default function InternalOsaScorecardPage() {
         .nameCell {
           position: relative;
           display: inline-block;
-          max-width: 220px;
         }
 
-        .name-text {
-          display: inline-block;
-          max-width: 220px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          vertical-align: bottom;
+        .nameTrigger {
+          font-weight: 800;
         }
 
         .hoverWrap {
           position: absolute;
-          z-index: 9999;
           left: 0;
+codex/update-css-hover-behaviour-in-page.tsx
           top: calc(100% + 6px);
           display: none;
           max-width: min(360px, 80vw);
@@ -1343,6 +1354,11 @@ export default function InternalOsaScorecardPage() {
 
         .nameCell:hover .hoverWrap {
           display: block;
+
+          top: 100%;
+          margin-top: 8px;
+          z-index: 9999;
+ main
         }
 
         .table {
@@ -1376,6 +1392,7 @@ export default function InternalOsaScorecardPage() {
         td.rank,
         td.name {
           font-weight: 900;
+          overflow: visible;
         }
 
         td.date {
