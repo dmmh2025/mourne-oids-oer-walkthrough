@@ -266,7 +266,7 @@ export default function ManagerPerformanceIndexPage() {
           labourFallback.push(row.labour_pct);
         }
 
-        const foodVar =
+        const foodVariancePct =
           typeof row.food_variance === "number" && Number.isFinite(row.food_variance)
             ? row.food_variance
             : typeof row.food_variance_pct === "number" &&
@@ -274,23 +274,23 @@ export default function ManagerPerformanceIndexPage() {
               ? row.food_variance_pct
               : null;
 
-        if (foodVar != null) {
+        if (foodVariancePct != null) {
           if (hasWeight) {
-            foodWeightedTotal += foodVar * salesWeightRaw!;
+            foodWeightedTotal += foodVariancePct * salesWeightRaw!;
             foodWeightSum += salesWeightRaw!;
           }
-          foodFallback.push(foodVar);
+          foodFallback.push(foodVariancePct);
         }
       }
 
       const labourYtd =
         labourWeightSum > 0 ? labourWeightedTotal / labourWeightSum : avg(labourFallback);
 
-      const foodYtd =
+      const foodVariancePctYtd =
         foodWeightSum > 0 ? foodWeightedTotal / foodWeightSum : avg(foodFallback);
 
       const costScore = Math.round(
-        scoreCost({ labourPct: labourYtd, foodVariancePct: foodYtd }) ?? 0
+        scoreCost({ labourPct: labourYtd, foodVariancePct: foodVariancePctYtd }) ?? 0
       );
 
       // ----- MPI TOTAL -----
