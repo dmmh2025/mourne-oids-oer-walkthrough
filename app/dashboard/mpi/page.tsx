@@ -15,6 +15,12 @@ type ProfileRow = {
   store: string | null;
   job_role: string | null;
   approved: boolean | null;
+
+  // optional fields (may or may not exist in your schema)
+  user_id?: string | null;
+  auth_user_id?: string | null;
+  userId?: string | null;
+  [key: string]: any;
 };
 
 type ServiceShiftRow = {
@@ -27,16 +33,16 @@ type ServiceShiftRow = {
 };
 
 type CostControlRow = {
-  manager_user_id: string | null; // ✅ matches your schema
+  manager_user_id: string | null; // <-- auth user id (NOT profile.id)
   shift_date: string;
 
-  // ✅ your schema columns
+  // your schema columns
   sales_gbp: number | null;
   labour_cost_gbp: number | null;
   ideal_food_cost_gbp: number | null;
   actual_food_cost_gbp: number | null;
 
-  // optional / legacy support (won't hurt if missing)
+  // optional legacy support (safe)
   labour_pct?: number | null;
   food_variance?: number | null;
   food_variance_pct?: number | null;
@@ -81,12 +87,15 @@ const startOfYearUKISO = () => {
   return `${year || new Date().getFullYear()}-01-01`;
 };
 
+const isFiniteNumber = (n: any): n is number =>
+  typeof n === "number" && Number.isFinite(n);
+
 const avg = (values: number[]) =>
   values.length ? values.reduce((sum, val) => sum + val, 0) / values.length : 0;
 
-const normalizePct = (value: number | null) => {
+const normalizePct01 = (value: number | null) => {
   if (value == null || !Number.isFinite(value)) return null;
-  return value > 1 ? value / 100 : value;
+  return value > 1 ? value / 100 : value; // allow 82 or 0.82
 };
 
 const normalizeRackLoadMinutes = (value: number | null) => {
@@ -96,25 +105,34 @@ const normalizeRackLoadMinutes = (value: number | null) => {
   return minutes;
 };
 
-const isFiniteNumber = (n: unknown): n is number =>
-  typeof n === "number" && Number.isFinite(n);
-
 const safeDiv = (num: number, den: number) => {
   if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) return null;
   return num / den;
+};
+
+const getProfileAuthKey = (p: ProfileRow): string => {
+  // Most common: profiles.user_id points to auth.users.id
+  const key =
+    (typeof p.user_id === "string" && p.user_id) ||
+    (typeof p.auth_user_id === "string" && p.auth_user_id) ||
+    (typeof p.userId === "string" && p.userId) ||
+    p.id;
+
+  return key;
 };
 
 const deriveLabourPct = (row: CostControlRow): number | null => {
   // prefer explicit labour_pct if it exists
   if (isFiniteNumber(row.labour_pct)) return row.labour_pct;
 
-  // otherwise compute from £ fields if present
   const sales =
     (isFiniteNumber(row.sales_gbp) ? row.sales_gbp : null) ??
     (isFiniteNumber(row.sales_total) ? row.sales_total : null) ??
     (isFiniteNumber(row.sales) ? row.sales : null);
 
-  const labourCost = isFiniteNumber(row.labour_cost_gbp) ? row.labour_cost_gbp : null;
+  const labourCost = isFiniteNumber(row.labour_cost_gbp)
+    ? row.labour_cost_gbp
+    : null;
 
   if (sales == null || labourCost == null) return null;
 
@@ -132,8 +150,12 @@ const deriveFoodVariancePct = (row: CostControlRow): number | null => {
     (isFiniteNumber(row.sales_total) ? row.sales_total : null) ??
     (isFiniteNumber(row.sales) ? row.sales : null);
 
-  const ideal = isFiniteNumber(row.ideal_food_cost_gbp) ? row.ideal_food_cost_gbp : null;
-  const actual = isFiniteNumber(row.actual_food_cost_gbp) ? row.actual_food_cost_gbp : null;
+  const ideal = isFiniteNumber(row.ideal_food_cost_gbp)
+    ? row.ideal_food_cost_gbp
+    : null;
+  const actual = isFiniteNumber(row.actual_food_cost_gbp)
+    ? row.actual_food_cost_gbp
+    : null;
 
   if (sales == null || ideal == null || actual == null) return null;
 
@@ -176,7 +198,7 @@ export default function ManagerPerformanceIndexPage() {
       const [profilesRes, serviceRes, costRes, osaRes] = await Promise.all([
         supabase
           .from("profiles")
-          .select("id,display_name,store,job_role,approved")
+          .select("*")
           .eq("approved", true)
           .not("display_name", "is", null),
 
@@ -188,7 +210,6 @@ export default function ManagerPerformanceIndexPage() {
           .gte("shift_date", yearStartIso)
           .lte("shift_date", todayIso),
 
-        // ✅ FIX: correct table name
         supabase
           .from("cost_control_entries")
           .select(
@@ -228,6 +249,7 @@ export default function ManagerPerformanceIndexPage() {
     const byManagerCost = new Map<string, CostControlRow[]>();
     const byManagerOsa = new Map<string, OsaRow[]>();
 
+    // Service is keyed by profiles.id
     for (const row of serviceRows) {
       if (!row.manager_profile_id) continue;
       const existing = byManagerService.get(row.manager_profile_id) || [];
@@ -235,6 +257,7 @@ export default function ManagerPerformanceIndexPage() {
       byManagerService.set(row.manager_profile_id, existing);
     }
 
+    // Cost is keyed by auth user id (manager_user_id)
     for (const row of costRows) {
       if (!row.manager_user_id) continue;
       const existing = byManagerCost.get(row.manager_user_id) || [];
@@ -242,6 +265,7 @@ export default function ManagerPerformanceIndexPage() {
       byManagerCost.set(row.manager_user_id, existing);
     }
 
+    // OSA is keyed by profiles.id (team_member_profile_id)
     for (const row of osaRows) {
       if (!row.team_member_profile_id) continue;
       const existing = byManagerOsa.get(row.team_member_profile_id) || [];
@@ -251,16 +275,20 @@ export default function ManagerPerformanceIndexPage() {
 
     return profiles.map((profile) => {
       const managerServiceRows = byManagerService.get(profile.id) || [];
-      const managerCostRows = byManagerCost.get(profile.id) || [];
+
+      // IMPORTANT: use auth key for cost rows
+      const authKey = getProfileAuthKey(profile);
+      const managerCostRows = byManagerCost.get(authKey) || [];
+
       const managerOsaRows = byManagerOsa.get(profile.id) || [];
 
       // ----- SERVICE -----
       const dotVals = managerServiceRows
-        .map((r) => normalizePct(r.dot_pct))
+        .map((r) => normalizePct01(r.dot_pct))
         .filter((v): v is number => v != null);
 
       const extremesVals = managerServiceRows
-        .map((r) => normalizePct(r.extreme_over_40))
+        .map((r) => normalizePct01(r.extreme_over_40))
         .filter((v): v is number => v != null);
 
       const rnlVals = managerServiceRows
@@ -341,24 +369,24 @@ export default function ManagerPerformanceIndexPage() {
         foodVariancePct: foodVariancePctYtd,
       });
 
-      // ----- MPI TOTAL (weights) -----
-      const s = serviceScore ?? null;
-      const c = costScore ?? null;
-      const o = osaScore ?? null;
+      // ----- MPI TOTAL -----
+      const serviceN = serviceScore ?? null;
+      const costN = costScore ?? null;
+      const osaN = osaScore ?? null;
 
-      const hasAny = s != null || c != null || o != null;
+      const hasAny = serviceN != null || costN != null || osaN != null;
 
       const mpi = hasAny
-        ? Math.round((s ?? 0) * 0.5 + (c ?? 0) * 0.3 + (o ?? 0) * 0.2)
+        ? Math.round((serviceN ?? 0) * 0.5 + (costN ?? 0) * 0.3 + (osaN ?? 0) * 0.2)
         : null;
 
       return {
         profileId: profile.id,
         manager: profile.display_name || "Unknown",
         store: profile.store || "-",
-        service: s != null ? Math.round(s) : null,
-        cost: c != null ? Math.round(c) : null,
-        osa: o != null ? Math.round(o) : null,
+        service: serviceN != null ? Math.round(serviceN) : null,
+        cost: costN != null ? Math.round(costN) : null,
+        osa: osaN != null ? Math.round(osaN) : null,
         mpi,
       };
     });
@@ -367,7 +395,10 @@ export default function ManagerPerformanceIndexPage() {
   const ranked = useMemo(
     () =>
       [...leaderboard].sort(
-        (a, b) => (b.mpi ?? -1) - (a.mpi ?? -1) || (b.service ?? -1) - (a.service ?? -1)
+        (a, b) =>
+          (b.mpi ?? -1) - (a.mpi ?? -1) ||
+          (b.service ?? -1) - (a.service ?? -1) ||
+          a.manager.localeCompare(b.manager)
       ),
     [leaderboard]
   );
@@ -480,18 +511,9 @@ export default function ManagerPerformanceIndexPage() {
           </p>
 
           <p style={{ margin: 0 }}>
-            <strong>Internal OSA (0–100):</strong> Uses your scoring function in{" "}
-            <code>/lib/mpi/scoring</code>.
-          </p>
-
-          <p style={{ margin: 0 }}>
-            <strong>Service (0–100):</strong> Uses your scoring function in{" "}
-            <code>/lib/mpi/scoring</code>.
-          </p>
-
-          <p style={{ margin: 0 }}>
-            <strong>Cost (0–100):</strong> Uses your scoring function in{" "}
-            <code>/lib/mpi/scoring</code> (labour + food variance).
+            <strong>Important mapping:</strong> Cost rows are linked using{" "}
+            <b>cost_control_entries.manager_user_id</b> which is an <b>auth user id</b>.
+            This page matches that to <b>profiles.user_id</b> (or <b>profiles.auth_user_id</b> if present).
           </p>
         </div>
       </section>
