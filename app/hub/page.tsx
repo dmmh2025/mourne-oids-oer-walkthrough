@@ -109,6 +109,15 @@ const TILES: Tile[] = [
     badge: null,
   },
   {
+    href: "/dashboard/mpi",
+    title: "📊 Manager Performance Index (YTD)",
+    desc: "Year-to-date manager performance metrics.",
+    variant: "service",
+    pill: "Service",
+    icon: "📊",
+    badge: null,
+  },
+  {
     href: "/walkthrough",
     title: "Standards Walkthrough",
     desc: "Store readiness + photos + automatic summary.",
