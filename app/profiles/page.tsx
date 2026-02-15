@@ -8,9 +8,12 @@ const supabase = getSupabaseClient();
 type Profile = {
   id: string;
   email: string | null;
+  display_name: string | null;
   job_role: string | null;
   store: string | null;
 };
+
+const STORE_OPTIONS = ["Downpatrick", "Kilkeel", "Newcastle", "Ballynahinch"];
 
 type MetricPair = { mtd: number | null; ytd: number | null };
 
@@ -105,6 +108,19 @@ export default function ProfilesPage() {
   const [performanceByProfile, setPerformanceByProfile] = useState<
     Record<string, ProfilePerformance>
   >({});
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const [profileEmail, setProfileEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [store, setStore] = useState("");
+  const [jobRole, setJobRole] = useState("");
+  const [profileSaveMessage, setProfileSaveMessage] = useState<string | null>(null);
+  const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -115,9 +131,20 @@ export default function ProfilesPage() {
       const yearStart = startOfYear();
       const now = new Date();
 
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError) {
+        setError(authError.message);
+        setLoading(false);
+        return;
+      }
+
+      const user = authData.user;
+      setAuthUserId(user?.id ?? null);
+      setProfileEmail(user?.email ?? "");
+
       const { data: profilesData, error: profilesError } = await supabase
         .from("profiles")
-        .select("id, email, job_role, store")
+        .select("id, email, display_name, job_role, store")
         .order("store", { ascending: true })
         .order("email", { ascending: true });
 
@@ -128,6 +155,12 @@ export default function ProfilesPage() {
       }
 
       const profileRows = (profilesData || []) as Profile[];
+      const loggedInProfile = user
+        ? profileRows.find((profile) => profile.id === user.id)
+        : null;
+      setDisplayName(loggedInProfile?.display_name || "");
+      setStore(loggedInProfile?.store || "");
+      setJobRole(loggedInProfile?.job_role || "");
       const profileIds = new Set(profileRows.map((p) => p.id));
 
       const [serviceRes, costRes, osaRes, walkthroughRes] = await Promise.all([
@@ -440,6 +473,80 @@ export default function ProfilesPage() {
     [profiles]
   );
 
+  const handleProfileSave = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!authUserId) {
+      setProfileSaveError("You must be signed in to save your profile details.");
+      setProfileSaveMessage(null);
+      return;
+    }
+
+    setIsSavingProfile(true);
+    setProfileSaveError(null);
+    setProfileSaveMessage(null);
+
+    const payload = {
+      id: authUserId,
+      email: profileEmail,
+      display_name: displayName.trim() || null,
+      store: store || null,
+      job_role: jobRole.trim() || null,
+    };
+
+    const { error: upsertError } = await supabase
+      .from("profiles")
+      .upsert(payload, { onConflict: "id" });
+
+    if (upsertError) {
+      setProfileSaveError(upsertError.message);
+      setIsSavingProfile(false);
+      return;
+    }
+
+    setProfiles((prev) => {
+      const existingIndex = prev.findIndex((profile) => profile.id === authUserId);
+      if (existingIndex === -1) return [...prev, payload];
+      const next = [...prev];
+      next[existingIndex] = { ...next[existingIndex], ...payload };
+      return next;
+    });
+
+    setProfileSaveMessage("Profile details saved successfully.");
+    setIsSavingProfile(false);
+  };
+
+  const handlePasswordChange = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setPasswordError(null);
+    setPasswordMessage(null);
+
+    if (!newPassword || !confirmPassword) {
+      setPasswordError("Please fill in both password fields.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError("Passwords do not match.");
+      return;
+    }
+
+    setIsChangingPassword(true);
+    const { error: updateError } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+
+    if (updateError) {
+      setPasswordError(updateError.message);
+      setIsChangingPassword(false);
+      return;
+    }
+
+    setPasswordMessage("Password updated successfully.");
+    setNewPassword("");
+    setConfirmPassword("");
+    setIsChangingPassword(false);
+  };
+
   return (
     <main className="wrap">
       <div className="banner">
@@ -464,78 +571,167 @@ export default function ProfilesPage() {
         {error ? <div className="card error">❌ {error}</div> : null}
 
         {!loading && !error ? (
-          <section className="profiles-grid">
-            {sortedProfiles.map((profile) => {
-              const perf = performanceByProfile[profile.id] || EMPTY_PERFORMANCE;
-              return (
-                <article key={profile.id} className="card perf-card">
-                  <div className="profile-head">
-                    <h2>{profile.email || "No email"}</h2>
-                    <p>
-                      {profile.job_role || "No role"} · {profile.store || "No store"}
-                    </p>
-                  </div>
+          <>
+            <section className="profiles-grid">
+              {sortedProfiles.map((profile) => {
+                const perf = performanceByProfile[profile.id] || EMPTY_PERFORMANCE;
+                return (
+                  <article key={profile.id} className="card perf-card">
+                    <div className="profile-head">
+                      <h2>{profile.email || "No email"}</h2>
+                      <p>
+                        {profile.job_role || "No role"} · {profile.store || "No store"}
+                      </p>
+                    </div>
 
-                  <div className="metrics-grid">
-                    <section className="panel">
-                      <h3>SERVICE</h3>
-                      <p>
-                        DOT: {toPctDisplay(perf.service.dot.mtd)} /{" "}
-                        {toPctDisplay(perf.service.dot.ytd)}
-                      </p>
-                      <p>
-                        EXTREME: {toPctDisplay(perf.service.extreme.mtd)} /{" "}
-                        {toPctDisplay(perf.service.extreme.ytd)}
-                      </p>
-                      <p>
-                        R&amp;L: {toNumberDisplay(perf.service.rnl.mtd)} /{" "}
-                        {toNumberDisplay(perf.service.rnl.ytd)}
-                      </p>
-                      <p>
-                        Additional Hours: {toNumberDisplay(perf.service.additionalHours.mtd)}{" "}
-                        / {toNumberDisplay(perf.service.additionalHours.ytd)}
-                      </p>
-                    </section>
+                    <div className="metrics-grid">
+                      <section className="panel">
+                        <h3>SERVICE</h3>
+                        <p>
+                          DOT: {toPctDisplay(perf.service.dot.mtd)} /{" "}
+                          {toPctDisplay(perf.service.dot.ytd)}
+                        </p>
+                        <p>
+                          EXTREME: {toPctDisplay(perf.service.extreme.mtd)} /{" "}
+                          {toPctDisplay(perf.service.extreme.ytd)}
+                        </p>
+                        <p>
+                          R&amp;L: {toNumberDisplay(perf.service.rnl.mtd)} /{" "}
+                          {toNumberDisplay(perf.service.rnl.ytd)}
+                        </p>
+                        <p>
+                          Additional Hours: {toNumberDisplay(perf.service.additionalHours.mtd)}{" "}
+                          / {toNumberDisplay(perf.service.additionalHours.ytd)}
+                        </p>
+                      </section>
 
-                    <section className="panel">
-                      <h3>COST CONTROL</h3>
-                      <p>
-                        Labour %: {toPctDisplay(perf.costControl.labour.mtd)} /{" "}
-                        {toPctDisplay(perf.costControl.labour.ytd)}
-                      </p>
-                      <p>
-                        Food Variance %: {toPctDisplay(perf.costControl.foodVariance.mtd)}{" "}
-                        / {toPctDisplay(perf.costControl.foodVariance.ytd)}
-                      </p>
-                    </section>
+                      <section className="panel">
+                        <h3>COST CONTROL</h3>
+                        <p>
+                          Labour %: {toPctDisplay(perf.costControl.labour.mtd)} /{" "}
+                          {toPctDisplay(perf.costControl.labour.ytd)}
+                        </p>
+                        <p>
+                          Food Variance %: {toPctDisplay(perf.costControl.foodVariance.mtd)}{" "}
+                          / {toPctDisplay(perf.costControl.foodVariance.ytd)}
+                        </p>
+                      </section>
 
-                    <section className="panel">
-                      <h3>INTERNAL OSA</h3>
-                      <p>
-                        Visits: {toNumberDisplay(perf.internalOsa.visits.mtd, 0)} /{" "}
-                        {toNumberDisplay(perf.internalOsa.visits.ytd, 0)}
-                      </p>
-                      <p>
-                        Average Score: {toNumberDisplay(perf.internalOsa.averageScore.mtd)}{" "}
-                        / {toNumberDisplay(perf.internalOsa.averageScore.ytd)}
-                      </p>
-                    </section>
+                      <section className="panel">
+                        <h3>INTERNAL OSA</h3>
+                        <p>
+                          Visits: {toNumberDisplay(perf.internalOsa.visits.mtd, 0)} /{" "}
+                          {toNumberDisplay(perf.internalOsa.visits.ytd, 0)}
+                        </p>
+                        <p>
+                          Average Score: {toNumberDisplay(perf.internalOsa.averageScore.mtd)}{" "}
+                          / {toNumberDisplay(perf.internalOsa.averageScore.ytd)}
+                        </p>
+                      </section>
 
-                    <section className="panel">
-                      <h3>WALKTHROUGH</h3>
-                      <p>
-                        Completed: {toNumberDisplay(perf.walkthrough.completed.mtd, 0)} /{" "}
-                        {toNumberDisplay(perf.walkthrough.completed.ytd, 0)}
-                      </p>
-                      <p>
-                        Latest completion: {toDateDisplay(perf.walkthrough.latestCompletionDate)}
-                      </p>
-                    </section>
-                  </div>
-                </article>
-              );
-            })}
-          </section>
+                      <section className="panel">
+                        <h3>WALKTHROUGH</h3>
+                        <p>
+                          Completed: {toNumberDisplay(perf.walkthrough.completed.mtd, 0)} /{" "}
+                          {toNumberDisplay(perf.walkthrough.completed.ytd, 0)}
+                        </p>
+                        <p>
+                          Latest completion: {toDateDisplay(perf.walkthrough.latestCompletionDate)}
+                        </p>
+                      </section>
+                    </div>
+                  </article>
+                );
+              })}
+            </section>
+
+            <section className="profile-actions-grid">
+              <article className="card action-card">
+                <h2>Profile details</h2>
+                <form className="form-grid" onSubmit={handleProfileSave}>
+                  <label>
+                    <span>Email</span>
+                    <input type="email" value={profileEmail} readOnly disabled />
+                  </label>
+
+                  <label>
+                    <span>Display name</span>
+                    <input
+                      type="text"
+                      value={displayName}
+                      onChange={(event) => setDisplayName(event.target.value)}
+                      placeholder="Enter your display name"
+                    />
+                  </label>
+
+                  <label>
+                    <span>Store</span>
+                    <select value={store} onChange={(event) => setStore(event.target.value)}>
+                      <option value="">Select store</option>
+                      {STORE_OPTIONS.map((storeOption) => (
+                        <option key={storeOption} value={storeOption}>
+                          {storeOption}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    <span>Job role</span>
+                    <input
+                      type="text"
+                      value={jobRole}
+                      onChange={(event) => setJobRole(event.target.value)}
+                      placeholder="Enter your job role"
+                    />
+                  </label>
+
+                  {profileSaveError ? <p className="feedback feedback--error">❌ {profileSaveError}</p> : null}
+                  {profileSaveMessage ? (
+                    <p className="feedback feedback--success">✅ {profileSaveMessage}</p>
+                  ) : null}
+
+                  <button type="submit" className="btn btn--brand" disabled={isSavingProfile}>
+                    {isSavingProfile ? "Saving…" : "Save profile"}
+                  </button>
+                </form>
+              </article>
+
+              <article className="card action-card">
+                <h2>Change password</h2>
+                <form className="form-grid" onSubmit={handlePasswordChange}>
+                  <label>
+                    <span>New password</span>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(event) => setNewPassword(event.target.value)}
+                      autoComplete="new-password"
+                    />
+                  </label>
+
+                  <label>
+                    <span>Confirm password</span>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      autoComplete="new-password"
+                    />
+                  </label>
+
+                  {passwordError ? <p className="feedback feedback--error">❌ {passwordError}</p> : null}
+                  {passwordMessage ? (
+                    <p className="feedback feedback--success">✅ {passwordMessage}</p>
+                  ) : null}
+
+                  <button type="submit" className="btn btn--brand" disabled={isChangingPassword}>
+                    {isChangingPassword ? "Updating…" : "Update password"}
+                  </button>
+                </form>
+              </article>
+            </section>
+          </>
         ) : null}
       </div>
 
@@ -576,6 +772,7 @@ export default function ProfilesPage() {
         .profiles-grid {
           display: grid;
           gap: 16px;
+          margin-bottom: 16px;
         }
         .card {
           background: #fff;
@@ -645,10 +842,60 @@ export default function ProfilesPage() {
           color: #0f172a;
           border-color: #dbe3ee;
         }
+        .profile-actions-grid {
+          display: grid;
+          gap: 16px;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .action-card h2 {
+          margin: 0 0 12px;
+          font-size: 1.05rem;
+          color: #0f172a;
+        }
+        .form-grid {
+          display: grid;
+          gap: 10px;
+        }
+        .form-grid label {
+          display: grid;
+          gap: 6px;
+        }
+        .form-grid span {
+          color: #475569;
+          font-size: 0.82rem;
+          font-weight: 600;
+        }
+        .form-grid input,
+        .form-grid select {
+          border: 1px solid #cbd5e1;
+          border-radius: 10px;
+          padding: 10px 12px;
+          font-size: 0.9rem;
+          color: #0f172a;
+          background: #fff;
+        }
+        .form-grid input:disabled {
+          color: #64748b;
+          background: #f1f5f9;
+        }
+        .feedback {
+          margin: 0;
+          font-size: 0.85rem;
+          font-weight: 600;
+        }
+        .feedback--error {
+          color: #b91c1c;
+        }
+        .feedback--success {
+          color: #15803d;
+        }
 
         @media (max-width: 980px) {
           .metrics-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .profile-actions-grid {
+            grid-template-columns: 1fr;
           }
         }
 
