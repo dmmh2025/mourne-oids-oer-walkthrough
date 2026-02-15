@@ -29,6 +29,8 @@ type LeaderAgg = {
   lastShiftAt: string | null; // uses shift_date if available, else created_at
 };
 
+type StatWindow = { visits: number; avgScore: number | null };
+
 const toNumber = (v: any): number | null => {
   if (v === null || v === undefined) return null;
   if (typeof v === "number" && !isNaN(v)) return v;
@@ -93,7 +95,9 @@ const detectStoreKey = (rows: OsaRow[]): string | null => {
   const keys = new Set(Object.keys(rows[0] || {}));
   for (const c of candidates) if (keys.has(c)) return c;
 
-  const fallback = Array.from(keys).find((k) => k.toLowerCase().includes("store"));
+  const fallback = Array.from(keys).find((k) =>
+    k.toLowerCase().includes("store")
+  );
   return fallback || null;
 };
 
@@ -156,7 +160,6 @@ const formatStamp = (iso: string | null) => {
 };
 
 const formatShortDate = (isoDate: string) => {
-  // isoDate: YYYY-MM-DD
   const d = new Date(isoDate + "T00:00:00");
   if (isNaN(d.getTime())) return "—";
   return d.toLocaleDateString("en-GB", {
@@ -172,13 +175,12 @@ const formatShiftDateAny = (v: any) => {
   if (v === null || v === undefined) return "—";
   const s = String(v).trim();
   if (!s) return "—";
-  // date-only
   if (isYYYYMMDD(s)) return formatShortDate(s);
-  // timestamp-ish
   return formatStamp(s);
 };
 
-const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
+const avg = (arr: number[]) =>
+  arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
 const toISODateLocal = (date: Date) => {
   const year = date.getFullYear();
@@ -239,10 +241,7 @@ const calcStats = (rows: OsaRow[]) => {
   };
 };
 
-const emptyStatWindow = () => ({
-  visits: 0,
-  avgScore: 0,
-});
+const emptyStatWindow = (): StatWindow => ({ visits: 0, avgScore: null });
 
 const getTomorrowStart = () => {
   const tomorrow = parseISODate(toISODateUK(new Date()));
@@ -261,30 +260,19 @@ const getWeekRange = () => {
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
 
-  return {
-    from: toISODateLocal(monday),
-    to: toISODateLocal(sunday),
-  };
+  return { from: toISODateLocal(monday), to: toISODateLocal(sunday) };
 };
 
 const getMonthRange = () => {
   const first = startOfThisMonthLocal();
   const today = parseISODate(toISODateUK(new Date()));
-
-  return {
-    from: toISODateLocal(first),
-    to: toISODateLocal(today),
-  };
+  return { from: toISODateLocal(first), to: toISODateLocal(today) };
 };
 
 const getYearRange = () => {
   const first = startOfThisYearLocal();
   const today = parseISODate(toISODateUK(new Date()));
-
-  return {
-    from: toISODateLocal(first),
-    to: toISODateLocal(today),
-  };
+  return { from: toISODateLocal(first), to: toISODateLocal(today) };
 };
 
 const pillClassFromStars = (stars: number) => {
@@ -362,7 +350,6 @@ function buildAgg(
 
 export default function InternalOsaScorecardPage() {
   const router = useRouter();
-
   const defaultWeekRange = useMemo(() => getWeekRange(), []);
 
   // Date filter (inclusive)
@@ -377,9 +364,6 @@ export default function InternalOsaScorecardPage() {
   const [loading, setLoading] = useState<boolean>(false);
   const [dateMode, setDateMode] = useState<"shift_date" | "created_at">("shift_date");
 
-  // Load data for date range:
-  // 1) Try shift_date filtering (preferred)
-  // 2) If shift_date column doesn’t exist, fall back to created_at filtering
   useEffect(() => {
     const load = async () => {
       if (!supabase) {
@@ -466,14 +450,12 @@ export default function InternalOsaScorecardPage() {
   }, [rows]);
 
   const effectiveDateKey = useMemo(() => {
-    // Use whichever date column exists (prefer shift_date-style)
     return debugKeys.shiftDateKey || null;
   }, [debugKeys.shiftDateKey]);
 
   // Manager agg
   const managerAgg = useMemo(() => {
-    if (!rows.length)
-      return { items: [] as LeaderAgg[] };
+    if (!rows.length) return { items: [] as LeaderAgg[] };
 
     return buildAgg(
       rows,
@@ -487,8 +469,7 @@ export default function InternalOsaScorecardPage() {
 
   // Store agg
   const storeAgg = useMemo(() => {
-    if (!rows.length)
-      return { items: [] as LeaderAgg[] };
+    if (!rows.length) return { items: [] as LeaderAgg[] };
 
     return buildAgg(
       rows,
@@ -510,36 +491,26 @@ export default function InternalOsaScorecardPage() {
   const showUnknownStores = storeTable.some((x) => x.name === "Unknown store");
 
   const { mtdStats, ytdStats } = useMemo(() => {
-    if (!rows.length) {
-      return {
-        mtdStats: emptyStatWindow(),
-        ytdStats: emptyStatWindow(),
-      };
-    }
+    if (!rows.length) return { mtdStats: { visits: 0, avgScore: 0 }, ytdStats: { visits: 0, avgScore: 0 } };
 
     const tomorrow = getTomorrowStart();
+    const monthStart = startOfThisMonthLocal();
+    const yearStart = startOfThisYearLocal();
 
-    const mtdRows = rows.filter((r) =>
-      inRange(String(r.shift_date || ""), startOfThisMonthLocal(), tomorrow)
-    );
-    const ytdRows = rows.filter((r) =>
-      inRange(String(r.shift_date || ""), startOfThisYearLocal(), tomorrow)
-    );
+    const getDateStr = (r: OsaRow) =>
+      String((effectiveDateKey ? r[effectiveDateKey] : r.shift_date) || "");
+
+    const mtdRows = rows.filter((r) => inRange(getDateStr(r), monthStart, tomorrow));
+    const ytdRows = rows.filter((r) => inRange(getDateStr(r), yearStart, tomorrow));
 
     return {
       mtdStats: calcStats(mtdRows),
       ytdStats: calcStats(ytdRows),
     };
-  }, [rows]);
+  }, [rows, effectiveDateKey]);
 
   const managerStatWindows = useMemo(() => {
-    const byManager: Record<
-      string,
-      {
-        mtd: { visits: number; avgScore: number | null };
-        ytd: { visits: number; avgScore: number | null };
-      }
-    > = {};
+    const byManager: Record<string, { mtd: StatWindow; ytd: StatWindow }> = {};
 
     const managerKey = debugKeys.managerKey;
     if (!rows.length || !managerKey) return byManager;
@@ -548,12 +519,12 @@ export default function InternalOsaScorecardPage() {
     const monthStart = startOfThisMonthLocal();
     const yearStart = startOfThisYearLocal();
 
-    const makeWindow = (windowRows: OsaRow[]) => {
+    const getDateStr = (r: OsaRow) =>
+      String((effectiveDateKey ? r[effectiveDateKey] : r.shift_date) || "");
+
+    const makeWindow = (windowRows: OsaRow[]): StatWindow => {
       const stats = calcStats(windowRows);
-      return {
-        visits: stats.visits,
-        avgScore: stats.visits ? stats.avgScore : null,
-      };
+      return { visits: stats.visits, avgScore: stats.visits ? stats.avgScore : null };
     };
 
     for (const manager of mgrTable) {
@@ -562,20 +533,53 @@ export default function InternalOsaScorecardPage() {
       );
 
       const mtdRows = managerRows.filter((r) =>
-        inRange(String((effectiveDateKey ? r[effectiveDateKey] : r.shift_date) || ""), monthStart, tomorrow)
+        inRange(getDateStr(r), monthStart, tomorrow)
       );
       const ytdRows = managerRows.filter((r) =>
-        inRange(String((effectiveDateKey ? r[effectiveDateKey] : r.shift_date) || ""), yearStart, tomorrow)
+        inRange(getDateStr(r), yearStart, tomorrow)
       );
 
-      byManager[manager.name] = {
-        mtd: makeWindow(mtdRows),
-        ytd: makeWindow(ytdRows),
-      };
+      byManager[manager.name] = { mtd: makeWindow(mtdRows), ytd: makeWindow(ytdRows) };
     }
 
     return byManager;
   }, [rows, mgrTable, debugKeys.managerKey, effectiveDateKey]);
+
+  const storeStatWindows = useMemo(() => {
+    const byStore: Record<string, { mtd: StatWindow; ytd: StatWindow }> = {};
+
+    const storeKey = debugKeys.storeKey;
+    if (!rows.length || !storeKey) return byStore;
+
+    const tomorrow = getTomorrowStart();
+    const monthStart = startOfThisMonthLocal();
+    const yearStart = startOfThisYearLocal();
+
+    const getDateStr = (r: OsaRow) =>
+      String((effectiveDateKey ? r[effectiveDateKey] : r.shift_date) || "");
+
+    const makeWindow = (windowRows: OsaRow[]): StatWindow => {
+      const stats = calcStats(windowRows);
+      return { visits: stats.visits, avgScore: stats.visits ? stats.avgScore : null };
+    };
+
+    for (const store of storeTable) {
+      const storeRows = rows.filter(
+        (r) => (cleanName(r[storeKey]) || "Unknown store") === store.name
+      );
+
+      const mtdRows = storeRows.filter((r) =>
+        inRange(getDateStr(r), monthStart, tomorrow)
+      );
+      const ytdRows = storeRows.filter((r) =>
+        inRange(getDateStr(r), yearStart, tomorrow)
+      );
+
+      byStore[store.name] = { mtd: makeWindow(mtdRows), ytd: makeWindow(ytdRows) };
+    }
+
+    return byStore;
+  }, [rows, storeTable, debugKeys.storeKey, effectiveDateKey]);
 
   return (
     <main className="wrap">
@@ -671,7 +675,7 @@ export default function InternalOsaScorecardPage() {
                 }}
                 type="button"
               >
-                This Month
+                This month
               </button>
 
               <button
@@ -684,9 +688,8 @@ export default function InternalOsaScorecardPage() {
                 }}
                 type="button"
               >
-                This Year
+                This year
               </button>
-
             </div>
           </div>
         </section>
@@ -699,8 +702,7 @@ export default function InternalOsaScorecardPage() {
           <div className="alert muted">Loading results…</div>
         ) : rows.length === 0 ? (
           <div className="alert muted">
-            No results found in <code>osa_internal_results</code> for this date
-            range.
+            No results found in <code>osa_internal_results</code> for this date range.
           </div>
         ) : (
           <>
@@ -710,8 +712,7 @@ export default function InternalOsaScorecardPage() {
                 <div>
                   <h2>Manager scorecard</h2>
                   <p>
-                    Ranked by <b>lowest avg points lost</b> (tie-break: higher avg
-                    stars)
+                    Ranked by <b>lowest avg points lost</b> (tie-break: higher avg stars)
                   </p>
                 </div>
                 <div className="kpi-mini">
@@ -790,34 +791,16 @@ export default function InternalOsaScorecardPage() {
                       <tr key={`${m.name}-${i}`}>
                         <td className="rank">{i + 1}</td>
                         <td className="name">
- codex/find-and-update-table-wrapper-styles
-          max-width: none;
-        }
-
-        .name-text {
-          display: inline-block;
-          max-width: none;
-          white-space: normal;
-          overflow: visible;
-          text-overflow: clip;
-          word-break: break-word;
-          vertical-align: bottom;
-
-        }
-
-        .nameTrigger {
-          font-weight: 800;
-main
-                          <HoverStatPanel
-                            label={m.name}
-                            mtd={managerStatWindows[m.name]?.mtd ?? { visits: 0, avgScore: null }}
-                            ytd={managerStatWindows[m.name]?.ytd ?? { visits: 0, avgScore: null }}
-                          >
-                            <span className="nameCell">
-                              <span className="name-text">{m.name}</span>
-                              <span className="hoverWrap">{m.name}</span>
-                            </span>
-                          </HoverStatPanel>
+                          <div className="nameCell">
+                            <span className="nameTrigger">{m.name}</span>
+                            <div className="hoverWrap">
+                              <HoverStatPanel
+                                label={m.name}
+                                mtd={managerStatWindows[m.name]?.mtd ?? emptyStatWindow()}
+                                ytd={managerStatWindows[m.name]?.ytd ?? emptyStatWindow()}
+                              />
+                            </div>
+                          </div>
                         </td>
                         <td className="num">
                           <span className={pillClassFromPointsLost(m.avgPointsLost)}>
@@ -854,8 +837,7 @@ main
                 <div>
                   <h2>Store scorecard</h2>
                   <p>
-                    Ranked by <b>lowest avg points lost</b> (tie-break: higher avg
-                    stars)
+                    Ranked by <b>lowest avg points lost</b> (tie-break: higher avg stars)
                   </p>
                 </div>
                 <div className="kpi-mini">
@@ -925,10 +907,16 @@ main
                       <tr key={`${s.name}-${i}`}>
                         <td className="rank">{i + 1}</td>
                         <td className="name">
-                          <span className="nameCell">
-                            <span className="name-text">{s.name}</span>
-                            <span className="hoverWrap">{s.name}</span>
-                          </span>
+                          <div className="nameCell">
+                            <span className="nameTrigger">{s.name}</span>
+                            <div className="hoverWrap">
+                              <HoverStatPanel
+                                label={s.name}
+                                mtd={storeStatWindows[s.name]?.mtd ?? emptyStatWindow()}
+                                ytd={storeStatWindows[s.name]?.ytd ?? emptyStatWindow()}
+                              />
+                            </div>
+                          </div>
                         </td>
                         <td className="num">
                           <span className={pillClassFromPointsLost(s.avgPointsLost)}>
@@ -1325,42 +1313,6 @@ main
           box-shadow: 0 12px 28px rgba(2, 6, 23, 0.05);
         }
 
-        .nameCell {
-          position: relative;
-          display: inline-block;
-        }
-
-        .nameTrigger {
-          font-weight: 800;
-        }
-
-        .hoverWrap {
-          position: absolute;
-          left: 0;
-codex/update-css-hover-behaviour-in-page.tsx
-          top: calc(100% + 6px);
-          display: none;
-          max-width: min(360px, 80vw);
-          padding: 8px 10px;
-          border-radius: 10px;
-          background: #0f172a;
-          color: #f8fafc;
-          box-shadow: 0 12px 28px rgba(2, 6, 23, 0.28);
-          white-space: normal;
-          font-size: 12px;
-          font-weight: 800;
-          line-height: 1.35;
-        }
-
-        .nameCell:hover .hoverWrap {
-          display: block;
-
-          top: 100%;
-          margin-top: 8px;
-          z-index: 9999;
- main
-        }
-
         .table {
           width: 100%;
           border-collapse: collapse;
@@ -1398,6 +1350,30 @@ codex/update-css-hover-behaviour-in-page.tsx
         td.date {
           font-weight: 800;
           color: #334155;
+        }
+
+        /* Hover panel behaviour */
+        .nameCell {
+          position: relative;
+          display: inline-block;
+        }
+
+        .nameTrigger {
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .hoverWrap {
+          position: absolute;
+          left: 0;
+          top: calc(100% + 8px);
+          display: none;
+          z-index: 9999;
+          max-width: min(380px, 80vw);
+        }
+
+        .nameCell:hover .hoverWrap {
+          display: block;
         }
 
         .debug {
