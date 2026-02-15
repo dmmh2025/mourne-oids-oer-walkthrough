@@ -148,7 +148,7 @@ const TILES: Tile[] = [
   },
 
   {
-    href: "/profiles",
+    href: "/profile",
     title: "My Profile",
     desc: "Update details & password.",
     variant: "profile",
