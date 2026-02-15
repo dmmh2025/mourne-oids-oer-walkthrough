@@ -277,8 +277,7 @@ export default function ManagerPerformanceIndexPage() {
         dot: dotAvg,
         extremeOver40: extremesAvg,
         rnlMinutes: rnlAvg,
-        // @ts-expect-error (in case your scoring lib doesn't include this yet)
-        additionalHours: additionalHoursAvg,
+               additionalHours: additionalHoursAvg,
       });
 
       // ----- OSA -----
