@@ -790,26 +790,34 @@ export default function InternalOsaScorecardPage() {
                       <tr key={`${m.name}-${i}`}>
                         <td className="rank">{i + 1}</td>
                         <td className="name">
- codex/refactor-manager-name-cell-structure
-                          <div className="nameCell">
-                            <span className="nameTrigger">{m.name}</span>
-                            <div className="hoverWrap">
-                              <HoverStatPanel
-                            label={m.name}
-                            mtd={managerStatWindows[m.name]?.mtd ?? { visits: 0, avgScore: null }}
-                            ytd={managerStatWindows[m.name]?.ytd ?? { visits: 0, avgScore: null }}
-                              />
-                            </div>
-                          </div>
+ codex/find-and-update-table-wrapper-styles
+          max-width: none;
+        }
 
+        .name-text {
+          display: inline-block;
+          max-width: none;
+          white-space: normal;
+          overflow: visible;
+          text-overflow: clip;
+          word-break: break-word;
+          vertical-align: bottom;
+
+        }
+
+        .nameTrigger {
+          font-weight: 800;
+main
                           <HoverStatPanel
                             label={m.name}
                             mtd={managerStatWindows[m.name]?.mtd ?? { visits: 0, avgScore: null }}
                             ytd={managerStatWindows[m.name]?.ytd ?? { visits: 0, avgScore: null }}
                           >
-                            <span>{m.name}</span>
+                            <span className="nameCell">
+                              <span className="name-text">{m.name}</span>
+                              <span className="hoverWrap">{m.name}</span>
+                            </span>
                           </HoverStatPanel>
- main
                         </td>
                         <td className="num">
                           <span className={pillClassFromPointsLost(m.avgPointsLost)}>
@@ -917,9 +925,9 @@ export default function InternalOsaScorecardPage() {
                       <tr key={`${s.name}-${i}`}>
                         <td className="rank">{i + 1}</td>
                         <td className="name">
-                          <span className="name-cell">
+                          <span className="nameCell">
                             <span className="name-text">{s.name}</span>
-                            <span className="name-hover-panel">{s.name}</span>
+                            <span className="hoverWrap">{s.name}</span>
                           </span>
                         </td>
                         <td className="num">
@@ -1329,9 +1337,28 @@ export default function InternalOsaScorecardPage() {
         .hoverWrap {
           position: absolute;
           left: 0;
+codex/update-css-hover-behaviour-in-page.tsx
+          top: calc(100% + 6px);
+          display: none;
+          max-width: min(360px, 80vw);
+          padding: 8px 10px;
+          border-radius: 10px;
+          background: #0f172a;
+          color: #f8fafc;
+          box-shadow: 0 12px 28px rgba(2, 6, 23, 0.28);
+          white-space: normal;
+          font-size: 12px;
+          font-weight: 800;
+          line-height: 1.35;
+        }
+
+        .nameCell:hover .hoverWrap {
+          display: block;
+
           top: 100%;
           margin-top: 8px;
           z-index: 9999;
+ main
         }
 
         .table {
