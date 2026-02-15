@@ -11,55 +11,52 @@ type HoverAnchorBindings<T extends HoverBindableElement> = {
 };
 
 export type UseHoverAnchorResult = {
-  anchorRect: DOMRect | null;
-  isOpen: boolean;
-  open: (element: HoverBindableElement) => void;
-  close: () => void;
+  rect: DOMRect | null;
+  open: boolean;
   bind: <T extends HoverBindableElement>() => HoverAnchorBindings<T>;
+  show: (element: HoverBindableElement) => void;
+  hide: () => void;
 };
 
-const getRectFromElement = (element: HoverBindableElement): DOMRect =>
-  element.getBoundingClientRect();
-
 export function useHoverAnchor(): UseHoverAnchorResult {
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-  const [isOpen, setIsOpen] = useState(false);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const [open, setOpen] = useState(false);
 
-  const open = useCallback((element: HoverBindableElement) => {
-    setAnchorRect(getRectFromElement(element));
-    setIsOpen(true);
+  const show = useCallback((element: HoverBindableElement) => {
+    setRect(element.getBoundingClientRect());
+    setOpen(true);
   }, []);
 
-  const close = useCallback(() => {
-    setIsOpen(false);
+  const hide = useCallback(() => {
+    setOpen(false);
   }, []);
 
   const bind = useCallback(
     <T extends HoverBindableElement>(): HoverAnchorBindings<T> => ({
       onMouseEnter: (event) => {
-        open(event.currentTarget);
+        show(event.currentTarget);
       },
       onMouseLeave: () => {
-        close();
+        hide();
       },
       onFocus: (event) => {
-        open(event.currentTarget);
+        show(event.currentTarget);
       },
       onBlur: () => {
-        close();
+        hide();
       },
     }),
-    [close, open],
+    [hide, show],
   );
 
   return useMemo(
     () => ({
-      anchorRect,
-      isOpen,
+      rect,
       open,
-      close,
       bind,
+      show,
+      hide,
     }),
-    [anchorRect, bind, close, isOpen, open],
+    [bind, hide, open, rect, show],
   );
 }
