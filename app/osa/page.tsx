@@ -790,19 +790,16 @@ export default function InternalOsaScorecardPage() {
                       <tr key={`${m.name}-${i}`}>
                         <td className="rank">{i + 1}</td>
                         <td className="name">
- codex/locate-and-update-table/list-wrapper
-                          <span className="name-cell">
-                            <span className="name-text">{m.name}</span>
-                            <span className="name-hover-panel">{m.name}</span>
-                          </span>
-                  <HoverStatPanel
+                          <div className="nameCell">
+                            <span className="nameTrigger">{m.name}</span>
+                            <div className="hoverWrap">
+                              <HoverStatPanel
                             label={m.name}
                             mtd={managerStatWindows[m.name]?.mtd ?? { visits: 0, avgScore: null }}
                             ytd={managerStatWindows[m.name]?.ytd ?? { visits: 0, avgScore: null }}
-                          >
-                            <span>{m.name}</span>
-                          </HoverStatPanel>
- main
+                              />
+                            </div>
+                          </div>
                         </td>
                         <td className="num">
                           <span className={pillClassFromPointsLost(m.avgPointsLost)}>
@@ -1303,49 +1300,28 @@ export default function InternalOsaScorecardPage() {
 
         /* Table */
         .table-wrap {
-          overflow-x: auto;
-          overflow-y: visible;
+          overflow: visible;
           border-radius: 16px;
           border: 1px solid rgba(15, 23, 42, 0.08);
           background: rgba(255, 255, 255, 0.9);
           box-shadow: 0 12px 28px rgba(2, 6, 23, 0.05);
         }
 
-        .name-cell {
+        .nameCell {
           position: relative;
           display: inline-block;
-          max-width: 220px;
         }
 
-        .name-text {
-          display: inline-block;
-          max-width: 220px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          vertical-align: bottom;
-        }
-
-        .name-hover-panel {
-          position: absolute;
-          z-index: 9999;
-          left: 0;
-          top: calc(100% + 6px);
-          display: none;
-          max-width: min(360px, 80vw);
-          padding: 8px 10px;
-          border-radius: 10px;
-          background: #0f172a;
-          color: #f8fafc;
-          box-shadow: 0 12px 28px rgba(2, 6, 23, 0.28);
-          white-space: normal;
-          font-size: 12px;
+        .nameTrigger {
           font-weight: 800;
-          line-height: 1.35;
         }
 
-        .name-cell:hover .name-hover-panel {
-          display: block;
+        .hoverWrap {
+          position: absolute;
+          left: 0;
+          top: 100%;
+          margin-top: 8px;
+          z-index: 9999;
         }
 
         .table {
@@ -1379,6 +1355,7 @@ export default function InternalOsaScorecardPage() {
         td.rank,
         td.name {
           font-weight: 900;
+          overflow: visible;
         }
 
         td.date {
