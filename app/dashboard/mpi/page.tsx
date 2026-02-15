@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { scoreCost, scoreMpi, scoreOsa, scoreService } from "@/lib/mpi/scoring";
+import { scoreCost, scoreOsa, scoreService } from "@/lib/mpi/scoring";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,10 +27,17 @@ type ServiceShiftRow = {
 };
 
 type CostControlRow = {
-  manager_profile_id: string | null;
+  manager_user_id: string | null; // ✅ this matches your schema
   shift_date: string;
-  labour_pct: number | null;
-  // support either column name (depending on your schema)
+
+  // ✅ your schema columns
+  sales_gbp: number | null;
+  labour_cost_gbp: number | null;
+  ideal_food_cost_gbp: number | null;
+  actual_food_cost_gbp: number | null;
+
+  // optional / legacy support (won't hurt if missing)
+  labour_pct?: number | null;
   food_variance?: number | null;
   food_variance_pct?: number | null;
   sales?: number | null;
@@ -48,7 +55,6 @@ type LeaderRow = {
   profileId: string;
   manager: string;
   store: string;
-
   service: number | null;
   cost: number | null;
   osa: number | null;
@@ -66,7 +72,6 @@ const toISODateUK = (date: Date) => {
   const year = parts.find((p) => p.type === "year")?.value ?? "0000";
   const month = parts.find((p) => p.type === "month")?.value ?? "01";
   const day = parts.find((p) => p.type === "day")?.value ?? "01";
-
   return `${year}-${month}-${day}`;
 };
 
@@ -76,31 +81,80 @@ const startOfYearUKISO = () => {
   return `${year || new Date().getFullYear()}-01-01`;
 };
 
-// IMPORTANT: return null if no values (prevents fake "0" averages)
-const avgOrNull = (values: number[]) =>
-  values.length ? values.reduce((sum, val) => sum + val, 0) / values.length : null;
+const avg = (values: number[]) =>
+  values.length ? values.reduce((sum, val) => sum + val, 0) / values.length : 0;
 
-const normalizePct01 = (value: number | null) => {
+const normalizePct = (value: number | null) => {
   if (value == null || !Number.isFinite(value)) return null;
-  // supports 0..1 or 0..100
   return value > 1 ? value / 100 : value;
 };
 
 const normalizeRackLoadMinutes = (value: number | null) => {
   if (value == null || !Number.isFinite(value) || value <= 0) return null;
   const minutes = value > 60 && value <= 3600 ? value / 60 : value;
-  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+  if (!Number.isFinite(minutes)) return null;
   return minutes;
 };
 
-const pillClass = (score: number | null) => {
-  if (score == null) return "pill";
+const isFiniteNumber = (n: any): n is number =>
+  typeof n === "number" && Number.isFinite(n);
+
+const safeDiv = (num: number, den: number) => {
+  if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) return null;
+  return num / den;
+};
+
+const deriveLabourPct = (row: CostControlRow): number | null => {
+  // prefer explicit labour_pct if it exists
+  if (isFiniteNumber(row.labour_pct)) return row.labour_pct;
+
+  // otherwise compute from £ fields if present
+  const sales =
+    (isFiniteNumber(row.sales_gbp) ? row.sales_gbp : null) ??
+    (isFiniteNumber(row.sales_total) ? row.sales_total : null) ??
+    (isFiniteNumber(row.sales) ? row.sales : null);
+
+  const labourCost = isFiniteNumber(row.labour_cost_gbp) ? row.labour_cost_gbp : null;
+
+  if (sales == null || labourCost == null) return null;
+
+  const pct = safeDiv(labourCost, sales);
+  return pct == null ? null : pct * 100;
+};
+
+const deriveFoodVariancePct = (row: CostControlRow): number | null => {
+  // prefer explicit if exists
+  if (isFiniteNumber(row.food_variance_pct)) return row.food_variance_pct;
+  if (isFiniteNumber(row.food_variance)) return row.food_variance;
+
+  const sales =
+    (isFiniteNumber(row.sales_gbp) ? row.sales_gbp : null) ??
+    (isFiniteNumber(row.sales_total) ? row.sales_total : null) ??
+    (isFiniteNumber(row.sales) ? row.sales : null);
+
+  const ideal = isFiniteNumber(row.ideal_food_cost_gbp) ? row.ideal_food_cost_gbp : null;
+  const actual = isFiniteNumber(row.actual_food_cost_gbp) ? row.actual_food_cost_gbp : null;
+
+  if (sales == null || ideal == null || actual == null) return null;
+
+  const variancePct = safeDiv(actual - ideal, sales);
+  return variancePct == null ? null : variancePct * 100;
+};
+
+const costSalesWeight = (row: CostControlRow): number | null => {
+  const w =
+    (isFiniteNumber(row.sales_gbp) ? row.sales_gbp : null) ??
+    (isFiniteNumber(row.sales_total) ? row.sales_total : null) ??
+    (isFiniteNumber(row.sales) ? row.sales : null);
+
+  return w != null && w > 0 ? w : null;
+};
+
+const pillClass = (score: number) => {
   if (score >= 80) return "pill green";
   if (score >= 60) return "pill amber";
   return "pill red";
 };
-
-const formatScore = (score: number | null) => (score == null ? "—" : String(score));
 
 export default function ManagerPerformanceIndexPage() {
   const [loading, setLoading] = useState(true);
@@ -134,9 +188,12 @@ export default function ManagerPerformanceIndexPage() {
           .gte("shift_date", yearStartIso)
           .lte("shift_date", todayIso),
 
+        // ✅ only select the columns that exist in your cost table
         supabase
           .from("cost_control_entries")
-          .select("*")
+          .select(
+            "manager_user_id,shift_date,sales_gbp,labour_cost_gbp,ideal_food_cost_gbp,actual_food_cost_gbp"
+          )
           .gte("shift_date", yearStartIso)
           .lte("shift_date", todayIso),
 
@@ -179,10 +236,10 @@ export default function ManagerPerformanceIndexPage() {
     }
 
     for (const row of costRows) {
-      if (!row.manager_profile_id) continue;
-      const existing = byManagerCost.get(row.manager_profile_id) || [];
+      if (!row.manager_user_id) continue;
+      const existing = byManagerCost.get(row.manager_user_id) || [];
       existing.push(row);
-      byManagerCost.set(row.manager_profile_id, existing);
+      byManagerCost.set(row.manager_user_id, existing);
     }
 
     for (const row of osaRows) {
@@ -197,57 +254,47 @@ export default function ManagerPerformanceIndexPage() {
       const managerCostRows = byManagerCost.get(profile.id) || [];
       const managerOsaRows = byManagerOsa.get(profile.id) || [];
 
-      // ---------- SERVICE ----------
-      const dotAvg = avgOrNull(
-        managerServiceRows
-          .map((r) => normalizePct01(r.dot_pct))
-          .filter((v): v is number => v != null)
-      );
+      // ----- SERVICE -----
+      const dotVals = managerServiceRows
+        .map((r) => normalizePct(r.dot_pct))
+        .filter((v): v is number => v != null);
+      const extremesVals = managerServiceRows
+        .map((r) => normalizePct(r.extreme_over_40))
+        .filter((v): v is number => v != null);
+      const rnlVals = managerServiceRows
+        .map((r) => normalizeRackLoadMinutes(r.rnl_minutes))
+        .filter((v): v is number => v != null);
+      const addHoursVals = managerServiceRows
+        .map((r) => (isFiniteNumber(r.additional_hours) ? r.additional_hours : null))
+        .filter((v): v is number => v != null);
 
-      const extremesAvg = avgOrNull(
-        managerServiceRows
-          .map((r) => normalizePct01(r.extreme_over_40))
-          .filter((v): v is number => v != null)
-      );
+      const dotAvg = dotVals.length ? avg(dotVals) : null;
+      const extremesAvg = extremesVals.length ? avg(extremesVals) : null;
+      const rnlAvg = rnlVals.length ? avg(rnlVals) : null;
+      const additionalHoursAvg = addHoursVals.length ? avg(addHoursVals) : null;
 
-      const rnlAvg = avgOrNull(
-        managerServiceRows
-          .map((r) => normalizeRackLoadMinutes(r.rnl_minutes))
-          .filter((v): v is number => v != null)
-      );
-
-      const additionalHoursAvg = avgOrNull(
-        managerServiceRows
-          .map((r) => r.additional_hours)
-          .filter((v): v is number => typeof v === "number" && Number.isFinite(v))
-      );
-
-      const serviceScoreRaw = scoreService({
+      const serviceScore = scoreService({
         dot: dotAvg,
         extremeOver40: extremesAvg,
         rnlMinutes: rnlAvg,
+        // @ts-expect-error (in case your scoring lib doesn't include this yet)
         additionalHours: additionalHoursAvg,
       });
 
-      const serviceScore = serviceScoreRaw == null ? null : Math.round(serviceScoreRaw);
+      // ----- OSA -----
+      const starsVals = managerOsaRows
+        .map((r) => (isFiniteNumber(r.stars) ? r.stars : null))
+        .filter((v): v is number => v != null);
+      const pointsLostVals = managerOsaRows
+        .map((r) => (isFiniteNumber(r.points_lost) ? r.points_lost : null))
+        .filter((v): v is number => v != null);
 
-      // ---------- OSA ----------
-      const starsAvg = avgOrNull(
-        managerOsaRows
-          .map((r) => r.stars)
-          .filter((v): v is number => typeof v === "number" && Number.isFinite(v))
-      );
+      const starsAvg = starsVals.length ? avg(starsVals) : null;
+      const pointsLostAvg = pointsLostVals.length ? avg(pointsLostVals) : null;
 
-      const pointsLostAvg = avgOrNull(
-        managerOsaRows
-          .map((r) => r.points_lost)
-          .filter((v): v is number => typeof v === "number" && Number.isFinite(v))
-      );
+      const osaScore = scoreOsa(starsAvg, pointsLostAvg);
 
-      const osaScoreRaw = scoreOsa(starsAvg, pointsLostAvg);
-      const osaScore = osaScoreRaw == null ? null : Math.round(osaScoreRaw);
-
-      // ---------- COST (sales-weighted if possible) ----------
+      // ----- COST (sales-weighted) -----
       let labourWeightedTotal = 0;
       let labourWeightSum = 0;
       const labourFallback: number[] = [];
@@ -257,94 +304,68 @@ export default function ManagerPerformanceIndexPage() {
       const foodFallback: number[] = [];
 
       for (const row of managerCostRows) {
-        const salesWeightRaw =
-          typeof row.sales_total === "number"
-            ? row.sales_total
-            : typeof row.sales === "number"
-              ? row.sales
-              : null;
+        const w = costSalesWeight(row);
 
-        const hasWeight =
-          typeof salesWeightRaw === "number" &&
-          Number.isFinite(salesWeightRaw) &&
-          salesWeightRaw > 0;
-
-        if (typeof row.labour_pct === "number" && Number.isFinite(row.labour_pct)) {
-          if (hasWeight) {
-            labourWeightedTotal += row.labour_pct * salesWeightRaw;
-            labourWeightSum += salesWeightRaw;
+        const labourPct = deriveLabourPct(row);
+        if (labourPct != null) {
+          if (w != null) {
+            labourWeightedTotal += labourPct * w;
+            labourWeightSum += w;
           }
-          labourFallback.push(row.labour_pct);
+          labourFallback.push(labourPct);
         }
 
-        const foodVariancePct =
-          typeof row.food_variance === "number" && Number.isFinite(row.food_variance)
-            ? row.food_variance
-            : typeof row.food_variance_pct === "number" &&
-                Number.isFinite(row.food_variance_pct)
-              ? row.food_variance_pct
-              : null;
-
-        if (foodVariancePct != null) {
-          if (hasWeight) {
-            foodWeightedTotal += foodVariancePct * salesWeightRaw!;
-            foodWeightSum += salesWeightRaw!;
+        const foodVarPct = deriveFoodVariancePct(row);
+        if (foodVarPct != null) {
+          if (w != null) {
+            foodWeightedTotal += foodVarPct * w;
+            foodWeightSum += w;
           }
-          foodFallback.push(foodVariancePct);
+          foodFallback.push(foodVarPct);
         }
       }
 
       const labourYtd =
-        labourWeightSum > 0
-          ? labourWeightedTotal / labourWeightSum
-          : avgOrNull(labourFallback);
+        labourWeightSum > 0 ? labourWeightedTotal / labourWeightSum : labourFallback.length ? avg(labourFallback) : null;
 
       const foodVariancePctYtd =
-        foodWeightSum > 0 ? foodWeightedTotal / foodWeightSum : avgOrNull(foodFallback);
+        foodWeightSum > 0 ? foodWeightedTotal / foodWeightSum : foodFallback.length ? avg(foodFallback) : null;
 
-      const costScoreRaw = scoreCost({
+      const costScore = scoreCost({
         labourPct: labourYtd,
         foodVariancePct: foodVariancePctYtd,
       });
 
-      const costScore = costScoreRaw == null ? null : Math.round(costScoreRaw);
+      // ----- MPI TOTAL (weights) -----
+      const serviceN = serviceScore ?? null;
+      const costN = costScore ?? null;
+      const osaN = osaScore ?? null;
 
-      // ---------- MPI TOTAL (use helper weighting) ----------
-      const mpiRaw = scoreMpi({
-        service: serviceScore,
-        cost: costScore,
-        osa: osaScore,
-      });
+      const hasAny = serviceN != null || costN != null || osaN != null;
 
-      const mpi = mpiRaw == null ? null : Math.round(mpiRaw);
+      const mpi = hasAny
+        ? Math.round((serviceN ?? 0) * 0.5 + (costN ?? 0) * 0.3 + (osaN ?? 0) * 0.2)
+        : null;
 
       return {
         profileId: profile.id,
         manager: profile.display_name || "Unknown",
         store: profile.store || "-",
-        service: serviceScore,
-        cost: costScore,
-        osa: osaScore,
+        service: serviceN != null ? Math.round(serviceN) : null,
+        cost: costN != null ? Math.round(costN) : null,
+        osa: osaN != null ? Math.round(osaN) : null,
         mpi,
       };
     });
   }, [costRows, osaRows, profiles, serviceRows]);
 
-  const ranked = useMemo(() => {
-    const base = [...leaderboard];
-    base.sort((a, b) => {
-      const aMpi = a.mpi ?? -1;
-      const bMpi = b.mpi ?? -1;
-      if (bMpi !== aMpi) return bMpi - aMpi;
-
-      const aSvc = a.service ?? -1;
-      const bSvc = b.service ?? -1;
-      if (bSvc !== aSvc) return bSvc - aSvc;
-
-      return (a.manager || "").localeCompare(b.manager || "");
-    });
-    return base;
-  }, [leaderboard]);
+  const ranked = useMemo(
+    () =>
+      [...leaderboard].sort(
+        (a, b) => (b.mpi ?? -1) - (a.mpi ?? -1) || (b.service ?? -1) - (a.service ?? -1)
+      ),
+    [leaderboard]
+  );
 
   return (
     <main style={{ maxWidth: 1200, margin: "0 auto", padding: 16 }}>
@@ -388,28 +409,44 @@ export default function ManagerPerformanceIndexPage() {
                     <td style={{ fontWeight: 800 }}>{idx + 1}</td>
                     <td style={{ fontWeight: 800 }}>{row.manager}</td>
                     <td>{row.store}</td>
+
                     <td>
-                      <span className={pillClass(row.mpi)}>{formatScore(row.mpi)}</span>
+                      {row.mpi == null ? (
+                        <span className="pill">—</span>
+                      ) : (
+                        <span className={pillClass(row.mpi)}>{row.mpi}</span>
+                      )}
                     </td>
+
                     <td>
-                      <span className={pillClass(row.service)}>
-                        {formatScore(row.service)}
-                      </span>
+                      {row.service == null ? (
+                        <span className="pill">—</span>
+                      ) : (
+                        <span className={pillClass(row.service)}>{row.service}</span>
+                      )}
                     </td>
+
                     <td>
-                      <span className={pillClass(row.cost)}>{formatScore(row.cost)}</span>
+                      {row.cost == null ? (
+                        <span className="pill">—</span>
+                      ) : (
+                        <span className={pillClass(row.cost)}>{row.cost}</span>
+                      )}
                     </td>
+
                     <td>
-                      <span className={pillClass(row.osa)}>{formatScore(row.osa)}</span>
+                      {row.osa == null ? (
+                        <span className="pill">—</span>
+                      ) : (
+                        <span className={pillClass(row.osa)}>{row.osa}</span>
+                      )}
                     </td>
                   </tr>
                 ))}
+
                 {ranked.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={7}
-                      style={{ padding: 14, color: "#64748b", fontWeight: 700 }}
-                    >
+                    <td colSpan={7} style={{ padding: 14, color: "#64748b", fontWeight: 700 }}>
                       No approved profiles found (or no data in range).
                     </td>
                   </tr>
@@ -431,23 +468,26 @@ export default function ManagerPerformanceIndexPage() {
           </p>
 
           <p style={{ margin: 0 }}>
+            <strong>Cost Controls input:</strong> Labour % is derived as{" "}
+            <b>labour_cost_gbp ÷ sales_gbp × 100</b>. Food variance % is derived as{" "}
+            <b>(actual_food_cost_gbp − ideal_food_cost_gbp) ÷ sales_gbp × 100</b>.
+            The YTD averages are <b>sales-weighted</b>.
+          </p>
+
+          <p style={{ margin: 0 }}>
             <strong>Internal OSA (0–100):</strong> 50% stars and 50% points lost.
             Stars mapping: 5=100, 4=80, 3=60, below 3=0. Points lost mapping:
             ≤10=100, ≤20=80, ≤30=60, &gt;30=0.
           </p>
 
           <p style={{ margin: 0 }}>
-            <strong>Service (0–100):</strong> DOT 40%, extremes &gt;40 30%, R&amp;L minutes 20%,
-            additional hours 10%. Thresholds: DOT (≥80%=100, ≥75%=80, ≥70%=60),
-            extremes &gt;40 (≤3%=100, ≤5%=80, ≤8%=60), R&amp;L (≤10=100, ≤15=80, ≤20=60),
-            additional hours (≤1=100, ≤2.5=80, ≤4=60).
+            <strong>Service (0–100):</strong> Your scoring function in{" "}
+            <code>/lib/mpi/scoring</code> is used (DOT, extremes &gt;40, R&amp;L).
           </p>
 
           <p style={{ margin: 0 }}>
-            <strong>Cost Controls (0–100):</strong> Labour score 60% + food variance score 40%.
-            Labour thresholds: ≤22%=100, ≤24%=80, ≤26%=60. Food variance uses absolute value:
-            ≤0.5=100, ≤1.0=80, ≤1.5=60. YTD uses sales-weighted averages when sales/sales_total
-            is present; otherwise simple averages are used.
+            <strong>Cost (0–100):</strong> Your scoring function in{" "}
+            <code>/lib/mpi/scoring</code> is used (labour + food variance).
           </p>
         </div>
       </section>
