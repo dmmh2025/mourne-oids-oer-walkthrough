@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { getSupabaseClient } from "@/utils/supabase/client";
+import MyProfilePanel from "./_components/MyProfilePanel";
 
 const supabase = getSupabaseClient();
 
@@ -261,6 +262,14 @@ export default function ProfilePage() {
             </div>
           </>
         )}
+      </section>
+
+      <section className="container wide content">
+        <div className="card profile-card">
+          <h2>My Profile</h2>
+          <p className="section-sub">Manage your profile details and password.</p>
+          <MyProfilePanel />
+        </div>
       </section>
 
       {/* footer */}
