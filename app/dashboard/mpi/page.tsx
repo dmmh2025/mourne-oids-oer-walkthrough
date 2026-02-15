@@ -1,43 +1,3 @@
-codex/refactor-scoring-logic-into-helper-file
-import {
-  scoreCost,
-  scoreMpi,
-  scoreOsa,
-  scoreService,
-  type CostMetrics,
-  type ServiceMetrics,
-} from "@/lib/mpi/scoring";
-
-const serviceMetrics: ServiceMetrics = {
-  dot: 0.82,
-  extremeOver40: 0.03,
-  rnlMinutes: 11,
-};
-
-const costMetrics: CostMetrics = {
-  labourPct: 25,
-  foodVariancePct: 0.8,
-};
-
-const avgStars = 4.4;
-const avgPointsLost = 2.1;
-
-export default function MpiDashboardPage() {
-  const service = scoreService(serviceMetrics);
-  const cost = scoreCost(costMetrics);
-  const osa = scoreOsa(avgStars, avgPointsLost);
-  const mpi = scoreMpi({ service, cost, osa });
-
-  return (
-    <main style={{ padding: 24 }}>
-      <h1>MPI Dashboard</h1>
-      <ul>
-        <li>Service score: {service == null ? "N/A" : service.toFixed(1)}</li>
-        <li>Cost score: {cost == null ? "N/A" : cost.toFixed(1)}</li>
-        <li>OSA score: {osa == null ? "N/A" : osa.toFixed(1)}</li>
-        <li>MPI score: {mpi == null ? "N/A" : mpi.toFixed(1)}</li>
-      </ul>
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -69,7 +29,9 @@ type CostControlRow = {
   manager_profile_id: string | null;
   shift_date: string;
   labour_pct: number | null;
-  food_variance: number | null;
+  // support either column name (depending on your schema)
+  food_variance?: number | null;
+  food_variance_pct?: number | null;
   sales?: number | null;
   sales_total?: number | null;
 };
@@ -127,13 +89,17 @@ const normalizeRackLoadMinutes = (value: number | null) => {
   return minutes;
 };
 
+// ===== SCORING =====
+
+// Internal OSA stars weighting (as agreed: 5=100, 4=80, 3=60, <3=0)
 const scoreStars = (stars: number) => {
-  if (stars >= 4.5) return 100;
-  if (stars >= 3.5) return 80;
-  if (stars >= 2.5) return 60;
+  if (stars >= 5) return 100;
+  if (stars >= 4) return 80;
+  if (stars >= 3) return 60;
   return 0;
 };
 
+// Points lost: lower is better
 const scorePointsLost = (pointsLost: number) => {
   if (pointsLost <= 10) return 100;
   if (pointsLost <= 20) return 80;
@@ -193,6 +159,7 @@ const pillClass = (score: number) => {
 export default function ManagerPerformanceIndexPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
   const [serviceRows, setServiceRows] = useState<ServiceShiftRow[]>([]);
   const [costRows, setCostRows] = useState<CostControlRow[]>([]);
@@ -212,6 +179,7 @@ export default function ManagerPerformanceIndexPage() {
           .select("id,display_name,store,job_role,approved")
           .eq("approved", true)
           .not("display_name", "is", null),
+
         supabase
           .from("service_shifts")
           .select(
@@ -219,11 +187,13 @@ export default function ManagerPerformanceIndexPage() {
           )
           .gte("shift_date", yearStartIso)
           .lte("shift_date", todayIso),
+
         supabase
           .from("cost_control_entries")
           .select("*")
           .gte("shift_date", yearStartIso)
           .lte("shift_date", todayIso),
+
         supabase
           .from("osa_internal_results")
           .select("team_member_profile_id,shift_date,stars,points_lost")
@@ -281,6 +251,7 @@ export default function ManagerPerformanceIndexPage() {
       const managerCostRows = byManagerCost.get(profile.id) || [];
       const managerOsaRows = byManagerOsa.get(profile.id) || [];
 
+      // ----- SERVICE -----
       const dotAvg = avg(
         managerServiceRows
           .map((r) => normalizePct(r.dot_pct))
@@ -309,6 +280,7 @@ export default function ManagerPerformanceIndexPage() {
           scoreAdditionalHours(additionalHoursAvg) * 0.1
       );
 
+      // ----- OSA (50% stars, 50% lowest avg points lost) -----
       const starsAvg = avg(
         managerOsaRows
           .map((r) => r.stars)
@@ -320,10 +292,14 @@ export default function ManagerPerformanceIndexPage() {
           .filter((v): v is number => typeof v === "number" && Number.isFinite(v))
       );
 
+      // stars are stored as int4; we round avg to nearest whole star for the mapping
+      const starsRounded = Math.round(starsAvg);
+
       const osaScore = Math.round(
-        scoreStars(Math.round(starsAvg)) * 0.5 + scorePointsLost(pointsLostAvg) * 0.5
+        scoreStars(starsRounded) * 0.5 + scorePointsLost(pointsLostAvg) * 0.5
       );
 
+      // ----- COST (sales-weighted if possible) -----
       let labourWeightedTotal = 0;
       let labourWeightSum = 0;
       const labourFallback: number[] = [];
@@ -339,6 +315,7 @@ export default function ManagerPerformanceIndexPage() {
             : typeof row.sales === "number"
               ? row.sales
               : null;
+
         const hasWeight =
           typeof salesWeightRaw === "number" &&
           Number.isFinite(salesWeightRaw) &&
@@ -352,20 +329,26 @@ export default function ManagerPerformanceIndexPage() {
           labourFallback.push(row.labour_pct);
         }
 
-        if (
-          typeof row.food_variance === "number" &&
-          Number.isFinite(row.food_variance)
-        ) {
+        const foodVar =
+          typeof row.food_variance === "number" && Number.isFinite(row.food_variance)
+            ? row.food_variance
+            : typeof row.food_variance_pct === "number" &&
+                Number.isFinite(row.food_variance_pct)
+              ? row.food_variance_pct
+              : null;
+
+        if (foodVar != null) {
           if (hasWeight) {
-            foodWeightedTotal += row.food_variance * salesWeightRaw;
-            foodWeightSum += salesWeightRaw;
+            foodWeightedTotal += foodVar * salesWeightRaw!;
+            foodWeightSum += salesWeightRaw!;
           }
-          foodFallback.push(row.food_variance);
+          foodFallback.push(foodVar);
         }
       }
 
       const labourYtd =
         labourWeightSum > 0 ? labourWeightedTotal / labourWeightSum : avg(labourFallback);
+
       const foodYtd =
         foodWeightSum > 0 ? foodWeightedTotal / foodWeightSum : avg(foodFallback);
 
@@ -373,6 +356,7 @@ export default function ManagerPerformanceIndexPage() {
         scoreLabour(labourYtd) * 0.6 + scoreFoodVariance(foodYtd) * 0.4
       );
 
+      // ----- MPI TOTAL -----
       const mpi = Math.round(serviceScore * 0.5 + costScore * 0.3 + osaScore * 0.2);
 
       return {
@@ -395,26 +379,28 @@ export default function ManagerPerformanceIndexPage() {
   return (
     <main style={{ maxWidth: 1200, margin: "0 auto", padding: 16 }}>
       <section style={{ padding: 16 }}>
-        <header style={{ marginBottom: 12 }}>
+        <header className="head">
           <div>
             <h1 style={{ margin: 0, fontSize: "1.6rem" }}>
               Manager Performance Index (YTD)
             </h1>
-            <p style={{ margin: "6px 0 0", color: "#64748b" }}>
+            <p style={{ margin: "6px 0 0", color: "#64748b", fontWeight: 600 }}>
               Year-to-date leaderboard from Service, Cost Controls and Internal OSA.
             </p>
           </div>
-          <span className="badge">YTD only ({yearStartIso} to {todayIso})</span>
+          <span className="badge">
+            YTD only ({yearStartIso} to {todayIso})
+          </span>
         </header>
 
         {loading ? <p>Loading MPI data…</p> : null}
         {error ? (
-          <p style={{ color: "#dc2626", fontWeight: 600 }}>Failed to load: {error}</p>
+          <p style={{ color: "#dc2626", fontWeight: 700 }}>Failed to load: {error}</p>
         ) : null}
 
         {!loading && !error ? (
           <div style={{ overflowX: "auto" }}>
-            <table>
+            <table className="table">
               <thead>
                 <tr>
                   <th>Rank</th>
@@ -429,8 +415,8 @@ export default function ManagerPerformanceIndexPage() {
               <tbody>
                 {ranked.map((row, idx) => (
                   <tr key={row.profileId}>
-                    <td style={{ fontWeight: 700 }}>{idx + 1}</td>
-                    <td>{row.manager}</td>
+                    <td style={{ fontWeight: 800 }}>{idx + 1}</td>
+                    <td style={{ fontWeight: 800 }}>{row.manager}</td>
                     <td>{row.store}</td>
                     <td>
                       <span className={pillClass(row.mpi)}>{row.mpi}</span>
@@ -446,6 +432,13 @@ export default function ManagerPerformanceIndexPage() {
                     </td>
                   </tr>
                 ))}
+                {ranked.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} style={{ padding: 14, color: "#64748b", fontWeight: 700 }}>
+                      No approved profiles found (or no data in range).
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </div>
@@ -459,39 +452,87 @@ export default function ManagerPerformanceIndexPage() {
 
         <div style={{ display: "grid", gap: 10, color: "#334155" }}>
           <p style={{ margin: 0 }}>
-            <strong>MPI total:</strong> Service 50% + Cost Controls 30% + Internal OSA
-            20%.
+            <strong>MPI total:</strong> Service 50% + Cost Controls 30% + Internal OSA 20%.
           </p>
+
           <p style={{ margin: 0 }}>
-            <strong>Internal OSA (0-100):</strong> 50% stars and 50% points lost.
-            Average stars are rounded and mapped as 5=100, 4=80, 3=60, below 3=0.
-            Average points lost maps as ≤10=100, ≤20=80, ≤30=60, {'>'}30=0.
+            <strong>Internal OSA (0–100):</strong> 50% stars and 50% points lost.
+            Stars mapping: 5=100, 4=80, 3=60, below 3=0. Points lost mapping:
+            ≤10=100, ≤20=80, ≤30=60, &gt;30=0.
           </p>
+
           <p style={{ margin: 0 }}>
-            <strong>Service (0-100):</strong> DOT 40%, extremes {'>'}40 30%, R&amp;L
-            minutes 20%, additional hours 10%. Thresholds are DOT (≥80%=100,
-            ≥75%=80, ≥70%=60), extremes {'>'}40 (≤3%=100, ≤5%=80, ≤8%=60), R&amp;L
-            (≤10=100, ≤15=80, ≤20=60), additional hours (≤1=100, ≤2.5=80,
-            ≤4=60).
+            <strong>Service (0–100):</strong> DOT 40%, extremes &gt;40 30%, R&amp;L minutes 20%,
+            additional hours 10%. Thresholds: DOT (≥80%=100, ≥75%=80, ≥70%=60),
+            extremes &gt;40 (≤3%=100, ≤5%=80, ≤8%=60), R&amp;L (≤10=100, ≤15=80, ≤20=60),
+            additional hours (≤1=100, ≤2.5=80, ≤4=60).
           </p>
+
           <p style={{ margin: 0 }}>
-            <strong>Cost Controls (0-100):</strong> Labour score 60% + food variance
-            score 40%. Labour thresholds are ≤22%=100, ≤24%=80, ≤26%=60. Food
-            variance uses absolute value with thresholds ≤0.5=100, ≤1.0=80,
-            ≤1.5=60. YTD uses sales-weighted averages when sales/sales_total is
-            present; otherwise simple averages are used.
+            <strong>Cost Controls (0–100):</strong> Labour score 60% + food variance score 40%.
+            Labour thresholds: ≤22%=100, ≤24%=80, ≤26%=60. Food variance uses absolute value:
+            ≤0.5=100, ≤1.0=80, ≤1.5=60. YTD uses sales-weighted averages when sales/sales_total
+            is present; otherwise simple averages are used.
           </p>
         </div>
       </section>
 
       <style jsx>{`
+        .head {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 12px;
+          flex-wrap: wrap;
+        }
+
+        .badge {
+          display: inline-flex;
+          align-items: center;
+          height: 28px;
+          padding: 0 10px;
+          border-radius: 999px;
+          font-weight: 900;
+          font-size: 12px;
+          background: rgba(0, 100, 145, 0.1);
+          border: 1px solid rgba(0, 100, 145, 0.25);
+          color: #004b75;
+          white-space: nowrap;
+        }
+
+        .table {
+          width: 100%;
+          border-collapse: collapse;
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          overflow: hidden;
+        }
+
+        .table th,
+        .table td {
+          padding: 12px 12px;
+          text-align: left;
+          font-size: 13px;
+        }
+
+        .table th {
+          background: rgba(0, 100, 145, 0.08);
+          font-weight: 900;
+        }
+
+        .table tr + tr td {
+          border-top: 1px solid rgba(15, 23, 42, 0.06);
+        }
+
         .pill {
           display: inline-block;
           min-width: 46px;
           text-align: center;
           padding: 4px 10px;
           border-radius: 999px;
-          font-weight: 800;
+          font-weight: 900;
           border: 1px solid #e2e8f0;
           background: #f8fafc;
           color: #0f172a;
@@ -515,7 +556,6 @@ export default function ManagerPerformanceIndexPage() {
           color: #991b1b;
         }
       `}</style>
- main
     </main>
   );
 }
