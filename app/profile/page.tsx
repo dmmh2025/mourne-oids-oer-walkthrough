@@ -1,140 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { getSupabaseClient } from "@/utils/supabase/client";
-
-const supabase = getSupabaseClient();
-
-const STORES = ["Downpatrick", "Kilkeel", "Newcastle", "Ballynahinch"];
+import MyProfilePanel from "./_components/MyProfilePanel";
 
 export default function ProfilePage() {
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [pwdSaving, setPwdSaving] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [pwdMsg, setPwdMsg] = useState<string | null>(null);
-
-  const [email, setEmail] = useState("");
-  const [jobRole, setJobRole] = useState("");
-  const [store, setStore] = useState<"" | string>("");
-
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-
-  // load current user + their profile
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setErrorMsg(null);
-      setSuccessMsg(null);
-
-      // get current user
-      let { data: userData } = await supabase.auth.getUser();
-      let user = userData?.user ?? null;
-
-      if (!user) {
-        const { data: sessionData } = await supabase.auth.getSession();
-        user = sessionData?.session?.user ?? null;
-      }
-
-      if (!user) {
-        setErrorMsg("Not signed in.");
-        setLoading(false);
-        return;
-      }
-
-      const userId = user.id;
-      const userEmail = user.email || "";
-      setEmail(userEmail);
-
-      // your profiles table uses "id" as PK
-      const { data: prof, error: profErr } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .maybeSingle();
-
-      if (profErr) {
-        setErrorMsg(profErr.message);
-      } else if (prof) {
-        setJobRole((prof as any).job_role || "");
-        setStore((prof as any).store || "");
-      } else {
-        // no profile yet
-        setStore("");
-      }
-
-      setLoading(false);
-    };
-
-    load();
-  }, []);
-
   const handleBack = () => {
     if (typeof window !== "undefined") window.history.back();
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    setErrorMsg(null);
-    setSuccessMsg(null);
-
-    const { data: userData } = await supabase.auth.getUser();
-    const user = userData.user;
-    if (!user) {
-      setErrorMsg("Not signed in.");
-      setSaving(false);
-      return;
-    }
-
-    // only send columns that exist in your table: id, email, job_role, store
-    const payload = {
-      id: user.id,
-      email: user.email,
-      job_role: jobRole,
-      store: store || null,
-    };
-
-    const { error } = await supabase.from("profiles").upsert(payload, {
-      onConflict: "id",
-    });
-
-    if (error) {
-      setErrorMsg(error.message);
-    } else {
-      setSuccessMsg("Profile updated ✅");
-    }
-    setSaving(false);
-  };
-
-  const handlePasswordChange = async () => {
-    setPwdSaving(true);
-    setPwdMsg(null);
-
-    if (!newPassword) {
-      setPwdMsg("Please enter a new password.");
-      setPwdSaving(false);
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setPwdMsg("Passwords do not match.");
-      setPwdSaving(false);
-      return;
-    }
-
-    const { error } = await supabase.auth.updateUser({
-      password: newPassword,
-    });
-
-    if (error) {
-      setPwdMsg(error.message);
-    } else {
-      setPwdMsg("Password updated ✅");
-      setNewPassword("");
-      setConfirmPassword("");
-    }
-    setPwdSaving(false);
   };
 
   return (
@@ -167,100 +37,7 @@ export default function ProfilePage() {
 
       {/* content */}
       <section className="container wide content">
-        {loading ? (
-          <div className="card">Loading your profile…</div>
-        ) : (
-          <>
-            {errorMsg ? <div className="card error">❌ {errorMsg}</div> : null}
-            {successMsg ? <div className="card success">✅ {successMsg}</div> : null}
-
-            {/* PROFILE CARD */}
-            <div className="card profile-card">
-              <h2>Profile details</h2>
-              <p className="section-sub">Your hub info</p>
-
-              <div className="form-grid">
-                <div className="field">
-                  <label>Email (login)</label>
-                  <input type="text" value={email} disabled />
-                  <p className="hint">This is your hub / Supabase login.</p>
-                </div>
-
-                <div className="field">
-                  <label>Job role</label>
-                  <input
-                    type="text"
-                    value={jobRole}
-                    onChange={(e) => setJobRole(e.target.value)}
-                    placeholder="e.g. Store Manager, ASM, Trainer"
-                  />
-                </div>
-
-                <div className="field">
-                  <label>Store</label>
-                  <select
-                    value={store}
-                    onChange={(e) => setStore(e.target.value)}
-                  >
-                    <option value="">— Select store —</option>
-                    {STORES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleSave}
-                className="btn btn--brand mt-btn"
-                disabled={saving}
-              >
-                {saving ? "Saving…" : "Save profile"}
-              </button>
-            </div>
-
-            {/* PASSWORD CARD */}
-            <div className="card profile-card">
-              <h2>Change password</h2>
-              <p className="section-sub">Keep your account secure.</p>
-
-              <div className="form-grid small">
-                <div className="field">
-                  <label>New password</label>
-                  <input
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Enter new password"
-                  />
-                </div>
-                <div className="field">
-                  <label>Confirm password</label>
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Re-enter new password"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handlePasswordChange}
-                className="btn btn--ghost mt-btn"
-                disabled={pwdSaving}
-              >
-                {pwdSaving ? "Updating…" : "Update password"}
-              </button>
-
-              {pwdMsg ? <p className="pwd-msg">{pwdMsg}</p> : null}
-            </div>
-          </>
-        )}
+        <MyProfilePanel />
       </section>
 
       {/* footer */}
@@ -350,77 +127,6 @@ export default function ProfilePage() {
           gap: 20px;
         }
 
-        .card {
-          background: #fff;
-          border-radius: 18px;
-          box-shadow: var(--shadow-card);
-          border: 1px solid rgba(0, 0, 0, 0.02);
-          padding: 16px 18px 20px;
-        }
-
-        .card.error {
-          border-left: 4px solid #b91c1c;
-          color: #b91c1c;
-        }
-
-        .card.success {
-          border-left: 4px solid #166534;
-          color: #166534;
-        }
-
-        .profile-card h2 {
-          font-size: 16px;
-          font-weight: 700;
-          margin-bottom: 4px;
-        }
-
-        .section-sub {
-          font-size: 12px;
-          color: var(--muted);
-          margin-bottom: 14px;
-        }
-
-        .form-grid {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 14px 16px;
-        }
-
-        .form-grid.small {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-
-        .field {
-          display: flex;
-          flex-direction: column;
-          gap: 5px;
-        }
-
-        .field label {
-          font-size: 13px;
-          font-weight: 600;
-          color: #0f172a;
-        }
-
-        .field input,
-        .field select {
-          border: 1px solid rgba(15, 23, 42, 0.12);
-          border-radius: 10px;
-          padding: 7px 10px;
-          font-size: 13px;
-          background: #fff;
-        }
-
-        .field input[disabled] {
-          background: #e2e8f0;
-          cursor: not-allowed;
-        }
-
-        .hint {
-          font-size: 11.5px;
-          color: #94a3b8;
-        }
-
         .btn {
           display: inline-flex;
           align-items: center;
@@ -448,27 +154,11 @@ export default function ProfilePage() {
           color: #0f172a;
         }
 
-        .mt-btn {
-          margin-top: 16px;
-        }
-
-        .pwd-msg {
-          margin-top: 10px;
-          font-size: 13px;
-          color: #0f172a;
-        }
-
         .footer {
           text-align: center;
           margin-top: 36px;
           color: var(--muted);
           font-size: 13px;
-        }
-
-        @media (max-width: 900px) {
-          .form-grid {
-            grid-template-columns: 1fr;
-          }
         }
 
         @media (max-width: 700px) {
