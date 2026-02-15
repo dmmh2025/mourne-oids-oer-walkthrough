@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import { HoverCard } from "@/components/HoverCard";
@@ -49,6 +49,14 @@ type NameStatsCacheEntry = {
   data: NameStats | null;
 };
 
+type CostStatRow = {
+  shift_date: string;
+  sales_gbp: number | null;
+  labour_cost_gbp: number | null;
+  ideal_food_cost_gbp: number | null;
+  actual_food_cost_gbp: number | null;
+};
+
 function isYYYYMMDD(v: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(v);
 }
@@ -64,6 +72,10 @@ function startOfTodayLocal() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d;
+}
+
+function startOfTodayISO() {
+  return toYYYYMMDDLocal(startOfTodayLocal());
 }
 
 function startOfThisWeekLocal() {
@@ -237,18 +249,6 @@ function aggregate(rows: CostRow[], key: "store" | "manager_name"): Agg[] {
   });
 }
 
-function calcWeightedStats(items: CostRow[]): StatBlock {
-  const sales = sum(items.map((x) => Number(x.sales_gbp || 0)));
-  const labour = sum(items.map((x) => Number(x.labour_cost_gbp || 0)));
-  const idealFood = sum(items.map((x) => Number(x.ideal_food_cost_gbp || 0)));
-  const actualFood = sum(items.map((x) => Number(x.actual_food_cost_gbp || 0)));
-
-  return {
-    labourPct: sales > 0 ? labour / sales : 0,
-    foodVarPctSales: sales > 0 ? (actualFood - idealFood) / sales : 0,
-  };
-}
-
 // ✅ Labour ranking: <=25% first, then lowest labour%, then sales tiebreak
 function sortByLabour(a: Agg, b: Agg) {
   if (a.labourDelta !== b.labourDelta) return a.labourDelta - b.labourDelta;
@@ -328,6 +328,7 @@ export default function CostControlsPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
   const [statsCache, setStatsCache] = useState<Record<string, NameStatsCacheEntry>>({});
+  const statsCacheRef = useRef<Record<string, NameStatsCacheEntry>>({});
   const [hovered, setHovered] = useState<{
     key: string;
     name: string;
@@ -339,57 +340,104 @@ export default function CostControlsPage() {
     return `${entityType}:${name}`;
   }
 
+  function upsertStatsCache(
+    key: string,
+    entry: NameStatsCacheEntry | ((prev: NameStatsCacheEntry | undefined) => NameStatsCacheEntry)
+  ) {
+    setStatsCache((prev) => {
+      const nextEntry = typeof entry === "function" ? entry(prev[key]) : entry;
+      const next = {
+        ...prev,
+        [key]: nextEntry,
+      };
+      statsCacheRef.current = next;
+      return next;
+    });
+  }
+
   async function loadNameStats(entityType: EntityType, name: string) {
     const key = statsKey(entityType, name);
-    if (statsCache[key]?.loading || statsCache[key]?.data || statsCache[key]?.error) {
+    const cached = statsCacheRef.current[key];
+    if (cached?.loading || cached?.data || cached?.error) {
       return;
     }
 
-    setStatsCache((prev) => ({
-      ...prev,
-      [key]: { loading: true, error: null, data: null },
-    }));
+    upsertStatsCache(key, { loading: true, error: null, data: null });
 
     try {
       if (!supabase) throw new Error("Supabase client not available");
 
       const yearStart = `${new Date().getFullYear()}-01-01`;
       const monthStart = toYYYYMMDDLocal(startOfThisMonthLocal());
-      const endExclusive = toYYYYMMDDLocal(startOfTodayLocal());
+      const endExclusive = startOfTodayISO();
       const matchColumn = entityType === "store" ? "store" : "manager_name";
 
       const { data, error } = await supabase
         .from("cost_control_entries")
-        .select("*")
+        .select(
+          "shift_date,sales_gbp,labour_cost_gbp,ideal_food_cost_gbp,actual_food_cost_gbp"
+        )
         .eq(matchColumn, name)
         .gte("shift_date", yearStart)
         .lt("shift_date", endExclusive);
 
       if (error) throw new Error(error.message);
 
-      const normalised = (data || []).map(normaliseRow);
-      const monthRows = normalised.filter((r) => r.shift_date >= monthStart);
+      const totals = (data || []).reduce(
+        (acc, row: CostStatRow) => {
+          const shiftDate = String(row.shift_date || "").slice(0, 10);
+          const sales = num(row.sales_gbp);
+          const labour = num(row.labour_cost_gbp);
+          const ideal = num(row.ideal_food_cost_gbp);
+          const actual = num(row.actual_food_cost_gbp);
 
-      setStatsCache((prev) => ({
-        ...prev,
-        [key]: {
-          loading: false,
-          error: null,
-          data: {
-            monthToDate: calcWeightedStats(monthRows),
-            yearToDate: calcWeightedStats(normalised),
+          acc.year.sales += sales;
+          acc.year.labour += labour;
+          acc.year.ideal += ideal;
+          acc.year.actual += actual;
+
+          if (shiftDate >= monthStart) {
+            acc.month.sales += sales;
+            acc.month.labour += labour;
+            acc.month.ideal += ideal;
+            acc.month.actual += actual;
+          }
+
+          return acc;
+        },
+        {
+          month: { sales: 0, labour: 0, ideal: 0, actual: 0 },
+          year: { sales: 0, labour: 0, ideal: 0, actual: 0 },
+        }
+      );
+
+      upsertStatsCache(key, {
+        loading: false,
+        error: null,
+        data: {
+          monthToDate: {
+            labourPct:
+              totals.month.sales > 0 ? totals.month.labour / totals.month.sales : 0,
+            foodVarPctSales:
+              totals.month.sales > 0
+                ? totals.month.actual / totals.month.sales - totals.month.ideal / totals.month.sales
+                : 0,
+          },
+          yearToDate: {
+            labourPct: totals.year.sales > 0 ? totals.year.labour / totals.year.sales : 0,
+            foodVarPctSales:
+              totals.year.sales > 0
+                ? totals.year.actual / totals.year.sales - totals.year.ideal / totals.year.sales
+                : 0,
           },
         },
-      }));
+      });
     } catch (e: any) {
-      setStatsCache((prev) => ({
-        ...prev,
-        [key]: {
-          loading: false,
-          error: e?.message || "Failed to load stats",
-          data: null,
-        },
-      }));
+      upsertStatsCache(key, {
+        loading: false,
+        error: e?.message || "Failed to load stats",
+        data: null,
+      });
     }
   }
 
