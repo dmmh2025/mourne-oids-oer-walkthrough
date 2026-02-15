@@ -238,6 +238,17 @@ const calcStats = (rows: OsaRow[]) => {
   };
 };
 
+const emptyStatWindow = () => ({
+  visits: 0,
+  avgScore: 0,
+});
+
+const getTomorrowStart = () => {
+  const tomorrow = parseISODate(toISODateUK(new Date()));
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return tomorrow;
+};
+
 const getWeekRange = () => {
   const now = new Date();
   const day = now.getDay(); // 0 = Sunday
@@ -498,8 +509,14 @@ export default function InternalOsaScorecardPage() {
   const showUnknownStores = storeTable.some((x) => x.name === "Unknown store");
 
   const { mtdStats, ytdStats } = useMemo(() => {
-    const tomorrow = parseISODate(toISODateUK(new Date()));
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (!rows.length) {
+      return {
+        mtdStats: emptyStatWindow(),
+        ytdStats: emptyStatWindow(),
+      };
+    }
+
+    const tomorrow = getTomorrowStart();
 
     const mtdRows = rows.filter((r) =>
       inRange(String(r.shift_date || ""), startOfThisMonthLocal(), tomorrow)
@@ -641,9 +658,7 @@ export default function InternalOsaScorecardPage() {
           </div>
         ) : (
           <>
-            {/* =========================
-                MANAGER SCORECARD
-            ========================== */}
+            {/* Manager scorecard */}
             <section className="section">
               <div className="section-head">
                 <div>
@@ -758,9 +773,7 @@ export default function InternalOsaScorecardPage() {
               )}
             </section>
 
-            {/* =========================
-                STORE SCORECARD (NEW)
-            ========================== */}
+            {/* Store scorecard */}
             <section className="section">
               <div className="section-head">
                 <div>
