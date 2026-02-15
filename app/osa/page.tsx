@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
+import HoverStatPanel from "@/components/HoverStatPanel";
 
 const supabase =
   typeof window !== "undefined"
@@ -531,6 +532,51 @@ export default function InternalOsaScorecardPage() {
     };
   }, [rows]);
 
+  const managerStatWindows = useMemo(() => {
+    const byManager: Record<
+      string,
+      {
+        mtd: { visits: number; avgScore: number | null };
+        ytd: { visits: number; avgScore: number | null };
+      }
+    > = {};
+
+    const managerKey = debugKeys.managerKey;
+    if (!rows.length || !managerKey) return byManager;
+
+    const tomorrow = getTomorrowStart();
+    const monthStart = startOfThisMonthLocal();
+    const yearStart = startOfThisYearLocal();
+
+    const makeWindow = (windowRows: OsaRow[]) => {
+      const stats = calcStats(windowRows);
+      return {
+        visits: stats.visits,
+        avgScore: stats.visits ? stats.avgScore : null,
+      };
+    };
+
+    for (const manager of mgrTable) {
+      const managerRows = rows.filter(
+        (r) => (cleanName(r[managerKey]) || "Unknown") === manager.name
+      );
+
+      const mtdRows = managerRows.filter((r) =>
+        inRange(String((effectiveDateKey ? r[effectiveDateKey] : r.shift_date) || ""), monthStart, tomorrow)
+      );
+      const ytdRows = managerRows.filter((r) =>
+        inRange(String((effectiveDateKey ? r[effectiveDateKey] : r.shift_date) || ""), yearStart, tomorrow)
+      );
+
+      byManager[manager.name] = {
+        mtd: makeWindow(mtdRows),
+        ytd: makeWindow(ytdRows),
+      };
+    }
+
+    return byManager;
+  }, [rows, mgrTable, debugKeys.managerKey, effectiveDateKey]);
+
   return (
     <main className="wrap">
       <div className="banner">
@@ -743,7 +789,15 @@ export default function InternalOsaScorecardPage() {
                     {mgrTable.map((m, i) => (
                       <tr key={`${m.name}-${i}`}>
                         <td className="rank">{i + 1}</td>
-                        <td className="name">{m.name}</td>
+                        <td className="name">
+                          <HoverStatPanel
+                            label={m.name}
+                            mtd={managerStatWindows[m.name]?.mtd ?? { visits: 0, avgScore: null }}
+                            ytd={managerStatWindows[m.name]?.ytd ?? { visits: 0, avgScore: null }}
+                          >
+                            <span>{m.name}</span>
+                          </HoverStatPanel>
+                        </td>
                         <td className="num">
                           <span className={pillClassFromPointsLost(m.avgPointsLost)}>
                             {m.avgPointsLost.toFixed(1)}
