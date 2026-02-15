@@ -20,16 +20,17 @@ type ProfileRow = {
 
 type ServiceShiftRow = {
   manager_profile_id: string | null;
-  shift_date: string; // YYYY-MM-DD
+  shift_date: string;
   dot_pct: number | null; // 0..1 or 0..100
   extreme_over_40: number | null; // 0..1 or 0..100
-  rnl_minutes: number | null; // minutes (or seconds sometimes)
+  rnl_minutes: number | null; // minutes or seconds
   additional_hours: number | null;
 };
 
 type CostControlRow = {
-  manager_user_id: string | null; // ✅ matches your schema
-  shift_date: string; // YYYY-MM-DD
+  manager_profile_id: string | null; // ✅ preferred link to profiles.id
+  manager_user_id: string | null; // fallback if needed
+  shift_date: string;
 
   sales_gbp: number | null;
   labour_cost_gbp: number | null;
@@ -39,9 +40,9 @@ type CostControlRow = {
 
 type OsaRow = {
   team_member_profile_id: string | null;
-  shift_date: string; // YYYY-MM-DD
-  stars: number | null; // 0..5
-  points_lost: number | null; // number
+  shift_date: string;
+  stars: number | null;
+  points_lost: number | null;
 };
 
 type LeaderRow = {
@@ -52,7 +53,6 @@ type LeaderRow = {
   cost: number | null;
   osa: number | null;
   mpi: number | null;
-  // debug
   hasService: boolean;
   hasCost: boolean;
 };
@@ -87,13 +87,11 @@ const avg = (values: number[]) =>
 
 const normalizePct01 = (value: number | null) => {
   if (value == null || !Number.isFinite(value)) return null;
-  // supports 0..1 or 0..100
   return value > 1 ? value / 100 : value;
 };
 
 const normalizeRackLoadMinutes = (value: number | null) => {
   if (value == null || !Number.isFinite(value) || value <= 0) return null;
-  // supports seconds in some datasets; keep your previous logic
   const minutes = value > 60 && value <= 3600 ? value / 60 : value;
   if (!Number.isFinite(minutes) || minutes <= 0 || minutes > 120) return null;
   return minutes;
@@ -104,23 +102,7 @@ const safeDiv = (num: number, den: number) => {
   return num / den;
 };
 
-/** ---------------- Scoring (threshold-based, easy to understand) ----------------
- * MPI = Service 50% + Cost 30% + Internal OSA 20%
- *
- * OSA score (0-100) = 50% stars mapping + 50% points lost mapping
- * Stars mapping: 5★=100, 4★=80, 3★=60, <3★=0
- * Points lost mapping: ≤10=100, ≤20=80, ≤30=60, >30=0
- *
- * Service score (0-100) = DOT 40% + Extremes>40 30% + R&L 20% + Additional hours 10%
- * DOT mapping: ≥80%=100, ≥75%=80, ≥70%=60 else 0
- * Extremes>40 mapping: ≤3%=100, ≤5%=80, ≤8%=60 else 0
- * R&L mapping: ≤10m=100, ≤15m=80, ≤20m=60 else 0
- * Additional hours mapping: ≤1=100, ≤2.5=80, ≤4=60 else 0
- *
- * Cost score (0-100) = Labour 60% + Food variance 40%
- * Labour mapping: ≤22%=100, ≤24%=80, ≤26%=60 else 0
- * Food variance mapping (absolute %): ≤0.5=100, ≤1.0=80, ≤1.5=60 else 0
- */
+/** ---------------- Scoring (threshold-based) ---------------- */
 const scoreStars = (starsAvg: number | null) => {
   if (starsAvg == null || !Number.isFinite(starsAvg)) return null;
   if (starsAvg >= 5) return 100;
@@ -223,6 +205,14 @@ const costSalesWeight = (row: CostControlRow): number | null => {
   return w != null && w > 0 ? w : null;
 };
 
+const costManagerKey = (row: CostControlRow): string | null => {
+  // ✅ Prefer manager_profile_id (this is what matches profiles.id)
+  if (row.manager_profile_id) return row.manager_profile_id;
+  // fallback if some rows still only have manager_user_id
+  if (row.manager_user_id) return row.manager_user_id;
+  return null;
+};
+
 export default function ManagerPerformanceIndexPage() {
   const router = useRouter();
 
@@ -257,10 +247,11 @@ export default function ManagerPerformanceIndexPage() {
           .gte("shift_date", yearStartIso)
           .lte("shift_date", todayIso),
 
+        // ✅ Pull BOTH link columns so we can robustly join
         supabase
           .from("cost_control_entries")
           .select(
-            "manager_user_id,shift_date,sales_gbp,labour_cost_gbp,ideal_food_cost_gbp,actual_food_cost_gbp"
+            "manager_profile_id,manager_user_id,shift_date,sales_gbp,labour_cost_gbp,ideal_food_cost_gbp,actual_food_cost_gbp"
           )
           .gte("shift_date", yearStartIso)
           .lte("shift_date", todayIso),
@@ -293,7 +284,6 @@ export default function ManagerPerformanceIndexPage() {
   const excludedRoles = useMemo(() => new Set(["Area Manager", "OEC"]), []);
 
   const leaderboard = useMemo<LeaderRow[]>(() => {
-    // Group rows by manager id
     const byManagerService = new Map<string, ServiceShiftRow[]>();
     const byManagerCost = new Map<string, CostControlRow[]>();
     const byManagerOsa = new Map<string, OsaRow[]>();
@@ -306,10 +296,11 @@ export default function ManagerPerformanceIndexPage() {
     }
 
     for (const row of costRows) {
-      if (!row.manager_user_id) continue;
-      const existing = byManagerCost.get(row.manager_user_id) || [];
+      const key = costManagerKey(row);
+      if (!key) continue;
+      const existing = byManagerCost.get(key) || [];
       existing.push(row);
-      byManagerCost.set(row.manager_user_id, existing);
+      byManagerCost.set(key, existing);
     }
 
     for (const row of osaRows) {
@@ -319,13 +310,8 @@ export default function ManagerPerformanceIndexPage() {
       byManagerOsa.set(row.team_member_profile_id, existing);
     }
 
-    // Build list
-    const base = profiles
-      .filter((p) => {
-        // Remove excluded roles
-        if (p.job_role && excludedRoles.has(p.job_role)) return false;
-        return true;
-      })
+    return profiles
+      .filter((p) => !(p.job_role && excludedRoles.has(p.job_role)))
       .map((profile) => {
         const managerServiceRows = byManagerService.get(profile.id) || [];
         const managerCostRows = byManagerCost.get(profile.id) || [];
@@ -334,10 +320,8 @@ export default function ManagerPerformanceIndexPage() {
         const hasService = managerServiceRows.length > 0;
         const hasCost = managerCostRows.length > 0;
 
-        // ✅ New rule: exclude anyone without a Service OR Cost entry
-        if (!hasService && !hasCost) {
-          return null;
-        }
+        // ✅ Exclude anyone without Service OR Cost entries
+        if (!hasService && !hasCost) return null;
 
         /** ------- SERVICE ------- */
         const dotVals = managerServiceRows
@@ -451,8 +435,6 @@ export default function ManagerPerformanceIndexPage() {
         } as LeaderRow;
       })
       .filter((x): x is LeaderRow => x !== null);
-
-    return base;
   }, [profiles, serviceRows, costRows, osaRows, excludedRoles]);
 
   const ranked = useMemo(
@@ -484,7 +466,9 @@ export default function ManagerPerformanceIndexPage() {
           <h1>Manager Performance Index (YTD)</h1>
           <p className="subtitle">
             Year-to-date leaderboard from <b>Service</b>, <b>Cost Controls</b> and <b>Internal OSA</b>.
-            <span className="badge">YTD ({yearStartIso} → {todayIso})</span>
+            <span className="badge">
+              YTD ({yearStartIso} → {todayIso})
+            </span>
           </p>
         </header>
 
@@ -502,7 +486,8 @@ export default function ManagerPerformanceIndexPage() {
                 <div>
                   <h2>Leaderboard</h2>
                   <p>
-                    Included: approved profiles (excluding Area Manager/OEC) with at least one <b>Service</b> or <b>Cost</b> entry.
+                    Included: approved profiles (excluding Area Manager/OEC) with at least one{" "}
+                    <b>Service</b> or <b>Cost</b> entry.
                   </p>
                 </div>
                 <div className="kpi-mini">
@@ -533,16 +518,32 @@ export default function ManagerPerformanceIndexPage() {
                         <td className="store">{row.store}</td>
 
                         <td className="num">
-                          {row.mpi == null ? <span className="pill">—</span> : <span className={pillClass(row.mpi)}>{row.mpi}</span>}
+                          {row.mpi == null ? (
+                            <span className="pill">—</span>
+                          ) : (
+                            <span className={pillClass(row.mpi)}>{row.mpi}</span>
+                          )}
                         </td>
                         <td className="num">
-                          {row.service == null ? <span className="pill">—</span> : <span className={pillClass(row.service)}>{row.service}</span>}
+                          {row.service == null ? (
+                            <span className="pill">—</span>
+                          ) : (
+                            <span className={pillClass(row.service)}>{row.service}</span>
+                          )}
                         </td>
                         <td className="num">
-                          {row.cost == null ? <span className="pill">—</span> : <span className={pillClass(row.cost)}>{row.cost}</span>}
+                          {row.cost == null ? (
+                            <span className="pill">—</span>
+                          ) : (
+                            <span className={pillClass(row.cost)}>{row.cost}</span>
+                          )}
                         </td>
                         <td className="num">
-                          {row.osa == null ? <span className="pill">—</span> : <span className={pillClass(row.osa)}>{row.osa}</span>}
+                          {row.osa == null ? (
+                            <span className="pill">—</span>
+                          ) : (
+                            <span className={pillClass(row.osa)}>{row.osa}</span>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -589,10 +590,18 @@ export default function ManagerPerformanceIndexPage() {
                 <div className="card">
                   <div className="card-title">🚗 Service (0–100)</div>
                   <div className="card-body">
-                    <div className="rule"><span className="pill neutral">40%</span> DOT% (≥80=100, ≥75=80, ≥70=60)</div>
-                    <div className="rule"><span className="pill neutral">30%</span> Extremes &gt;40 (≤3%=100, ≤5%=80, ≤8%=60)</div>
-                    <div className="rule"><span className="pill neutral">20%</span> R&amp;L mins (≤10=100, ≤15=80, ≤20=60)</div>
-                    <div className="rule"><span className="pill neutral">10%</span> Add. hours (≤1=100, ≤2.5=80, ≤4=60)</div>
+                    <div className="rule">
+                      <span className="pill neutral">40%</span> DOT% (≥80=100, ≥75=80, ≥70=60)
+                    </div>
+                    <div className="rule">
+                      <span className="pill neutral">30%</span> Extremes &gt;40 (≤3%=100, ≤5%=80, ≤8%=60)
+                    </div>
+                    <div className="rule">
+                      <span className="pill neutral">20%</span> R&amp;L mins (≤10=100, ≤15=80, ≤20=60)
+                    </div>
+                    <div className="rule">
+                      <span className="pill neutral">10%</span> Add. hours (≤1=100, ≤2.5=80, ≤4=60)
+                    </div>
                   </div>
                 </div>
 
@@ -600,18 +609,26 @@ export default function ManagerPerformanceIndexPage() {
                   <div className="card-title">💷 Cost + ⭐ Internal OSA</div>
                   <div className="card-body">
                     <div className="subhead">Cost Controls (0–100)</div>
-                    <div className="rule"><span className="pill neutral">60%</span> Labour% (≤22=100, ≤24=80, ≤26=60)</div>
+                    <div className="rule">
+                      <span className="pill neutral">60%</span> Labour% (≤22=100, ≤24=80, ≤26=60)
+                    </div>
                     <div className="rule">
                       <span className="pill neutral">40%</span> Food variance% (abs) (≤0.5=100, ≤1.0=80, ≤1.5=60)
                     </div>
                     <p className="hint">
-                      Labour% is calculated as <b>labour_cost_gbp ÷ sales_gbp × 100</b>. Food variance% is{" "}
+                      Labour% = <b>labour_cost_gbp ÷ sales_gbp × 100</b>. Food variance% ={" "}
                       <b>(actual_food_cost_gbp − ideal_food_cost_gbp) ÷ sales_gbp × 100</b>. Averages are sales-weighted.
                     </p>
 
-                    <div className="subhead" style={{ marginTop: 10 }}>Internal OSA (0–100)</div>
-                    <div className="rule"><span className="pill neutral">50%</span> Stars: 5★=100, 4★=80, 3★=60, &lt;3★=0</div>
-                    <div className="rule"><span className="pill neutral">50%</span> Avg points lost: ≤10=100, ≤20=80, ≤30=60, &gt;30=0</div>
+                    <div className="subhead" style={{ marginTop: 10 }}>
+                      Internal OSA (0–100)
+                    </div>
+                    <div className="rule">
+                      <span className="pill neutral">50%</span> Stars: 5★=100, 4★=80, 3★=60, &lt;3★=0
+                    </div>
+                    <div className="rule">
+                      <span className="pill neutral">50%</span> Avg points lost: ≤10=100, ≤20=80, ≤30=60, &gt;30=0
+                    </div>
                   </div>
                 </div>
               </div>
