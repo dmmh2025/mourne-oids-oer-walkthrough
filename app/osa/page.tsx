@@ -186,6 +186,58 @@ const toISODateLocal = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+const toISODateUK = (date: Date) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const year = parts.find((p) => p.type === "year")?.value ?? "0000";
+  const month = parts.find((p) => p.type === "month")?.value ?? "01";
+  const day = parts.find((p) => p.type === "day")?.value ?? "01";
+  return `${year}-${month}-${day}`;
+};
+
+const parseISODate = (isoDate: string) => {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  return new Date(year, (month || 1) - 1, day || 1);
+};
+
+const startOfThisMonthLocal = () => {
+  const todayUk = toISODateUK(new Date());
+  const [year, month] = todayUk.split("-").map(Number);
+  return new Date(year, (month || 1) - 1, 1);
+};
+
+const startOfThisYearLocal = () => {
+  const todayUk = toISODateUK(new Date());
+  const [year] = todayUk.split("-").map(Number);
+  return new Date(year || 1970, 0, 1);
+};
+
+const inRange = (dateStr: string, from: Date, toExclusive: Date) => {
+  if (!dateStr) return false;
+  const probe = String(dateStr).slice(0, 10);
+  if (!isYYYYMMDD(probe)) return false;
+
+  const fromIso = toISODateUK(from);
+  const toIsoExclusive = toISODateUK(toExclusive);
+  return probe >= fromIso && probe < toIsoExclusive;
+};
+
+const calcStats = (rows: OsaRow[]) => {
+  const values = rows
+    .map((r) => toNumber(r.overall_points))
+    .filter((n): n is number => n !== null);
+
+  return {
+    visits: rows.length,
+    avgScore: values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0,
+  };
+};
+
 const getWeekRange = () => {
   const now = new Date();
   const day = now.getDay(); // 0 = Sunday
@@ -204,24 +256,22 @@ const getWeekRange = () => {
 };
 
 const getMonthRange = () => {
-  const now = new Date();
-  const first = new Date(now.getFullYear(), now.getMonth(), 1);
-  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const first = startOfThisMonthLocal();
+  const today = parseISODate(toISODateUK(new Date()));
 
   return {
     from: toISODateLocal(first),
-    to: toISODateLocal(last),
+    to: toISODateLocal(today),
   };
 };
 
 const getYearRange = () => {
-  const now = new Date();
-  const first = new Date(now.getFullYear(), 0, 1);
-  const last = new Date(now.getFullYear(), 11, 31);
+  const first = startOfThisYearLocal();
+  const today = parseISODate(toISODateUK(new Date()));
 
   return {
     from: toISODateLocal(first),
-    to: toISODateLocal(last),
+    to: toISODateLocal(today),
   };
 };
 
@@ -447,6 +497,23 @@ export default function InternalOsaScorecardPage() {
   const showUnknownManagers = mgrTable.some((x) => x.name === "Unknown");
   const showUnknownStores = storeTable.some((x) => x.name === "Unknown store");
 
+  const { mtdStats, ytdStats } = useMemo(() => {
+    const tomorrow = parseISODate(toISODateUK(new Date()));
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const mtdRows = rows.filter((r) =>
+      inRange(String(r.shift_date || ""), startOfThisMonthLocal(), tomorrow)
+    );
+    const ytdRows = rows.filter((r) =>
+      inRange(String(r.shift_date || ""), startOfThisYearLocal(), tomorrow)
+    );
+
+    return {
+      mtdStats: calcStats(mtdRows),
+      ytdStats: calcStats(ytdRows),
+    };
+  }, [rows]);
+
   return (
     <main className="wrap">
       <div className="banner">
@@ -587,6 +654,12 @@ export default function InternalOsaScorecardPage() {
                   </p>
                 </div>
                 <div className="kpi-mini">
+                  <span className="kpi-chip">
+                    <b>MTD</b> {mtdStats.visits} visits • {mtdStats.avgScore.toFixed(1)} avg
+                  </span>
+                  <span className="kpi-chip">
+                    <b>YTD</b> {ytdStats.visits} visits • {ytdStats.avgScore.toFixed(1)} avg
+                  </span>
                   <span className="kpi-chip">
                     <b>{mgrTable.length}</b> managers
                   </span>
