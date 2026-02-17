@@ -683,7 +683,6 @@ export default function ManagerPerformanceIndexPage() {
                     <tr>
                       <th>Rank</th>
                       <th>Manager</th>
-                      <th>Store(s)</th>
                       <th style={{ textAlign: "right" }}>MPI</th>
                       <th style={{ textAlign: "right" }}>Service</th>
                       <th style={{ textAlign: "right" }}>Cost</th>
@@ -706,8 +705,6 @@ export default function ManagerPerformanceIndexPage() {
                             </span>
                           ) : null}
                         </td>
-                        <td>{r.storeLabel}</td>
-
                         <td style={{ textAlign: "right" }}>
                           {r.mpi == null ? (
                             <span className="pill">—</span>
@@ -741,7 +738,7 @@ export default function ManagerPerformanceIndexPage() {
 
                     {ranked.length === 0 ? (
                       <tr>
-                        <td className="empty" colSpan={7}>
+                        <td className="empty" colSpan={6}>
                           No managers found with Service or Cost entries in this YTD range.
                         </td>
                       </tr>
