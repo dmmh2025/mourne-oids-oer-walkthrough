@@ -249,6 +249,34 @@ const pillClass = (score: number) => {
   return "pill red";
 };
 
+function movementIcon(current: number | null, previous: number | null) {
+  if (current == null || previous == null) return null;
+  if (current > previous) return "⬆️";
+  if (current < previous) return "⬇️";
+  return "➡️";
+}
+
+const previousMpiScore = (row: LeaderRow): number | null => {
+  const directPrevious = (row as LeaderRow & { previous_score?: number | null }).previous_score;
+  if (directPrevious != null) return directPrevious;
+
+  const lastScore = (row as LeaderRow & { last_score?: number | null }).last_score;
+  if (lastScore != null) return lastScore;
+
+  const history =
+    (row as LeaderRow & { mpi_history?: Array<number | null> }).mpi_history ??
+    (row as LeaderRow & { score_history?: Array<number | null> }).score_history;
+
+  if (!Array.isArray(history) || history.length < 2) return null;
+
+  for (let i = history.length - 2; i >= 0; i -= 1) {
+    const value = history[i];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+
+  return null;
+};
+
 export default function ManagerPerformanceIndexPage() {
   const router = useRouter();
 
@@ -690,7 +718,11 @@ export default function ManagerPerformanceIndexPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {ranked.map((r, idx) => (
+                    {ranked.map((r, idx) => {
+                      const prevMpi = previousMpiScore(r);
+                      const mpiMovement = movementIcon(r.mpi, prevMpi);
+
+                      return (
                       <tr key={r.key}>
                         <td style={{ fontWeight: 900 }}>{idx + 1}</td>
                         <td style={{ fontWeight: 900 }}>
@@ -706,11 +738,28 @@ export default function ManagerPerformanceIndexPage() {
                           ) : null}
                         </td>
                         <td style={{ textAlign: "right" }}>
-                          {r.mpi == null ? (
-                            <span className="pill">—</span>
-                          ) : (
-                            <span className={pillClass(r.mpi)}>{r.mpi}</span>
-                          )}
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "flex-end",
+                              gap: "0.5rem",
+                            }}
+                          >
+                            {r.mpi == null ? (
+                              <span className="pill">—</span>
+                            ) : (
+                              <span className={pillClass(r.mpi)}>{r.mpi}</span>
+                            )}
+                            {mpiMovement ? (
+                              <span
+                                style={{ fontSize: "1rem" }}
+                                title={r.mpi != null && prevMpi != null ? `Prev: ${prevMpi}` : ""}
+                              >
+                                {mpiMovement}
+                              </span>
+                            ) : null}
+                          </span>
                         </td>
                         <td style={{ textAlign: "right" }}>
                           {r.service == null ? (
@@ -734,7 +783,7 @@ export default function ManagerPerformanceIndexPage() {
                           )}
                         </td>
                       </tr>
-                    ))}
+                    )})}
 
                     {ranked.length === 0 ? (
                       <tr>
