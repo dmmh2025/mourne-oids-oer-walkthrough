@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import CostControlsUploadPanel from "./CostControlsUploadPanel";
+import DailyUpdateAdminPanel from "./DailyUpdateAdminPanel"; // ✅ NEW
 
 const supabase =
   typeof window !== "undefined"
@@ -47,9 +48,15 @@ export default function AdminPage() {
   const [isAuthed, setIsAuthed] = useState(false);
   const [authError, setAuthError] = useState("");
 
-  // ✅ add "osa" + "cost_controls" tab
+  // ✅ add "osa" + "cost_controls" + "daily_update" tab
   const [activeTab, setActiveTab] = useState<
-    "ticker" | "service" | "memomailer" | "pizza" | "osa" | "cost_controls"
+    | "ticker"
+    | "service"
+    | "memomailer"
+    | "pizza"
+    | "osa"
+    | "cost_controls"
+    | "daily_update"
   >("ticker");
 
   // ticker state
@@ -363,7 +370,9 @@ export default function AdminPage() {
       is_elite: osaElite,
     };
 
-    const { error } = await supabase.from("osa_internal_results").insert([payload]);
+    const { error } = await supabase
+      .from("osa_internal_results")
+      .insert([payload]);
 
     if (error) {
       setOsaMsg("❌ Upload failed: " + error.message);
@@ -550,6 +559,13 @@ export default function AdminPage() {
               onClick={() => setActiveTab("cost_controls")}
             >
               💷 Cost Controls
+            </button>
+            {/* ✅ NEW DAILY UPDATE INPUTS TAB */}
+            <button
+              className={activeTab === "daily_update" ? "tab active" : "tab"}
+              onClick={() => setActiveTab("daily_update")}
+            >
+              🗓 Daily Update Inputs
             </button>
           </div>
 
@@ -915,6 +931,9 @@ export default function AdminPage() {
           ) : activeTab === "cost_controls" ? (
             // 💷 COST CONTROLS SECTION (NEW)
             <CostControlsUploadPanel />
+          ) : activeTab === "daily_update" ? (
+            // 🗓 DAILY UPDATE INPUTS (NEW)
+            <DailyUpdateAdminPanel />
           ) : (
             // 🍕 PIZZA OF THE WEEK SECTION
             <section className="card">
