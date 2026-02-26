@@ -17,13 +17,16 @@ type AreaMessageRow = {
 type StoreInputRow = {
   date: string;
   store: string;
+
+  // Stored as 0–100 values (we display as % and compare against targets)
   missed_calls_wtd: number | null;
   gps_tracked_wtd: number | null;
   aof_wtd: number | null;
+
   target_load_time_mins: number | null;
   target_rack_time_mins: number | null;
   target_adt_mins: number | null;
-  target_extremes_over40_pct: number | null;
+  target_extremes_over40_pct: number | null; // 0–100
   notes: string | null;
 };
 
@@ -40,10 +43,11 @@ type TaskRow = {
 type ServiceShiftRow = {
   shift_date: string;
   store: string;
-  dot_pct: number | null;
-  labour_pct: number | null;
-  extreme_over_40: number | null;
+  dot_pct: number | null; // 0–1 or 0–100
+  labour_pct: number | null; // 0–1 or 0–100
+  extreme_over_40: number | null; // 0–1 or 0–100
   rnl_minutes: number | null;
+  additional_hours?: number | null;
 };
 
 type CostControlRow = {
@@ -55,6 +59,19 @@ type CostControlRow = {
   actual_food_cost_gbp: number | null;
 };
 
+type OsaInternalRow = {
+  shift_date: string;
+  store: string | null;
+};
+
+/** ===== Daily Input targets (global) ===== */
+const INPUT_TARGETS = {
+  missedCallsMax01: 0.06, // < 6%
+  aofMin01: 0.62, // > 62%
+  gpsMin01: 0.95, // > 95%
+};
+
+/* ---------- UK date (Europe/London) ---------- */
 const toISODateUK = (date: Date) => {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/London",
@@ -81,24 +98,149 @@ const getPreviousBusinessDayUk = () => {
   return toISODateUK(previous);
 };
 
-const normalisePct = (v: number | null) => {
+const getWeekStartUK = (isoDate: string) => {
+  const d = parseIsoDate(isoDate);
+  const day = d.getDay();
+  const mondayOffset = day === 0 ? 6 : day - 1;
+  d.setDate(d.getDate() - mondayOffset);
+  return toISODateUK(d);
+};
+
+const normalisePct01 = (v: number | null) => {
   if (v == null || !Number.isFinite(v)) return null;
   return v > 1 ? v / 100 : v;
 };
 
-const pct0 = (v01: number | null) => (v01 == null ? "—" : `${(v01 * 100).toFixed(0)}%`);
-const num0 = (v: number | null) => (v == null || !Number.isFinite(v) ? "—" : `${Math.round(v)}`);
-const mins0 = (v: number | null) => (v == null || !Number.isFinite(v) ? "—" : `${Math.round(v)}m`);
+const to01From100 = (v0to100: number | null) => {
+  if (v0to100 == null || !Number.isFinite(v0to100)) return null;
+  return v0to100 / 100;
+};
+
+const fmtPct2 = (v01: number | null) =>
+  v01 == null ? "—" : `${(v01 * 100).toFixed(2)}%`;
+
+const fmtNum2 = (v: number | null) =>
+  v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}`;
+
+const fmtMins2 = (v: number | null) =>
+  v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}m`;
 
 const avg = (arr: number[]) =>
   arr.length ? arr.reduce((acc, val) => acc + val, 0) / arr.length : null;
 
 const sum = (arr: number[]) => arr.reduce((acc, val) => acc + val, 0);
 
+type Targets = {
+  dotMin01: number;
+  labourMax01: number;
+  rnlMaxMins: number;
+  extremesMax01: number;
+  foodVarAbsMax01: number;
+};
+
+const DEFAULT_TARGETS: Record<string, Targets> = {
+  Downpatrick: {
+    dotMin01: 0.82,
+    labourMax01: 0.25,
+    rnlMaxMins: 9,
+    extremesMax01: 0.03,
+    foodVarAbsMax01: 0.003,
+  },
+  Kilkeel: {
+    dotMin01: 0.78,
+    labourMax01: 0.28,
+    rnlMaxMins: 8,
+    extremesMax01: 0.04,
+    foodVarAbsMax01: 0.003,
+  },
+  Newcastle: {
+    dotMin01: 0.78,
+    labourMax01: 0.25,
+    rnlMaxMins: 9,
+    extremesMax01: 0.04,
+    foodVarAbsMax01: 0.003,
+  },
+  Ballynahinch: {
+    dotMin01: 0.78,
+    labourMax01: 0.28,
+    rnlMaxMins: 9,
+    extremesMax01: 0.04,
+    foodVarAbsMax01: 0.003,
+  },
+};
+
+const getTargetsForStore = (store: string, inputs: StoreInputRow | null): Targets => {
+  const base =
+    DEFAULT_TARGETS[store] || {
+      dotMin01: 0.78,
+      labourMax01: 0.28,
+      rnlMaxMins: 9,
+      extremesMax01: 0.04,
+      foodVarAbsMax01: 0.003,
+    };
+
+  const extFromInputs01 =
+    inputs?.target_extremes_over40_pct != null
+      ? to01From100(inputs.target_extremes_over40_pct)
+      : null;
+
+  return { ...base, extremesMax01: extFromInputs01 ?? base.extremesMax01 };
+};
+
+type MetricStatus = "good" | "ok" | "bad" | "na";
+
+const within = (a: number, b: number, tol: number) => Math.abs(a - b) <= tol;
+
+const statusHigherBetter = (value: number | null, targetMin: number, tol = 0.002): MetricStatus => {
+  if (value == null || !Number.isFinite(value)) return "na";
+  if (value >= targetMin + tol) return "good";
+  if (within(value, targetMin, tol)) return "ok";
+  return "bad";
+};
+
+const statusLowerBetter = (value: number | null, targetMax: number, tol = 0.002): MetricStatus => {
+  if (value == null || !Number.isFinite(value)) return "na";
+  if (value <= targetMax - tol) return "good";
+  if (within(value, targetMax, tol)) return "ok";
+  return "bad";
+};
+
+const statusAbsLowerBetter = (value: number | null, targetAbsMax: number, tol = 0.002): MetricStatus => {
+  if (value == null || !Number.isFinite(value)) return "na";
+  const absVal = Math.abs(value);
+  if (absVal <= targetAbsMax - tol) return "good";
+  if (within(absVal, targetAbsMax, tol)) return "ok";
+  return "bad";
+};
+
+const arrowHigherBetter = (value: number | null, targetMin: number, tol = 0.002) => {
+  if (value == null) return "—";
+  if (value >= targetMin + tol) return "⬆️";
+  if (within(value, targetMin, tol)) return "➡️";
+  return "⬇️";
+};
+
+const arrowLowerBetter = (value: number | null, targetMax: number, tol = 0.002) => {
+  if (value == null) return "—";
+  if (value <= targetMax - tol) return "⬇️";
+  if (within(value, targetMax, tol)) return "➡️";
+  return "⬆️";
+};
+
+const arrowAbsLowerBetter = (value: number | null, targetAbsMax: number, tol = 0.002) => {
+  if (value == null) return "—";
+  const absVal = Math.abs(value);
+  if (absVal <= targetAbsMax - tol) return "⬇️";
+  if (within(absVal, targetAbsMax, tol)) return "➡️";
+  return "⬆️";
+};
+
 export default function DailyUpdateClient() {
   const router = useRouter();
 
   const [targetDate, setTargetDate] = useState<string>("");
+  const [weekStart, setWeekStart] = useState<string>("");
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -107,6 +249,7 @@ export default function DailyUpdateClient() {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [serviceRows, setServiceRows] = useState<ServiceShiftRow[]>([]);
   const [costRows, setCostRows] = useState<CostControlRow[]>([]);
+  const [osaRows, setOsaRows] = useState<OsaInternalRow[]>([]);
   const [stores, setStores] = useState<string[]>([]);
 
   useEffect(() => {
@@ -116,7 +259,10 @@ export default function DailyUpdateClient() {
         setError(null);
 
         const previousBusinessDay = getPreviousBusinessDayUk();
+        const wkStart = getWeekStartUK(previousBusinessDay);
+
         setTargetDate(previousBusinessDay);
+        setWeekStart(wkStart);
 
         const [
           areaMessageRes,
@@ -124,6 +270,7 @@ export default function DailyUpdateClient() {
           tasksRes,
           serviceRes,
           costRes,
+          osaRes,
           serviceStoresRes,
           costStoresRes,
           inputStoresRes,
@@ -146,19 +293,32 @@ export default function DailyUpdateClient() {
             .order("created_at", { ascending: true }),
           supabase
             .from("service_shifts")
-            .select("shift_date,store,dot_pct,labour_pct,extreme_over_40,rnl_minutes")
+            .select("shift_date,store,dot_pct,labour_pct,extreme_over_40,rnl_minutes,additional_hours")
             .eq("shift_date", previousBusinessDay),
           supabase
             .from("cost_control_entries")
             .select("shift_date,store,sales_gbp,labour_cost_gbp,ideal_food_cost_gbp,actual_food_cost_gbp")
             .eq("shift_date", previousBusinessDay),
-          supabase.from("service_shifts").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
+          supabase
+            .from("osa_internal_results")
+            .select("shift_date,store")
+            .gte("shift_date", wkStart)
+            .lte("shift_date", previousBusinessDay),
+          supabase
+            .from("service_shifts")
+            .select("store,shift_date")
+            .order("shift_date", { ascending: false })
+            .limit(500),
           supabase
             .from("cost_control_entries")
             .select("store,shift_date")
             .order("shift_date", { ascending: false })
             .limit(500),
-          supabase.from("daily_update_store_inputs").select("store,date").order("date", { ascending: false }).limit(500),
+          supabase
+            .from("daily_update_store_inputs")
+            .select("store,date")
+            .order("date", { ascending: false })
+            .limit(500),
         ]);
 
         const firstError = [
@@ -167,6 +327,7 @@ export default function DailyUpdateClient() {
           tasksRes.error,
           serviceRes.error,
           costRes.error,
+          osaRes.error,
           serviceStoresRes.error,
           costStoresRes.error,
           inputStoresRes.error,
@@ -179,9 +340,14 @@ export default function DailyUpdateClient() {
         setTasks((tasksRes.data || []) as TaskRow[]);
         setServiceRows((serviceRes.data || []) as ServiceShiftRow[]);
         setCostRows((costRes.data || []) as CostControlRow[]);
+        setOsaRows((osaRes.data || []) as OsaInternalRow[]);
 
         const storeSet = new Set<string>();
-        for (const row of [...(serviceStoresRes.data || []), ...(costStoresRes.data || []), ...(inputStoresRes.data || [])]) {
+        for (const row of [
+          ...(serviceStoresRes.data || []),
+          ...(costStoresRes.data || []),
+          ...(inputStoresRes.data || []),
+        ]) {
           const s = String((row as { store?: string }).store || "").trim();
           if (s) storeSet.add(s);
         }
@@ -204,11 +370,20 @@ export default function DailyUpdateClient() {
 
   const tasksByStore = useMemo(() => {
     const m = new Map<string, TaskRow[]>();
-    for (const row of tasks) {
-      m.set(row.store, [...(m.get(row.store) || []), row]);
-    }
+    for (const row of tasks) m.set(row.store, [...(m.get(row.store) || []), row]);
     return m;
   }, [tasks]);
+
+  const osaCounts = useMemo(() => {
+    const total = osaRows.length;
+    const byStore = new Map<string, number>();
+    for (const r of osaRows) {
+      const s = String(r.store || "").trim();
+      if (!s) continue;
+      byStore.set(s, (byStore.get(s) || 0) + 1);
+    }
+    return { total, byStore };
+  }, [osaRows]);
 
   const storeCards = useMemo(() => {
     return stores.map((store) => {
@@ -222,31 +397,63 @@ export default function DailyUpdateClient() {
       const idealFoodCost = sum(cost.map((row) => Number(row.ideal_food_cost_gbp || 0)));
       const actualFoodCost = sum(cost.map((row) => Number(row.actual_food_cost_gbp || 0)));
 
-      const labourPct = sales > 0 ? labourCost / sales : null;
-      const foodVarPct = sales > 0 ? (actualFoodCost - idealFoodCost) / sales : null;
+      const labourPct01 = sales > 0 ? labourCost / sales : null;
+      const foodVarPct01 = sales > 0 ? (actualFoodCost - idealFoodCost) / sales : null;
 
-      const dotPct = avg(service.map((row) => normalisePct(row.dot_pct)).filter((v): v is number => v != null));
-      const extremesPct = avg(
-        service.map((row) => normalisePct(row.extreme_over_40)).filter((v): v is number => v != null)
+      const dotPct01 = avg(
+        service.map((row) => normalisePct01(row.dot_pct)).filter((v): v is number => v != null)
+      );
+      const extremesPct01 = avg(
+        service.map((row) => normalisePct01(row.extreme_over_40)).filter((v): v is number => v != null)
       );
       const rnlMinutes = avg(service.map((row) => row.rnl_minutes).filter((v): v is number => v != null));
 
+      const additionalHours = sum(service.map((row) => Number(row.additional_hours || 0)));
+
+      const targets = getTargetsForStore(store, inputs);
+
+      // ✅ daily input values converted to 0–1 for comparisons + formatting
+      const missedCalls01 = to01From100(inputs?.missed_calls_wtd ?? null);
+      const gps01 = to01From100(inputs?.gps_tracked_wtd ?? null);
+      const aof01 = to01From100(inputs?.aof_wtd ?? null);
+
       return {
         store,
-        cost: { labourPct, foodVarPct },
-        service: { dotPct, extremesPct, rnlMinutes },
+        sales,
+        additionalHours,
+        cost: { labourPct01, foodVarPct01 },
+        service: { dotPct01, extremesPct01, rnlMinutes },
         inputs,
         tasks: storeTasks,
+        targets,
+        osaWtdCount: osaCounts.byStore.get(store) || 0,
+        daily: { missedCalls01, gps01, aof01 },
       };
     });
-  }, [stores, costRows, serviceRows, inputsByStore, tasksByStore]);
+  }, [stores, costRows, serviceRows, inputsByStore, tasksByStore, osaCounts.byStore]);
+
+  const areaRollup = useMemo(() => {
+    const sales = sum(costRows.map((r) => Number(r.sales_gbp || 0)));
+    const labourCost = sum(costRows.map((r) => Number(r.labour_cost_gbp || 0)));
+    const idealFood = sum(costRows.map((r) => Number(r.ideal_food_cost_gbp || 0)));
+    const actualFood = sum(costRows.map((r) => Number(r.actual_food_cost_gbp || 0)));
+
+    const labourPct01 = sales > 0 ? labourCost / sales : null;
+    const foodVarPct01 = sales > 0 ? (actualFood - idealFood) / sales : null;
+
+    const additionalHours = sum(serviceRows.map((r) => Number(r.additional_hours || 0)));
+
+    return { sales, labourPct01, foodVarPct01, additionalHours };
+  }, [costRows, serviceRows]);
 
   const toggleTask = async (task: TaskRow) => {
     const willComplete = !task.is_complete;
     const completedAt = willComplete ? new Date().toISOString() : null;
 
     setTasks((prev) =>
-      prev.map((row) => (row.id === task.id ? { ...row, is_complete: willComplete, completed_at: completedAt } : row))
+      prev.map((row) =>
+        row.id === task.id ? { ...row, is_complete: willComplete, completed_at: completedAt } : row
+      )
     );
 
     const { error: updateError } = await supabase
@@ -258,6 +465,34 @@ export default function DailyUpdateClient() {
       setTasks((prev) => prev.map((row) => (row.id === task.id ? task : row)));
       setError(updateError.message);
     }
+  };
+
+  const MetricLine = (props: {
+    label: string;
+    valueText: string;
+    targetText?: string;
+    status: MetricStatus;
+    arrow?: string;
+  }) => {
+    const cls =
+      props.status === "good"
+        ? "metric good"
+        : props.status === "ok"
+        ? "metric ok"
+        : props.status === "bad"
+        ? "metric bad"
+        : "metric na";
+
+    return (
+      <div className={cls}>
+        <span className="mLabel">{props.label}</span>
+        <span className="mRight">
+          {props.arrow ? <span className="mArrow">{props.arrow}</span> : null}
+          <strong className="mValue">{props.valueText}</strong>
+          {props.targetText ? <span className="mTarget"> · tgt {props.targetText}</span> : null}
+        </span>
+      </div>
+    );
   };
 
   return (
@@ -282,30 +517,34 @@ export default function DailyUpdateClient() {
 
         <header className="header">
           <h1>Mourne-oids Daily Update</h1>
-          <p className="subtitle">Previous business day: {targetDate || "Loading…"}</p>
+          <p className="subtitle">
+            Previous business day: {targetDate || "Loading…"}
+            {weekStart ? ` · WTD from ${weekStart}` : ""}
+          </p>
         </header>
 
         <section className="areaStrip">
           <div className="areaKpi">
             <span className="kLabel">Area Labour</span>
-            <span className="kValue">—</span>
+            <span className="kValue">{fmtPct2(areaRollup.labourPct01)}</span>
           </div>
           <div className="areaKpi">
-            <span className="kLabel">Area Food</span>
-            <span className="kValue">—</span>
+            <span className="kLabel">Area Food Var</span>
+            <span className="kValue">{fmtPct2(areaRollup.foodVarPct01)}</span>
           </div>
           <div className="areaKpi">
             <span className="kLabel">Area Additional Hours</span>
-            <span className="kValue">—</span>
+            <span className="kValue">{fmtNum2(areaRollup.additionalHours)}</span>
           </div>
           <div className="areaKpi">
             <span className="kLabel">OSA WTD count</span>
-            <span className="kValue">—</span>
+            <span className="kValue">{String(osaCounts.total)}</span>
           </div>
+
           <div className="storeOsaRow">
             {stores.map((store) => (
               <span key={store} className="chip">
-                {store}: —
+                {store}: {String(osaCounts.byStore.get(store) || 0)}
               </span>
             ))}
             {!stores.length && <span className="chip">No stores loaded</span>}
@@ -324,92 +563,156 @@ export default function DailyUpdateClient() {
 
         {!loading && !error && (
           <section className="storesGrid">
-            {storeCards.map((card) => (
-              <article key={card.store} className="storeCard">
-                <h2 className="storeName">{card.store}</h2>
+            {storeCards.map((card) => {
+              const dotStatus = statusHigherBetter(card.service.dotPct01, card.targets.dotMin01);
+              const labourStatus = statusLowerBetter(card.cost.labourPct01, card.targets.labourMax01);
+              const rnlStatus = statusLowerBetter(card.service.rnlMinutes, card.targets.rnlMaxMins, 0.1);
+              const extremesStatus = statusLowerBetter(card.service.extremesPct01, card.targets.extremesMax01);
+              const foodVarStatus = statusAbsLowerBetter(card.cost.foodVarPct01, card.targets.foodVarAbsMax01);
 
-                <div className="metricGrid">
-                  <div className="metricBlock">
-                    <h3>Cost Controls</h3>
-                    <div className="lineItem">
-                      <span>Labour %</span>
-                      <strong>{pct0(card.cost.labourPct)}</strong>
+              // ✅ Daily input KPI statuses + arrows (YOUR targets)
+              const missedStatus = statusLowerBetter(card.daily.missedCalls01, INPUT_TARGETS.missedCallsMax01);
+              const gpsStatus = statusHigherBetter(card.daily.gps01, INPUT_TARGETS.gpsMin01);
+              const aofStatus = statusHigherBetter(card.daily.aof01, INPUT_TARGETS.aofMin01);
+
+              return (
+                <article key={card.store} className="storeCard">
+                  <div className="storeHead">
+                    <h2 className="storeName">{card.store}</h2>
+                    <span className="osaChip">OSA WTD: {card.osaWtdCount}</span>
+                  </div>
+
+                  <div className="metricGrid">
+                    <div className="metricBlock">
+                      <h3>Cost Controls</h3>
+                      {MetricLine({
+                        label: "Labour %",
+                        valueText: fmtPct2(card.cost.labourPct01),
+                        targetText: fmtPct2(card.targets.labourMax01),
+                        status: labourStatus,
+                        arrow: arrowLowerBetter(card.cost.labourPct01, card.targets.labourMax01),
+                      })}
+                      {MetricLine({
+                        label: "Food var % of sales",
+                        valueText: fmtPct2(card.cost.foodVarPct01),
+                        targetText: `±${fmtPct2(card.targets.foodVarAbsMax01)}`,
+                        status: foodVarStatus,
+                        arrow: arrowAbsLowerBetter(card.cost.foodVarPct01, card.targets.foodVarAbsMax01),
+                      })}
                     </div>
-                    <div className="lineItem">
-                      <span>Food variance % of sales</span>
-                      <strong>{pct0(card.cost.foodVarPct)}</strong>
+
+                    <div className="metricBlock">
+                      <h3>Service</h3>
+                      {MetricLine({
+                        label: "DOT %",
+                        valueText: fmtPct2(card.service.dotPct01),
+                        targetText: fmtPct2(card.targets.dotMin01),
+                        status: dotStatus,
+                        arrow: arrowHigherBetter(card.service.dotPct01, card.targets.dotMin01),
+                      })}
+                      {MetricLine({
+                        label: "R&L mins",
+                        valueText: fmtMins2(card.service.rnlMinutes),
+                        targetText: fmtMins2(card.targets.rnlMaxMins),
+                        status: rnlStatus,
+                        arrow: arrowLowerBetter(card.service.rnlMinutes, card.targets.rnlMaxMins, 0.1),
+                      })}
+                      {MetricLine({
+                        label: "Extremes >40",
+                        valueText: fmtPct2(card.service.extremesPct01),
+                        targetText: fmtPct2(card.targets.extremesMax01),
+                        status: extremesStatus,
+                        arrow: arrowLowerBetter(card.service.extremesPct01, card.targets.extremesMax01),
+                      })}
+                    </div>
+
+                    <div className="metricBlock">
+                      <h3>Daily Inputs</h3>
+                      {MetricLine({
+                        label: "Missed Calls (WTD %)",
+                        valueText: fmtPct2(card.daily.missedCalls01),
+                        targetText: "< 6.00%",
+                        status: missedStatus,
+                        arrow: arrowLowerBetter(card.daily.missedCalls01, INPUT_TARGETS.missedCallsMax01),
+                      })}
+                      {MetricLine({
+                        label: "GPS Tracked (WTD %)",
+                        valueText: fmtPct2(card.daily.gps01),
+                        targetText: "> 95.00%",
+                        status: gpsStatus,
+                        arrow: arrowHigherBetter(card.daily.gps01, INPUT_TARGETS.gpsMin01),
+                      })}
+                      {MetricLine({
+                        label: "AOF (WTD %)",
+                        valueText: fmtPct2(card.daily.aof01),
+                        targetText: "> 62.00%",
+                        status: aofStatus,
+                        arrow: arrowHigherBetter(card.daily.aof01, INPUT_TARGETS.aofMin01),
+                      })}
                     </div>
                   </div>
 
-                  <div className="metricBlock">
-                    <h3>Service</h3>
-                    <div className="lineItem">
-                      <span>DOT %</span>
-                      <strong>{pct0(card.service.dotPct)}</strong>
+                  <section className="notes">
+                    <h3>Notes</h3>
+                    <p>{card.inputs?.notes?.trim() || "—"}</p>
+                  </section>
+
+                  <section className="targets">
+                    <h3>Service Losing Targets</h3>
+                    <div className="metricGrid compact">
+                      <div className="lineItem">
+                        <span>Load target (mins)</span>
+                        <strong>{fmtNum2(card.inputs?.target_load_time_mins ?? null)}</strong>
+                      </div>
+                      <div className="lineItem">
+                        <span>Rack target (mins)</span>
+                        <strong>{fmtNum2(card.inputs?.target_rack_time_mins ?? null)}</strong>
+                      </div>
+                      <div className="lineItem">
+                        <span>ADT target (mins)</span>
+                        <strong>{fmtNum2(card.inputs?.target_adt_mins ?? null)}</strong>
+                      </div>
+                      <div className="lineItem">
+                        <span>Extremes target %</span>
+                        <strong>
+                          {card.inputs?.target_extremes_over40_pct == null
+                            ? "—"
+                            : `${Number(card.inputs.target_extremes_over40_pct).toFixed(2)}%`}
+                        </strong>
+                      </div>
+                      <div className="lineItem">
+                        <span>Additional hours (actual)</span>
+                        <strong>{fmtNum2(card.additionalHours)}</strong>
+                      </div>
                     </div>
-                    <div className="lineItem">
-                      <span>R&amp;L minutes</span>
-                      <strong>{mins0(card.service.rnlMinutes)}</strong>
-                    </div>
-                    <div className="lineItem">
-                      <span>Extremes &gt;40%</span>
-                      <strong>{pct0(card.service.extremesPct)}</strong>
-                    </div>
-                  </div>
 
-                  <div className="metricBlock">
-                    <h3>OSA</h3>
-                    <p className="placeholder">Summary placeholder — data to be wired later.</p>
-                  </div>
-                </div>
+                    <p className="mutedSmall">
+                      Note: Load/Rack/ADT actuals are not available from current tables on this page.
+                      If you want those compared with arrows too, we need to add those fields to{" "}
+                      <code>service_shifts</code> (or a separate table) and query them here.
+                    </p>
+                  </section>
 
-                <div className="metricGrid compact">
-                  <div className="lineItem"><span>Missed Calls WTD</span><strong>{num0(card.inputs?.missed_calls_wtd ?? null)}</strong></div>
-                  <div className="lineItem"><span>GPS Tracked WTD</span><strong>{num0(card.inputs?.gps_tracked_wtd ?? null)}</strong></div>
-                  <div className="lineItem"><span>AOF WTD</span><strong>{num0(card.inputs?.aof_wtd ?? null)}</strong></div>
-                </div>
-
-                <section className="notes">
-                  <h3>Notes</h3>
-                  <p>{card.inputs?.notes?.trim() || "—"}</p>
-                </section>
-
-                <section className="targets">
-                  <h3>Service Losing Targets</h3>
-                  <div className="metricGrid compact">
-                    <div className="lineItem"><span>Load target (mins)</span><strong>{num0(card.inputs?.target_load_time_mins ?? null)}</strong></div>
-                    <div className="lineItem"><span>Rack target (mins)</span><strong>{num0(card.inputs?.target_rack_time_mins ?? null)}</strong></div>
-                    <div className="lineItem"><span>ADT target (mins)</span><strong>{num0(card.inputs?.target_adt_mins ?? null)}</strong></div>
-                    <div className="lineItem">
-                      <span>Extremes target %</span>
-                      <strong>{card.inputs?.target_extremes_over40_pct == null ? "—" : `${Math.round(card.inputs.target_extremes_over40_pct)}%`}</strong>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="tasks">
-                  <h3>Tasks</h3>
-                  {card.tasks.length === 0 ? (
-                    <p className="placeholder">No tasks for this store on {targetDate}.</p>
-                  ) : (
-                    <ul>
-                      {card.tasks.map((task) => (
-                        <li key={task.id}>
-                          <label>
-                            <input
-                              type="checkbox"
-                              checked={task.is_complete}
-                              onChange={() => toggleTask(task)}
-                            />
-                            <span className={task.is_complete ? "done" : ""}>{task.task}</span>
-                          </label>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
-              </article>
-            ))}
+                  <section className="tasks">
+                    <h3>Tasks</h3>
+                    {card.tasks.length === 0 ? (
+                      <p className="placeholder">No tasks for this store on {targetDate}.</p>
+                    ) : (
+                      <ul>
+                        {card.tasks.map((task) => (
+                          <li key={task.id}>
+                            <label>
+                              <input type="checkbox" checked={task.is_complete} onChange={() => toggleTask(task)} />
+                              <span className={task.is_complete ? "done" : ""}>{task.task}</span>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                </article>
+              );
+            })}
           </section>
         )}
       </div>
@@ -448,7 +751,9 @@ export default function DailyUpdateClient() {
           gap: 10px;
           margin-bottom: 10px;
         }
-        .topbar-spacer { flex: 1; }
+        .topbar-spacer {
+          flex: 1;
+        }
         .navbtn {
           border-radius: 14px;
           border: 2px solid #006491;
@@ -471,7 +776,12 @@ export default function DailyUpdateClient() {
           font-size: clamp(2rem, 3vw, 2.3rem);
           margin: 0;
         }
-        .subtitle { color: #64748b; font-weight: 700; margin: 4px 0 0; }
+        .subtitle {
+          color: #64748b;
+          font-weight: 700;
+          margin: 4px 0 0;
+        }
+
         .areaStrip {
           display: grid;
           gap: 10px;
@@ -489,17 +799,29 @@ export default function DailyUpdateClient() {
           padding: 8px 10px;
           background: rgba(255, 255, 255, 0.9);
         }
-        .kLabel { font-size: 12px; font-weight: 900; text-transform: uppercase; }
-        .kValue { font-weight: 900; color: #006491; }
-        .storeOsaRow { display: flex; flex-wrap: wrap; gap: 8px; }
+        .kLabel {
+          font-size: 12px;
+          font-weight: 900;
+          text-transform: uppercase;
+        }
+        .kValue {
+          font-weight: 950;
+          color: #006491;
+        }
+        .storeOsaRow {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
         .chip {
           border: 1px solid rgba(0, 100, 145, 0.16);
           border-radius: 999px;
           padding: 4px 10px;
           background: rgba(0, 100, 145, 0.08);
           font-size: 12px;
-          font-weight: 800;
+          font-weight: 900;
         }
+
         .message {
           margin-top: 12px;
           border: 1px solid rgba(0, 100, 145, 0.14);
@@ -507,13 +829,22 @@ export default function DailyUpdateClient() {
           background: rgba(255, 255, 255, 0.92);
           padding: 12px;
         }
-        .message h2 { margin: 0 0 6px; font-size: 16px; }
-        .message p { margin: 0; white-space: pre-wrap; font-weight: 700; color: #334155; }
+        .message h2 {
+          margin: 0 0 6px;
+          font-size: 16px;
+        }
+        .message p {
+          margin: 0;
+          white-space: pre-wrap;
+          font-weight: 800;
+          color: #334155;
+        }
+
         .alert {
           margin-top: 12px;
           border-radius: 14px;
           padding: 12px;
-          font-weight: 700;
+          font-weight: 800;
           background: rgba(255, 255, 255, 0.85);
           border: 1px solid rgba(15, 23, 42, 0.1);
         }
@@ -522,6 +853,7 @@ export default function DailyUpdateClient() {
           border-color: rgba(239, 68, 68, 0.25);
           color: #7f1d1d;
         }
+
         .storesGrid {
           margin-top: 12px;
           display: grid;
@@ -534,7 +866,28 @@ export default function DailyUpdateClient() {
           border-radius: 18px;
           padding: 14px;
         }
-        .storeName { margin: 0 0 10px; font-size: 20px; }
+        .storeHead {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+        .storeName {
+          margin: 0;
+          font-size: 20px;
+        }
+        .osaChip {
+          border-radius: 999px;
+          padding: 6px 10px;
+          background: rgba(124, 58, 237, 0.08);
+          border: 1px solid rgba(124, 58, 237, 0.18);
+          color: #4c1d95;
+          font-weight: 950;
+          font-size: 12px;
+          white-space: nowrap;
+        }
+
         .metricGrid {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -544,6 +897,7 @@ export default function DailyUpdateClient() {
           grid-template-columns: repeat(2, minmax(0, 1fr));
           margin-top: 10px;
         }
+
         .metricBlock {
           border: 1px solid rgba(15, 23, 42, 0.08);
           border-radius: 12px;
@@ -559,6 +913,58 @@ export default function DailyUpdateClient() {
           text-transform: uppercase;
           color: #334155;
         }
+
+        .metric {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+          border-radius: 12px;
+          padding: 7px 10px;
+          margin-top: 8px;
+          font-size: 13px;
+          border: 1px solid rgba(15, 23, 42, 0.06);
+          background: rgba(248, 250, 252, 0.85);
+        }
+        .metric.good {
+          background: rgba(220, 252, 231, 0.75);
+          border-color: rgba(34, 197, 94, 0.25);
+        }
+        .metric.ok {
+          background: rgba(255, 237, 213, 0.7);
+          border-color: rgba(245, 158, 11, 0.25);
+        }
+        .metric.bad {
+          background: rgba(254, 226, 226, 0.75);
+          border-color: rgba(239, 68, 68, 0.25);
+        }
+        .metric.na {
+          opacity: 0.8;
+        }
+
+        .mLabel {
+          font-weight: 900;
+          color: #0f172a;
+        }
+        .mRight {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          white-space: nowrap;
+        }
+        .mArrow {
+          font-size: 14px;
+        }
+        .mValue {
+          font-weight: 950;
+          color: #0f172a;
+        }
+        .mTarget {
+          color: #475569;
+          font-weight: 900;
+          font-size: 12px;
+        }
+
         .lineItem {
           display: flex;
           justify-content: space-between;
@@ -570,8 +976,16 @@ export default function DailyUpdateClient() {
           font-size: 13px;
           margin-top: 6px;
         }
-        .lineItem strong { white-space: nowrap; }
-        .placeholder { margin: 0; color: #64748b; font-weight: 600; }
+        .lineItem strong {
+          white-space: nowrap;
+        }
+
+        .placeholder {
+          margin: 0;
+          color: #64748b;
+          font-weight: 700;
+        }
+
         .notes,
         .targets,
         .tasks {
@@ -581,10 +995,41 @@ export default function DailyUpdateClient() {
           background: #fff;
           padding: 10px;
         }
-        .notes p { margin: 0; white-space: pre-wrap; font-weight: 600; color: #334155; }
-        .tasks ul { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 8px; }
-        .tasks label { display: flex; align-items: center; gap: 8px; font-weight: 600; }
-        .done { text-decoration: line-through; color: #64748b; }
+        .notes p {
+          margin: 0;
+          white-space: pre-wrap;
+          font-weight: 700;
+          color: #334155;
+        }
+
+        .mutedSmall {
+          margin: 10px 0 0;
+          color: #64748b;
+          font-weight: 800;
+          font-size: 12px;
+        }
+        .mutedSmall code {
+          font-weight: 950;
+          color: #0f172a;
+        }
+
+        .tasks ul {
+          margin: 0;
+          padding-left: 0;
+          list-style: none;
+          display: grid;
+          gap: 8px;
+        }
+        .tasks label {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-weight: 700;
+        }
+        .done {
+          text-decoration: line-through;
+          color: #64748b;
+        }
 
         @media (max-width: 980px) {
           .storesGrid,
@@ -611,7 +1056,9 @@ export default function DailyUpdateClient() {
             background: #fff;
             padding: 0;
           }
-          .storesGrid { grid-template-columns: 1fr; }
+          .storesGrid {
+            grid-template-columns: 1fr;
+          }
           .storeCard,
           .metricBlock,
           .notes,
