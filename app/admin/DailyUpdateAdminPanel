@@ -343,7 +343,11 @@ export default function DailyUpdateClient() {
         setOsaRows((osaRes.data || []) as OsaInternalRow[]);
 
         const storeSet = new Set<string>();
-        for (const row of [...(serviceStoresRes.data || []), ...(costStoresRes.data || []), ...(inputStoresRes.data || [])]) {
+        for (const row of [
+          ...(serviceStoresRes.data || []),
+          ...(costStoresRes.data || []),
+          ...(inputStoresRes.data || []),
+        ]) {
           const s = String((row as { store?: string }).store || "").trim();
           if (s) storeSet.add(s);
         }
@@ -396,8 +400,12 @@ export default function DailyUpdateClient() {
       const labourPct01 = sales > 0 ? labourCost / sales : null;
       const foodVarPct01 = sales > 0 ? (actualFoodCost - idealFoodCost) / sales : null;
 
-      const dotPct01 = avg(service.map((row) => normalisePct01(row.dot_pct)).filter((v): v is number => v != null));
-      const extremesPct01 = avg(service.map((row) => normalisePct01(row.extreme_over_40)).filter((v): v is number => v != null));
+      const dotPct01 = avg(
+        service.map((row) => normalisePct01(row.dot_pct)).filter((v): v is number => v != null)
+      );
+      const extremesPct01 = avg(
+        service.map((row) => normalisePct01(row.extreme_over_40)).filter((v): v is number => v != null)
+      );
       const rnlMinutes = avg(service.map((row) => row.rnl_minutes).filter((v): v is number => v != null));
 
       const additionalHours = sum(service.map((row) => Number(row.additional_hours || 0)));
@@ -530,7 +538,7 @@ export default function DailyUpdateClient() {
           </div>
           <div className="areaKpi">
             <span className="kLabel">OSA WTD count</span>
-            <span className="kValue">{osaCounts.total.toFixed(0)}</span>
+            <span className="kValue">{String(osaCounts.total)}</span>
           </div>
 
           <div className="storeOsaRow">
@@ -562,7 +570,7 @@ export default function DailyUpdateClient() {
               const extremesStatus = statusLowerBetter(card.service.extremesPct01, card.targets.extremesMax01);
               const foodVarStatus = statusAbsLowerBetter(card.cost.foodVarPct01, card.targets.foodVarAbsMax01);
 
-              // ✅ Daily input KPI statuses + arrows
+              // ✅ Daily input KPI statuses + arrows (YOUR targets)
               const missedStatus = statusLowerBetter(card.daily.missedCalls01, INPUT_TARGETS.missedCallsMax01);
               const gpsStatus = statusHigherBetter(card.daily.gps01, INPUT_TARGETS.gpsMin01);
               const aofStatus = statusHigherBetter(card.daily.aof01, INPUT_TARGETS.aofMin01);
@@ -621,21 +629,21 @@ export default function DailyUpdateClient() {
                     <div className="metricBlock">
                       <h3>Daily Inputs</h3>
                       {MetricLine({
-                        label: "Missed Calls WTD (%)",
+                        label: "Missed Calls (WTD %)",
                         valueText: fmtPct2(card.daily.missedCalls01),
                         targetText: "< 6.00%",
                         status: missedStatus,
                         arrow: arrowLowerBetter(card.daily.missedCalls01, INPUT_TARGETS.missedCallsMax01),
                       })}
                       {MetricLine({
-                        label: "GPS Tracked WTD (%)",
+                        label: "GPS Tracked (WTD %)",
                         valueText: fmtPct2(card.daily.gps01),
                         targetText: "> 95.00%",
                         status: gpsStatus,
                         arrow: arrowHigherBetter(card.daily.gps01, INPUT_TARGETS.gpsMin01),
                       })}
                       {MetricLine({
-                        label: "AOF WTD (%)",
+                        label: "AOF (WTD %)",
                         valueText: fmtPct2(card.daily.aof01),
                         targetText: "> 62.00%",
                         status: aofStatus,
