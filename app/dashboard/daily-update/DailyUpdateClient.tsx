@@ -9,16 +9,12 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-type AreaMessageRow = {
-  date: string;
-  message: string | null;
-};
+type AreaMessageRow = { date: string; message: string | null };
 
 type StoreInputRow = {
   date: string;
   store: string;
 
-  // Stored as 0–100 values (we display as % and compare against targets)
   missed_calls_wtd: number | null;
   gps_tracked_wtd: number | null;
   aof_wtd: number | null;
@@ -26,7 +22,7 @@ type StoreInputRow = {
   target_load_time_mins: number | null;
   target_rack_time_mins: number | null;
   target_adt_mins: number | null;
-  target_extremes_over40_pct: number | null; // 0–100
+  target_extremes_over40_pct: number | null;
   notes: string | null;
 };
 
@@ -43,9 +39,9 @@ type TaskRow = {
 type ServiceShiftRow = {
   shift_date: string;
   store: string;
-  dot_pct: number | null; // 0–1 or 0–100
-  labour_pct: number | null; // 0–1 or 0–100
-  extreme_over_40: number | null; // 0–1 or 0–100
+  dot_pct: number | null;
+  labour_pct: number | null;
+  extreme_over_40: number | null;
   rnl_minutes: number | null;
   additional_hours?: number | null;
 };
@@ -59,19 +55,14 @@ type CostControlRow = {
   actual_food_cost_gbp: number | null;
 };
 
-type OsaInternalRow = {
-  shift_date: string;
-  store: string | null;
-};
+type OsaInternalRow = { shift_date: string; store: string | null };
 
-/** ===== Daily Input targets (global) ===== */
 const INPUT_TARGETS = {
-  missedCallsMax01: 0.06, // < 6%
-  aofMin01: 0.62, // > 62%
-  gpsMin01: 0.95, // > 95%
+  missedCallsMax01: 0.06,
+  aofMin01: 0.62,
+  gpsMin01: 0.95,
 };
 
-/* ---------- UK date (Europe/London) ---------- */
 const toISODateUK = (date: Date) => {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/London",
@@ -155,7 +146,6 @@ const getTargetsForStore = (store: string, inputs: StoreInputRow | null): Target
 };
 
 type MetricStatus = "good" | "ok" | "bad" | "na";
-
 const within = (a: number, b: number, tol: number) => Math.abs(a - b) <= tol;
 
 const statusHigherBetter = (value: number | null, targetMin: number, tol = 0.002): MetricStatus => {
@@ -343,7 +333,6 @@ export default function DailyUpdateClient() {
 
       const targets = getTargetsForStore(store, inputs);
 
-      // daily input values converted to 0–1 for comparisons + formatting
       const missedCalls01 = to01From100(inputs?.missed_calls_wtd ?? null);
       const gps01 = to01From100(inputs?.gps_tracked_wtd ?? null);
       const aof01 = to01From100(inputs?.aof_wtd ?? null);
@@ -414,7 +403,7 @@ export default function DailyUpdateClient() {
     label: string;
     valueText: string;
     status: MetricStatus;
-    badgeText?: string; // e.g. "WTD"
+    badgeText?: string;
   }) => (
     <div className={`statRow status-${props.status}`}>
       <div className="statLeft">
@@ -431,9 +420,9 @@ export default function DailyUpdateClient() {
   const MetricCard = (props: {
     title: string;
     icon?: string;
-    children: React.ReactNode;
     tone?: "blue" | "purple" | "slate";
-    emphasize?: boolean; // make Service visually heavier
+    emphasize?: boolean;
+    children: React.ReactNode;
   }) => {
     const toneClass = props.tone ? `tone-${props.tone}` : "tone-slate";
     const emph = props.emphasize ? "emph" : "";
@@ -441,7 +430,11 @@ export default function DailyUpdateClient() {
       <div className={`metricCard ${toneClass} ${emph}`}>
         <div className="metricCardHead">
           <div className="metricHeadLeft">
-            {props.icon ? <span className="metricIcon" aria-hidden="true">{props.icon}</span> : null}
+            {props.icon ? (
+              <span className="metricIcon" aria-hidden="true">
+                {props.icon}
+              </span>
+            ) : null}
             <h3>{props.title}</h3>
           </div>
         </div>
@@ -453,7 +446,9 @@ export default function DailyUpdateClient() {
   const AreaTile = (props: { icon: string; label: string; value: string; sub?: string }) => (
     <div className="areaTile">
       <div className="areaTileTop">
-        <span className="areaTileIcon" aria-hidden="true">{props.icon}</span>
+        <span className="areaTileIcon" aria-hidden="true">
+          {props.icon}
+        </span>
         <span className="areaTileLabel">{props.label}</span>
       </div>
       <div className="areaTileValue">{props.value}</div>
@@ -489,7 +484,7 @@ export default function DailyUpdateClient() {
           </p>
         </header>
 
-        {/* Area overview: KPI tiles + separate OSA breakdown row */}
+        {/* Area overview */}
         <section className="areaOverview">
           <div className="areaTiles">
             <AreaTile icon="🧑‍🤝‍🧑" label="Area Labour" value={fmtPct2(areaRollup.labourPct01)} />
@@ -533,7 +528,6 @@ export default function DailyUpdateClient() {
               const extremesStatus = statusLowerBetter(card.service.extremesPct01, card.targets.extremesMax01);
               const foodVarStatus = statusAbsLowerBetter(card.cost.foodVarPct01, card.targets.foodVarAbsMax01);
 
-              // Daily input KPI statuses (targets: Missed <6%, GPS >95%, AOF >62%)
               const missedStatus = statusLowerBetter(card.daily.missedCalls01, INPUT_TARGETS.missedCallsMax01);
               const gpsStatus = statusHigherBetter(card.daily.gps01, INPUT_TARGETS.gpsMin01);
               const aofStatus = statusHigherBetter(card.daily.aof01, INPUT_TARGETS.aofMin01);
@@ -556,7 +550,6 @@ export default function DailyUpdateClient() {
                     <span className="osaChip">OSA WTD: {card.osaWtdCount}</span>
                   </div>
 
-                  {/* KPI cards: Service emphasized + stat rows with right-aligned values + dots + WTD badges */}
                   <div className="metricCards">
                     <MetricCard title="Service" icon="🚗" tone="slate" emphasize>
                       <StatRow label="DOT" valueText={fmtPct2(card.service.dotPct01)} status={dotStatus} />
@@ -577,7 +570,6 @@ export default function DailyUpdateClient() {
                     </MetricCard>
                   </div>
 
-                  {/* Notes: make it stand out */}
                   <section className="notes">
                     <div className="sectionHead">
                       <h3>Notes</h3>
@@ -586,7 +578,6 @@ export default function DailyUpdateClient() {
                     <p>{card.inputs?.notes?.trim() || "—"}</p>
                   </section>
 
-                  {/* Targets: compact */}
                   <section className="targets">
                     <div className="sectionHead">
                       <h3>Service Losing Targets</h3>
@@ -616,7 +607,6 @@ export default function DailyUpdateClient() {
                     </div>
                   </section>
 
-                  {/* Tasks: make it stand out */}
                   <section className="tasks">
                     <div className="sectionHead">
                       <h3>Tasks</h3>
@@ -652,6 +642,7 @@ export default function DailyUpdateClient() {
           color: #0f172a;
           padding-bottom: 32px;
         }
+
         .banner {
           display: flex;
           justify-content: center;
@@ -663,6 +654,7 @@ export default function DailyUpdateClient() {
           height: auto;
           display: block;
         }
+
         .shell {
           width: min(1180px, 95vw);
           margin: 20px auto;
@@ -711,11 +703,11 @@ export default function DailyUpdateClient() {
           margin: 4px 0 0;
         }
 
-        /* === Area Overview === */
+        /* === Area Overview (more designed, less “texty”) === */
         .areaOverview {
           background: rgba(255, 255, 255, 0.92);
           border: 1px solid rgba(0, 100, 145, 0.14);
-          border-radius: 16px;
+          border-radius: 18px;
           padding: 12px;
           display: grid;
           gap: 10px;
@@ -727,9 +719,9 @@ export default function DailyUpdateClient() {
         }
         .areaTile {
           border-radius: 18px;
-          background: rgba(0, 100, 145, 0.07);
+          background: linear-gradient(180deg, rgba(0, 100, 145, 0.10), rgba(255, 255, 255, 0.92));
           border: 1px solid rgba(0, 100, 145, 0.16);
-          padding: 12px 12px 10px;
+          padding: 10px 12px 10px;
         }
         .areaTileTop {
           display: flex;
@@ -744,36 +736,37 @@ export default function DailyUpdateClient() {
           font-size: 12px;
           font-weight: 950;
           text-transform: uppercase;
-          letter-spacing: 0.3px;
+          letter-spacing: 0.35px;
+          color: #0f172a;
         }
         .areaTileValue {
-          margin-top: 10px;
-          font-weight: 980;
+          margin-top: 8px;
+          font-weight: 1000;
           font-size: 28px;
-          color: #006491;
+          color: #0b4f70;
           letter-spacing: 0.2px;
           font-variant-numeric: tabular-nums;
         }
         .areaTileSub {
           margin-top: 6px;
           font-size: 12px;
-          font-weight: 800;
+          font-weight: 850;
           color: #475569;
         }
 
         .osaBreakdown {
-          border-radius: 14px;
-          padding: 10px 10px;
+          border-radius: 16px;
+          padding: 10px;
           background: rgba(15, 23, 42, 0.03);
           border: 1px solid rgba(15, 23, 42, 0.06);
         }
         .osaTitle {
           font-size: 12px;
-          font-weight: 950;
+          font-weight: 980;
           text-transform: uppercase;
           color: #334155;
           margin-bottom: 8px;
-          letter-spacing: 0.3px;
+          letter-spacing: 0.35px;
         }
         .osaChips {
           display: flex;
@@ -842,7 +835,7 @@ export default function DailyUpdateClient() {
           color: #7f1d1d;
         }
 
-        /* === Store cards === */
+        /* === Stores === */
         .storesGrid {
           margin-top: 12px;
           display: grid;
@@ -878,7 +871,7 @@ export default function DailyUpdateClient() {
           white-space: nowrap;
         }
 
-        /* === KPI Cards (3 across) === */
+        /* KPI cards: tighter, more “dashboard” */
         .metricCards {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -910,7 +903,7 @@ export default function DailyUpdateClient() {
           gap: 8px;
         }
         .metricIcon {
-          font-size: 16px;
+          font-size: 15px;
           line-height: 1;
         }
         .metricCardHead h3 {
@@ -918,26 +911,26 @@ export default function DailyUpdateClient() {
           font-size: 13px;
           letter-spacing: 0.35px;
           text-transform: uppercase;
-          font-weight: 980;
+          font-weight: 1000;
           color: #0f172a;
         }
         .metricCardBody {
-          padding: 12px;
+          padding: 10px 10px 12px;
           display: grid;
-          gap: 10px;
+          gap: 8px;
         }
 
         .tone-blue .metricCardHead {
-          background: linear-gradient(90deg, rgba(0, 100, 145, 0.16), rgba(0, 100, 145, 0.04));
+          background: linear-gradient(90deg, rgba(0, 100, 145, 0.16), rgba(0, 100, 145, 0.03));
         }
         .tone-purple .metricCardHead {
-          background: linear-gradient(90deg, rgba(124, 58, 237, 0.14), rgba(124, 58, 237, 0.04));
+          background: linear-gradient(90deg, rgba(124, 58, 237, 0.14), rgba(124, 58, 237, 0.03));
         }
         .tone-slate .metricCardHead {
           background: linear-gradient(90deg, rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.02));
         }
 
-        /* === Stat Rows: fixed alignment + spacing + no wrap issues === */
+        /* Stat rows: explicit spacing + consistent alignment */
         .statRow {
           display: flex;
           align-items: center;
@@ -946,25 +939,26 @@ export default function DailyUpdateClient() {
           padding: 10px 12px;
           border-radius: 14px;
           border: 1px solid rgba(15, 23, 42, 0.06);
-          background: rgba(248, 250, 252, 0.8);
+          background: rgba(248, 250, 252, 0.82);
         }
         .statLeft {
-          display: inline-flex;
+          display: flex;
           align-items: center;
-          gap: 8px;
           min-width: 0;
         }
         .statLabel {
-          font-weight: 950;
+          font-weight: 980;
           color: #0f172a;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          max-width: 190px;
+          max-width: 200px;
         }
+        /* IMPORTANT: explicit margin prevents “Missed CallsWTD” style collisions */
         .tinyBadge {
+          margin-left: 8px;
           font-size: 11px;
-          font-weight: 950;
+          font-weight: 1000;
           padding: 3px 8px;
           border-radius: 999px;
           border: 1px solid rgba(15, 23, 42, 0.10);
@@ -979,9 +973,11 @@ export default function DailyUpdateClient() {
           flex-shrink: 0;
         }
         .statValue {
-          font-weight: 980;
+          font-weight: 1000;
           font-variant-numeric: tabular-nums;
           letter-spacing: 0.2px;
+          min-width: 72px;
+          text-align: right;
         }
 
         /* Status dots */
@@ -993,40 +989,39 @@ export default function DailyUpdateClient() {
           display: inline-block;
         }
         .dot.good {
-          background: rgba(34, 197, 94, 0.8);
+          background: rgba(34, 197, 94, 0.85);
           border-color: rgba(34, 197, 94, 0.45);
         }
         .dot.ok {
-          background: rgba(245, 158, 11, 0.8);
+          background: rgba(245, 158, 11, 0.85);
           border-color: rgba(245, 158, 11, 0.45);
         }
         .dot.bad {
-          background: rgba(239, 68, 68, 0.8);
+          background: rgba(239, 68, 68, 0.85);
           border-color: rgba(239, 68, 68, 0.45);
         }
         .dot.na {
-          background: rgba(148, 163, 184, 0.65);
+          background: rgba(148, 163, 184, 0.70);
           border-color: rgba(148, 163, 184, 0.45);
         }
 
-        /* Optional: subtle row tint by status */
         .status-good {
-          background: rgba(220, 252, 231, 0.65);
-          border-color: rgba(34, 197, 94, 0.22);
+          background: rgba(220, 252, 231, 0.60);
+          border-color: rgba(34, 197, 94, 0.20);
         }
         .status-ok {
-          background: rgba(255, 237, 213, 0.6);
-          border-color: rgba(245, 158, 11, 0.22);
+          background: rgba(255, 237, 213, 0.58);
+          border-color: rgba(245, 158, 11, 0.20);
         }
         .status-bad {
-          background: rgba(254, 226, 226, 0.62);
-          border-color: rgba(239, 68, 68, 0.22);
+          background: rgba(254, 226, 226, 0.60);
+          border-color: rgba(239, 68, 68, 0.20);
         }
         .status-na {
-          opacity: 0.92;
+          opacity: 0.95;
         }
 
-        /* === Section styling (Notes/Targets/Tasks) === */
+        /* Notes/Targets/Tasks */
         .notes,
         .targets,
         .tasks {
@@ -1050,7 +1045,7 @@ export default function DailyUpdateClient() {
           text-transform: uppercase;
           letter-spacing: 0.3px;
           color: #334155;
-          font-weight: 980;
+          font-weight: 1000;
         }
         .sectionPill {
           font-size: 12px;
@@ -1095,7 +1090,6 @@ export default function DailyUpdateClient() {
           color: #64748b;
         }
 
-        /* Targets grid */
         .targetsGrid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1113,7 +1107,7 @@ export default function DailyUpdateClient() {
         }
         .lineItem strong {
           white-space: nowrap;
-          font-weight: 980;
+          font-weight: 1000;
           font-variant-numeric: tabular-nums;
         }
 
