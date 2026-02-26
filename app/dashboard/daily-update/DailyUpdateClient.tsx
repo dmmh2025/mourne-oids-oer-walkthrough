@@ -107,15 +107,11 @@ const to01From100 = (v0to100: number | null) => {
   return v0to100 / 100;
 };
 
-const fmtPct2 = (v01: number | null) =>
-  v01 == null ? "—" : `${(v01 * 100).toFixed(2)}%`;
-const fmtNum2 = (v: number | null) =>
-  v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}`;
-const fmtMins2 = (v: number | null) =>
-  v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}m`;
+const fmtPct2 = (v01: number | null) => (v01 == null ? "—" : `${(v01 * 100).toFixed(2)}%`);
+const fmtNum2 = (v: number | null) => (v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}`);
+const fmtMins2 = (v: number | null) => (v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}m`);
 
-const avg = (arr: number[]) =>
-  arr.length ? arr.reduce((acc, val) => acc + val, 0) / arr.length : null;
+const avg = (arr: number[]) => (arr.length ? arr.reduce((acc, val) => acc + val, 0) / arr.length : null);
 const sum = (arr: number[]) => arr.reduce((acc, val) => acc + val, 0);
 
 type Targets = {
@@ -127,34 +123,10 @@ type Targets = {
 };
 
 const DEFAULT_TARGETS: Record<string, Targets> = {
-  Downpatrick: {
-    dotMin01: 0.82,
-    labourMax01: 0.25,
-    rnlMaxMins: 9,
-    extremesMax01: 0.03,
-    foodVarAbsMax01: 0.003,
-  },
-  Kilkeel: {
-    dotMin01: 0.78,
-    labourMax01: 0.28,
-    rnlMaxMins: 8,
-    extremesMax01: 0.04,
-    foodVarAbsMax01: 0.003,
-  },
-  Newcastle: {
-    dotMin01: 0.78,
-    labourMax01: 0.25,
-    rnlMaxMins: 9,
-    extremesMax01: 0.04,
-    foodVarAbsMax01: 0.003,
-  },
-  Ballynahinch: {
-    dotMin01: 0.78,
-    labourMax01: 0.28,
-    rnlMaxMins: 9,
-    extremesMax01: 0.04,
-    foodVarAbsMax01: 0.003,
-  },
+  Downpatrick: { dotMin01: 0.82, labourMax01: 0.25, rnlMaxMins: 9, extremesMax01: 0.03, foodVarAbsMax01: 0.003 },
+  Kilkeel: { dotMin01: 0.78, labourMax01: 0.28, rnlMaxMins: 8, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
+  Newcastle: { dotMin01: 0.78, labourMax01: 0.25, rnlMaxMins: 9, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
+  Ballynahinch: { dotMin01: 0.78, labourMax01: 0.28, rnlMaxMins: 9, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
 };
 
 const getTargetsForStore = (store: string, inputs: StoreInputRow | null): Targets => {
@@ -168,9 +140,7 @@ const getTargetsForStore = (store: string, inputs: StoreInputRow | null): Target
     };
 
   const extFromInputs01 =
-    inputs?.target_extremes_over40_pct != null
-      ? to01From100(inputs.target_extremes_over40_pct)
-      : null;
+    inputs?.target_extremes_over40_pct != null ? to01From100(inputs.target_extremes_over40_pct) : null;
 
   return { ...base, extremesMax01: extFromInputs01 ?? base.extremesMax01 };
 };
@@ -178,33 +148,21 @@ const getTargetsForStore = (store: string, inputs: StoreInputRow | null): Target
 type MetricStatus = "good" | "ok" | "bad" | "na";
 const within = (a: number, b: number, tol: number) => Math.abs(a - b) <= tol;
 
-const statusHigherBetter = (
-  value: number | null,
-  targetMin: number,
-  tol = 0.002
-): MetricStatus => {
+const statusHigherBetter = (value: number | null, targetMin: number, tol = 0.002): MetricStatus => {
   if (value == null || !Number.isFinite(value)) return "na";
   if (value >= targetMin + tol) return "good";
   if (within(value, targetMin, tol)) return "ok";
   return "bad";
 };
 
-const statusLowerBetter = (
-  value: number | null,
-  targetMax: number,
-  tol = 0.002
-): MetricStatus => {
+const statusLowerBetter = (value: number | null, targetMax: number, tol = 0.002): MetricStatus => {
   if (value == null || !Number.isFinite(value)) return "na";
   if (value <= targetMax - tol) return "good";
   if (within(value, targetMax, tol)) return "ok";
   return "bad";
 };
 
-const statusAbsLowerBetter = (
-  value: number | null,
-  targetAbsMax: number,
-  tol = 0.002
-): MetricStatus => {
+const statusAbsLowerBetter = (value: number | null, targetAbsMax: number, tol = 0.002): MetricStatus => {
   if (value == null || !Number.isFinite(value)) return "na";
   const absVal = Math.abs(value);
   if (absVal <= targetAbsMax - tol) return "good";
@@ -252,11 +210,7 @@ export default function DailyUpdateClient() {
           costStoresRes,
           inputStoresRes,
         ] = await Promise.all([
-          supabase
-            .from("daily_update_area_message")
-            .select("date,message")
-            .eq("date", previousBusinessDay)
-            .maybeSingle(),
+          supabase.from("daily_update_area_message").select("date,message").eq("date", previousBusinessDay).maybeSingle(),
           supabase
             .from("daily_update_store_inputs")
             .select(
@@ -270,36 +224,20 @@ export default function DailyUpdateClient() {
             .order("created_at", { ascending: true }),
           supabase
             .from("service_shifts")
-            .select(
-              "shift_date,store,dot_pct,labour_pct,extreme_over_40,rnl_minutes,additional_hours"
-            )
+            .select("shift_date,store,dot_pct,labour_pct,extreme_over_40,rnl_minutes,additional_hours")
             .eq("shift_date", previousBusinessDay),
           supabase
             .from("cost_control_entries")
-            .select(
-              "shift_date,store,sales_gbp,labour_cost_gbp,ideal_food_cost_gbp,actual_food_cost_gbp"
-            )
+            .select("shift_date,store,sales_gbp,labour_cost_gbp,ideal_food_cost_gbp,actual_food_cost_gbp")
             .eq("shift_date", previousBusinessDay),
           supabase
             .from("osa_internal_results")
             .select("shift_date,store")
             .gte("shift_date", wkStart)
             .lte("shift_date", previousBusinessDay),
-          supabase
-            .from("service_shifts")
-            .select("store,shift_date")
-            .order("shift_date", { ascending: false })
-            .limit(500),
-          supabase
-            .from("cost_control_entries")
-            .select("store,shift_date")
-            .order("shift_date", { ascending: false })
-            .limit(500),
-          supabase
-            .from("daily_update_store_inputs")
-            .select("store,date")
-            .order("date", { ascending: false })
-            .limit(500),
+          supabase.from("service_shifts").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
+          supabase.from("cost_control_entries").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
+          supabase.from("daily_update_store_inputs").select("store,date").order("date", { ascending: false }).limit(500),
         ]);
 
         const firstError = [
@@ -381,16 +319,13 @@ export default function DailyUpdateClient() {
       const labourPct01 = sales > 0 ? labourCost / sales : null;
       const foodVarPct01 = sales > 0 ? (actualFoodCost - idealFoodCost) / sales : null;
 
-      const dotPct01 = avg(
-        service.map((row) => normalisePct01(row.dot_pct)).filter((v): v is number => v != null)
-      );
+      const dotPct01 = avg(service.map((row) => normalisePct01(row.dot_pct)).filter((v): v is number => v != null));
       const extremesPct01 = avg(
         service.map((row) => normalisePct01(row.extreme_over_40)).filter((v): v is number => v != null)
       );
       const rnlMinutes = avg(service.map((row) => row.rnl_minutes).filter((v): v is number => v != null));
 
       const additionalHours = sum(service.map((row) => Number(row.additional_hours || 0)));
-
       const targets = getTargetsForStore(store, inputs);
 
       const missedCalls01 = to01From100(inputs?.missed_calls_wtd ?? null);
@@ -459,26 +394,19 @@ export default function DailyUpdateClient() {
     return <span className={cls} aria-hidden="true" />;
   };
 
-  // ✅ Tile: LABEL bold, VALUE normal + outlined border
-  const StatTile = (props: { label: string; valueText: string; status: MetricStatus; badgeText?: string }) => (
+  // Tile: LABEL bold, VALUE normal + clear separation line
+  const StatTile = (props: { label: string; valueText: string; status: MetricStatus }) => (
     <div className={`statTile status-${props.status}`}>
       <div className="statTileTop">
-        <div className="statTileLabelRow">
-          <span className="statTileLabel">{props.label}</span>
-          {props.badgeText ? <span className="tinyBadge">{props.badgeText}</span> : null}
-        </div>
+        <span className="statTileLabel">{props.label}</span>
         <StatusDot status={props.status} />
       </div>
+      <div className="statDivider" />
       <div className="statTileValue">{props.valueText}</div>
     </div>
   );
 
-  const MetricCard = (props: {
-    title: string;
-    icon?: string;
-    tone?: "blue" | "purple" | "slate";
-    children: React.ReactNode;
-  }) => {
+  const MetricCard = (props: { title: string; icon?: string; tone?: "blue" | "purple" | "slate"; children: React.ReactNode }) => {
     const toneClass = props.tone ? `tone-${props.tone}` : "tone-slate";
     return (
       <div className={`metricCard ${toneClass}`}>
@@ -497,8 +425,8 @@ export default function DailyUpdateClient() {
     );
   };
 
-  // ✅ Area tiles: outlined border + bold title; Area Food has NO extra "Var % of sales"
-  const AreaTile = (props: { icon: string; label: string; value: string }) => (
+  // Area tiles: label bold + divider + more spacing so label/value don't blend
+  const AreaTile = (props: { icon: string; label: string; value: string; sub?: string }) => (
     <div className="areaTile">
       <div className="areaTileTop">
         <span className="areaTileIcon" aria-hidden="true">
@@ -506,7 +434,9 @@ export default function DailyUpdateClient() {
         </span>
         <span className="areaTileLabel">{props.label}</span>
       </div>
+      <div className="areaDivider" />
       <div className="areaTileValue">{props.value}</div>
+      {props.sub ? <div className="areaTileSub">{props.sub}</div> : null}
     </div>
   );
 
@@ -538,13 +468,13 @@ export default function DailyUpdateClient() {
           </p>
         </header>
 
-        {/* ✅ Area overview: 4 individual tiles with standout border */}
         <section className="areaOverview">
           <div className="areaTiles">
             <AreaTile icon="🧑‍🤝‍🧑" label="Area Labour" value={fmtPct2(areaRollup.labourPct01)} />
+            {/* ✅ no “Var % of sales” */}
             <AreaTile icon="🍕" label="Area Food" value={fmtPct2(areaRollup.foodVarPct01)} />
             <AreaTile icon="⏱️" label="Area Add. Hours" value={fmtNum2(areaRollup.additionalHours)} />
-            <AreaTile icon="✅" label="Area OSA" value={String(osaCounts.total)} />
+            <AreaTile icon="✅" label="Area OSA" value={String(osaCounts.total)} sub="Total checks WTD" />
           </div>
 
           <div className="osaBreakdown">
@@ -604,43 +534,31 @@ export default function DailyUpdateClient() {
                     <span className="osaChip">OSA WTD: {card.osaWtdCount}</span>
                   </div>
 
-                  {/* ✅ Store section: 3 tiles (Service bigger), each with standout border */}
+                  {/* Service bigger than the other 2 */}
                   <div className="metricCards">
                     <div className="metricSpan2">
                       <MetricCard title="Service" icon="🚗" tone="slate">
                         <div className="tilesGrid serviceTiles">
                           <StatTile label="DOT" valueText={fmtPct2(card.service.dotPct01)} status={dotStatus} />
                           <StatTile label="R&L" valueText={fmtMins2(card.service.rnlMinutes)} status={rnlStatus} />
-                          <StatTile
-                            label="Extremes >40"
-                            valueText={fmtPct2(card.service.extremesPct01)}
-                            status={extremesStatus}
-                          />
+                          <StatTile label="Extremes >40" valueText={fmtPct2(card.service.extremesPct01)} status={extremesStatus} />
                           <StatTile label="Add. hours" valueText={fmtNum2(card.additionalHours)} status={addHoursStatus} />
                         </div>
                       </MetricCard>
                     </div>
 
                     <MetricCard title="Cost Controls" icon="💷" tone="blue">
-                      <div className="tilesGrid tilesGrid-1">
+                      <div className="tilesGrid">
                         <StatTile label="Labour" valueText={fmtPct2(card.cost.labourPct01)} status={labourStatus} />
                         <StatTile label="Food" valueText={fmtPct2(card.cost.foodVarPct01)} status={foodVarStatus} />
                       </div>
                     </MetricCard>
 
-                    {/* ✅ rename to Others WTD; remove WTD from names; no WTD beside names; keep optional WTD badge */}
+                    {/* ✅ rename to Others WTD + remove “WTD” beside metric names */}
                     <MetricCard title="Others WTD" icon="🧾" tone="purple">
-                      <div className="tilesGrid tilesGrid-1">
-                        <StatTile
-                          label="Missed Calls"
-                          valueText={fmtPct2(card.daily.missedCalls01)}
-                          status={missedStatus}
-                        />
-                        <StatTile
-                          label="GPS Tracked"
-                          valueText={fmtPct2(card.daily.gps01)}
-                          status={gpsStatus}
-                        />
+                      <div className="tilesGrid">
+                        <StatTile label="Missed Calls" valueText={fmtPct2(card.daily.missedCalls01)} status={missedStatus} />
+                        <StatTile label="GPS Tracked" valueText={fmtPct2(card.daily.gps01)} status={gpsStatus} />
                         <StatTile label="AOF" valueText={fmtPct2(card.daily.aof01)} status={aofStatus} />
                       </div>
                     </MetricCard>
@@ -779,48 +697,61 @@ export default function DailyUpdateClient() {
           margin: 4px 0 0;
         }
 
-        /* === Area Overview -> 4 standout tiles === */
+        /* === Area Overview -> outlined tiles + clear label/value separation === */
         .areaOverview {
           background: rgba(255, 255, 255, 0.92);
           border: 1px solid rgba(0, 100, 145, 0.16);
           border-radius: 18px;
           padding: 12px;
           display: grid;
-          gap: 12px;
+          gap: 10px;
         }
         .areaTiles {
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 12px;
+          gap: 10px;
         }
         .areaTile {
           border-radius: 18px;
-          background: rgba(255, 255, 255, 0.96);
-          border: 3px solid rgba(0, 100, 145, 0.45);
-          box-shadow: 0 10px 22px rgba(0, 0, 0, 0.05);
-          padding: 12px 14px;
+          background: rgba(255, 255, 255, 0.92);
+          border: 2px solid rgba(0, 100, 145, 0.28);
+          padding: 12px 12px 14px;
+          box-shadow: 0 10px 22px rgba(0, 0, 0, 0.04);
         }
         .areaTileTop {
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 8px;
         }
         .areaTileIcon {
-          font-size: 18px;
+          font-size: 16px;
           line-height: 1;
         }
         .areaTileLabel {
-          font-size: 14px;
-          font-weight: 1000;
+          font-size: 12px;
+          font-weight: 1000; /* ✅ bold title */
+          text-transform: uppercase;
+          letter-spacing: 0.45px;
           color: #0f172a;
-          letter-spacing: 0.2px;
+        }
+        .areaDivider {
+          margin-top: 10px; /* ✅ stronger separation */
+          height: 1px;
+          background: rgba(15, 23, 42, 0.10);
         }
         .areaTileValue {
-          margin-top: 10px;
+          margin-top: 10px; /* ✅ separation from title */
+          font-weight: 700; /* value not “shouty” */
           font-size: 28px;
-          font-weight: 650;
           color: #0b4f70;
           font-variant-numeric: tabular-nums;
+          line-height: 1.1;
+        }
+        .areaTileSub {
+          margin-top: 8px;
+          font-size: 12px;
+          font-weight: 800;
+          color: #475569;
         }
 
         .osaBreakdown {
@@ -876,7 +807,7 @@ export default function DailyUpdateClient() {
           font-weight: 950;
           padding: 6px 10px;
           border-radius: 999px;
-          background: rgba(0, 100, 145, 0.1);
+          background: rgba(0, 100, 145, 0.10);
           border: 1px solid rgba(0, 100, 145, 0.18);
           color: #0f172a;
           white-space: nowrap;
@@ -939,84 +870,77 @@ export default function DailyUpdateClient() {
           white-space: nowrap;
         }
 
-        /* KPI modules: Service larger */
+        /* KPI modules */
         .metricCards {
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 12px;
+          gap: 10px;
           align-items: start;
         }
         .metricSpan2 {
           grid-column: span 2;
         }
 
-        /* Group tile outline */
         .metricCard {
           border-radius: 18px;
           background: #fff;
-          border: 3px solid rgba(15, 23, 42, 0.14);
+          border: 1px solid rgba(15, 23, 42, 0.10);
           box-shadow: 0 10px 22px rgba(0, 0, 0, 0.05);
           overflow: hidden;
         }
-        .tone-blue.metricCard {
-          border-color: rgba(0, 100, 145, 0.4);
-        }
-        .tone-purple.metricCard {
-          border-color: rgba(124, 58, 237, 0.35);
-        }
-        .tone-slate.metricCard {
-          border-color: rgba(15, 23, 42, 0.2);
-        }
-
         .metricCardHead {
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 10px;
-          padding: 12px 14px;
+          padding: 10px 12px;
           border-bottom: 1px solid rgba(15, 23, 42, 0.06);
         }
         .metricHeadLeft {
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 8px;
         }
         .metricIcon {
-          font-size: 18px;
+          font-size: 15px;
           line-height: 1;
         }
         .metricCardHead h3 {
           margin: 0;
-          font-size: 16px;
+          font-size: 13px;
+          letter-spacing: 0.35px;
+          text-transform: uppercase;
           font-weight: 1000;
-          letter-spacing: 0.2px;
           color: #0f172a;
         }
         .metricCardBody {
-          padding: 12px 14px 14px;
+          padding: 10px 10px 12px;
+        }
+        .tone-blue .metricCardHead {
+          background: linear-gradient(90deg, rgba(0, 100, 145, 0.16), rgba(0, 100, 145, 0.03));
+        }
+        .tone-purple .metricCardHead {
+          background: linear-gradient(90deg, rgba(124, 58, 237, 0.14), rgba(124, 58, 237, 0.03));
+        }
+        .tone-slate .metricCardHead {
+          background: linear-gradient(90deg, rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.02));
         }
 
-        /* Inner tiles */
+        /* Tiles */
         .tilesGrid {
           display: grid;
-          gap: 10px;
           grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
         }
-        .tilesGrid-1 {
-          grid-template-columns: 1fr;
-        }
-
-        /* Service larger tiles */
         .serviceTiles .statTileValue {
           font-size: 22px;
         }
 
-        /* Individual metric tiles */
         .statTile {
           border-radius: 16px;
-          padding: 10px 12px;
-          border: 2px solid rgba(15, 23, 42, 0.18);
-          background: rgba(255, 255, 255, 0.95);
+          padding: 12px 12px 14px;
+          border: 2px solid rgba(15, 23, 42, 0.20);
+          background: rgba(255, 255, 255, 0.92);
           display: grid;
           gap: 8px;
         }
@@ -1026,27 +950,27 @@ export default function DailyUpdateClient() {
           justify-content: space-between;
           gap: 10px;
         }
-        .statTileLabelRow {
-          display: flex;
-          align-items: center;
-          min-width: 0;
-        }
         .statTileLabel {
-          font-size: 13px;
-          font-weight: 1000; /* label bold */
+          font-weight: 1000; /* ✅ bold metric titles: DOT, Labour, Food etc */
           color: #0f172a;
+          letter-spacing: 0.2px;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+        }
+        .statDivider {
+          height: 1px; /* ✅ separation line */
+          background: rgba(15, 23, 42, 0.10);
         }
         .statTileValue {
           font-size: 20px;
           font-weight: 650; /* value not bold */
           color: #0f172a;
           font-variant-numeric: tabular-nums;
+          line-height: 1.15;
         }
 
-        /* Status tint subtle */
+        /* Status tint stays subtle */
         .status-good {
           background: rgba(220, 252, 231, 0.35);
         }
@@ -1081,7 +1005,7 @@ export default function DailyUpdateClient() {
           border-color: rgba(239, 68, 68, 0.45);
         }
         .dot.na {
-          background: rgba(148, 163, 184, 0.7);
+          background: rgba(148, 163, 184, 0.70);
           border-color: rgba(148, 163, 184, 0.45);
         }
 
@@ -1116,7 +1040,7 @@ export default function DailyUpdateClient() {
           font-weight: 950;
           padding: 6px 10px;
           border-radius: 999px;
-          border: 1px solid rgba(15, 23, 42, 0.1);
+          border: 1px solid rgba(15, 23, 42, 0.10);
           background: rgba(15, 23, 42, 0.05);
           color: #334155;
           white-space: nowrap;
@@ -1193,12 +1117,6 @@ export default function DailyUpdateClient() {
           }
           .metricSpan2 {
             grid-column: span 1;
-          }
-          .tilesGrid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-          .tilesGrid-1 {
-            grid-template-columns: 1fr;
           }
         }
 
