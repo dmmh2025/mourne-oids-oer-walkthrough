@@ -2,75 +2,27 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-/* ---------- Types ---------- */
-
-type ReportingDates = {
-  today: string; // YYYY-MM-DD
-  yesterday: string;
-  week_start: string; // Monday
-};
-
-type ServiceShiftRow = {
-  id: string;
-  shift_date: string;
-  store: string;
-
-  labour_pct: number | null; // stored 0-100
-  additional_hours: number | null;
-
-  opening_manager: string | null;
-  closing_manager: string | null;
-  manager?: string | null;
-
-  dot_pct: number | null; // may be 0-1 or 0-100
-  extreme_over_40: number | null; // may be 0-1 or 0-100
-  rnl_minutes: number | null;
-};
-
-type CostControlRow = {
-  id: string;
-  store: string;
-  shift_date: string;
-
-  sales_gbp: number | null;
-  labour_cost_gbp: number | null;
-  ideal_food_cost_gbp: number | null;
-  actual_food_cost_gbp: number | null;
-};
-
-type OsaRow = {
-  id: string;
-  created_at: string;
-  team_member_name: string | null;
-  store: string | null;
-  shift_date: string; // date
-  starting_points: number | null;
-  points_lost: number | null;
-  overall_points: number | null;
-  is_elite: boolean | null;
-  stars: number | null;
-};
+type AreaMessageRow = { date: string; message: string | null };
 
 type StoreInputRow = {
   date: string;
   store: string;
 
-  missed_calls_wtd: number | null; // 0-100
-  gps_tracked_wtd: number | null; // 0-100
-  aof_wtd: number | null; // 0-100
+  missed_calls_wtd: number | null;
+  gps_tracked_wtd: number | null;
+  aof_wtd: number | null;
 
   target_load_time_mins: number | null;
   target_rack_time_mins: number | null;
   target_adt_mins: number | null;
   target_extremes_over40_pct: number | null;
-
   notes: string | null;
 };
 
@@ -84,179 +36,247 @@ type TaskRow = {
   completed_at: string | null;
 };
 
-/* ---------- Helpers ---------- */
+type ServiceShiftRow = {
+  shift_date: string;
+  store: string;
+  dot_pct: number | null;
+  labour_pct: number | null;
+  extreme_over_40: number | null;
+  rnl_minutes: number | null;
+  additional_hours?: number | null;
+};
 
-const normalisePct = (v: number | null) => {
+type CostControlRow = {
+  shift_date: string;
+  store: string;
+  sales_gbp: number | null;
+  labour_cost_gbp: number | null;
+  ideal_food_cost_gbp: number | null;
+  actual_food_cost_gbp: number | null;
+};
+
+type OsaInternalRow = { shift_date: string; store: string | null };
+
+const INPUT_TARGETS = {
+  missedCallsMax01: 0.06,
+  aofMin01: 0.62,
+  gpsMin01: 0.95,
+};
+
+const toISODateUK = (date: Date) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const year = parts.find((p) => p.type === "year")?.value ?? "0000";
+  const month = parts.find((p) => p.type === "month")?.value ?? "01";
+  const day = parts.find((p) => p.type === "day")?.value ?? "01";
+  return `${year}-${month}-${day}`;
+};
+
+const parseIsoDate = (isoDate: string) => {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  return new Date(year, (month || 1) - 1, day || 1);
+};
+
+const getPreviousBusinessDayUk = () => {
+  const todayUk = toISODateUK(new Date());
+  const previous = parseIsoDate(todayUk);
+  previous.setDate(previous.getDate() - 1);
+  return toISODateUK(previous);
+};
+
+const getWeekStartUK = (isoDate: string) => {
+  const d = parseIsoDate(isoDate);
+  const day = d.getDay();
+  const mondayOffset = day === 0 ? 6 : day - 1;
+  d.setDate(d.getDate() - mondayOffset);
+  return toISODateUK(d);
+};
+
+const normalisePct01 = (v: number | null) => {
   if (v == null || !Number.isFinite(v)) return null;
-  return v > 1 ? v / 100 : v; // supports both 0-1 and 0-100
+  return v > 1 ? v / 100 : v;
 };
 
-const avg = (arr: number[]) =>
-  arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
-
-const sum = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
-
-const normalizeRackLoad = (v: number | null) => {
-  if (v == null || !Number.isFinite(v) || v <= 0) return null;
-  const raw = Number(v);
-  const minutes = raw > 60 && raw <= 3600 ? raw / 60 : raw;
-  if (!Number.isFinite(minutes) || minutes <= 0 || minutes > 120) return null;
-  return minutes;
+const to01From100 = (v0to100: number | null) => {
+  if (v0to100 == null || !Number.isFinite(v0to100)) return null;
+  return v0to100 / 100;
 };
 
-const fmtPct = (v01: number | null, dp = 1) =>
-  v01 == null ? "—" : (v01 * 100).toFixed(dp) + "%";
+const fmtPct2 = (v01: number | null) => (v01 == null ? "—" : `${(v01 * 100).toFixed(2)}%`);
+const fmtNum2 = (v: number | null) => (v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}`);
+const fmtMins2 = (v: number | null) => (v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}m`);
 
-const fmtPct100 = (v100: number | null, dp = 1) =>
-  v100 == null ? "—" : Number(v100).toFixed(dp) + "%";
+const avg = (arr: number[]) => (arr.length ? arr.reduce((acc, val) => acc + val, 0) / arr.length : null);
+const sum = (arr: number[]) => arr.reduce((acc, val) => acc + val, 0);
 
-const fmtMoney = (n: number | null, dp = 0) =>
-  n == null || !Number.isFinite(n) ? "—" : "£" + n.toFixed(dp);
+type Targets = {
+  dotMin01: number;
+  labourMax01: number;
+  rnlMaxMins: number;
+  extremesMax01: number;
+  foodVarAbsMax01: number;
+};
 
-const fmtMinutes = (m: number | null, dp = 1) =>
-  m == null || !Number.isFinite(m) ? "—" : m.toFixed(dp) + "m";
+const DEFAULT_TARGETS: Record<string, Targets> = {
+  Downpatrick: { dotMin01: 0.82, labourMax01: 0.25, rnlMaxMins: 9, extremesMax01: 0.03, foodVarAbsMax01: 0.003 },
+  Kilkeel: { dotMin01: 0.78, labourMax01: 0.28, rnlMaxMins: 8, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
+  Newcastle: { dotMin01: 0.78, labourMax01: 0.25, rnlMaxMins: 9, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
+  Ballynahinch: { dotMin01: 0.78, labourMax01: 0.28, rnlMaxMins: 9, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
+};
 
-const fmtHours = (h: number) => (Number.isFinite(h) ? h.toFixed(1) : "0.0") + "h";
+const getTargetsForStore = (store: string, inputs: StoreInputRow | null): Targets => {
+  const base =
+    DEFAULT_TARGETS[store] || {
+      dotMin01: 0.78,
+      labourMax01: 0.28,
+      rnlMaxMins: 9,
+      extremesMax01: 0.04,
+      foodVarAbsMax01: 0.003,
+    };
 
-const pill = (tone: "green" | "amber" | "red" | "neutral") => `pill ${tone}`;
+  const extFromInputs01 =
+    inputs?.target_extremes_over40_pct != null ? to01From100(inputs.target_extremes_over40_pct) : null;
 
-/* thresholds: keep simple for daily briefing */
-const dotTone = (v01: number | null) =>
-  v01 == null ? "neutral" : v01 >= 0.8 ? "green" : v01 >= 0.75 ? "amber" : "red";
+  return { ...base, extremesMax01: extFromInputs01 ?? base.extremesMax01 };
+};
 
-const labourTone = (v01: number | null) =>
-  v01 == null ? "neutral" : v01 <= 0.25 ? "green" : "red";
+type MetricStatus = "good" | "ok" | "bad" | "na";
+const within = (a: number, b: number, tol: number) => Math.abs(a - b) <= tol;
 
-const foodTone = (v01: number | null) =>
-  v01 == null ? "neutral" : Math.abs(v01) <= 0.0025 ? "green" : "red";
+const statusHigherBetter = (value: number | null, targetMin: number, tol = 0.002): MetricStatus => {
+  if (value == null || !Number.isFinite(value)) return "na";
+  if (value >= targetMin + tol) return "good";
+  if (within(value, targetMin, tol)) return "ok";
+  return "bad";
+};
 
-const extremesTone = (v01: number | null) =>
-  v01 == null ? "neutral" : v01 <= 0.03 ? "green" : v01 <= 0.05 ? "amber" : "red";
+const statusLowerBetter = (value: number | null, targetMax: number, tol = 0.002): MetricStatus => {
+  if (value == null || !Number.isFinite(value)) return "na";
+  if (value <= targetMax - tol) return "good";
+  if (within(value, targetMax, tol)) return "ok";
+  return "bad";
+};
 
-/* ---------- Page ---------- */
+const statusAbsLowerBetter = (value: number | null, targetAbsMax: number, tol = 0.002): MetricStatus => {
+  if (value == null || !Number.isFinite(value)) return "na";
+  const absVal = Math.abs(value);
+  if (absVal <= targetAbsMax - tol) return "good";
+  if (within(absVal, targetAbsMax, tol)) return "ok";
+  return "bad";
+};
 
-export default function DailyUpdatePage() {
+export default function DailyUpdateClient() {
   const router = useRouter();
-  const search = useSearchParams();
-  const isPrint = search.get("print") === "1";
 
-  const [dates, setDates] = useState<ReportingDates | null>(null);
-  const [stores, setStores] = useState<string[]>([]);
-
-  const [serviceWtd, setServiceWtd] = useState<ServiceShiftRow[]>([]);
-  const [serviceYesterday, setServiceYesterday] = useState<ServiceShiftRow[]>([]);
-  const [costWtd, setCostWtd] = useState<CostControlRow[]>([]);
-  const [osaWtd, setOsaWtd] = useState<OsaRow[]>([]);
-  const [osaYesterday, setOsaYesterday] = useState<OsaRow[]>([]);
-  const [inputsToday, setInputsToday] = useState<StoreInputRow[]>([]);
-  const [tasksToday, setTasksToday] = useState<TaskRow[]>([]);
-  const [message, setMessage] = useState<string>("");
+  const [targetDate, setTargetDate] = useState<string>("");
+  const [weekStart, setWeekStart] = useState<string>("");
 
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const [areaMessage, setAreaMessage] = useState<string>("");
+  const [storeInputs, setStoreInputs] = useState<StoreInputRow[]>([]);
+  const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [serviceRows, setServiceRows] = useState<ServiceShiftRow[]>([]);
+  const [costRows, setCostRows] = useState<CostControlRow[]>([]);
+  const [osaRows, setOsaRows] = useState<OsaInternalRow[]>([]);
+  const [stores, setStores] = useState<string[]>([]);
 
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
-        setErr(null);
+        setError(null);
 
-        // 1) Dates (UK, Monday week start)
-        const { data: d, error: de } = await supabase.rpc("get_uk_reporting_dates");
-        if (de) throw new Error(de.message);
-        const dd = (Array.isArray(d) ? d[0] : d) as any;
-        const datesObj: ReportingDates = {
-          today: String(dd.today).slice(0, 10),
-          yesterday: String(dd.yesterday).slice(0, 10),
-          week_start: String(dd.week_start).slice(0, 10),
-        };
-        setDates(datesObj);
+        const previousBusinessDay = getPreviousBusinessDayUk();
+        const wkStart = getWeekStartUK(previousBusinessDay);
 
-        // 2) Stores (dynamic)
-        const { data: st, error: se } = await supabase.rpc("get_active_stores", { days_back: 60 });
-        if (se) throw new Error(se.message);
-        const storeList = (st || []).map((x: any) => String(x.store)).filter(Boolean);
-        setStores(storeList);
+        setTargetDate(previousBusinessDay);
+        setWeekStart(wkStart);
 
-        // 3) Service
-        const { data: svcWtd, error: s1 } = await supabase
-          .from("service_shifts")
-          .select("*")
-          .gte("shift_date", datesObj.week_start)
-          .lte("shift_date", datesObj.today);
+        const [
+          areaMessageRes,
+          inputsRes,
+          tasksRes,
+          serviceRes,
+          costRes,
+          osaRes,
+          serviceStoresRes,
+          costStoresRes,
+          inputStoresRes,
+        ] = await Promise.all([
+          supabase.from("daily_update_area_message").select("date,message").eq("date", previousBusinessDay).maybeSingle(),
+          supabase
+            .from("daily_update_store_inputs")
+            .select(
+              "date,store,missed_calls_wtd,gps_tracked_wtd,aof_wtd,target_load_time_mins,target_rack_time_mins,target_adt_mins,target_extremes_over40_pct,notes"
+            )
+            .eq("date", previousBusinessDay),
+          supabase
+            .from("daily_update_store_tasks")
+            .select("id,date,store,task,is_complete,created_at,completed_at")
+            .eq("date", previousBusinessDay)
+            .order("created_at", { ascending: true }),
+          supabase
+            .from("service_shifts")
+            .select("shift_date,store,dot_pct,labour_pct,extreme_over_40,rnl_minutes,additional_hours")
+            .eq("shift_date", previousBusinessDay),
+          supabase
+            .from("cost_control_entries")
+            .select("shift_date,store,sales_gbp,labour_cost_gbp,ideal_food_cost_gbp,actual_food_cost_gbp")
+            .eq("shift_date", previousBusinessDay),
+          supabase
+            .from("osa_internal_results")
+            .select("shift_date,store")
+            .gte("shift_date", wkStart)
+            .lte("shift_date", previousBusinessDay),
+          supabase.from("service_shifts").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
+          supabase
+            .from("cost_control_entries")
+            .select("store,shift_date")
+            .order("shift_date", { ascending: false })
+            .limit(500),
+          supabase.from("daily_update_store_inputs").select("store,date").order("date", { ascending: false }).limit(500),
+        ]);
 
-        if (s1) throw new Error(s1.message);
+        const firstError = [
+          areaMessageRes.error,
+          inputsRes.error,
+          tasksRes.error,
+          serviceRes.error,
+          costRes.error,
+          osaRes.error,
+          serviceStoresRes.error,
+          costStoresRes.error,
+          inputStoresRes.error,
+        ].find(Boolean);
 
-        const { data: svcY, error: s2 } = await supabase
-          .from("service_shifts")
-          .select("*")
-          .eq("shift_date", datesObj.yesterday);
+        if (firstError) throw new Error(firstError.message);
 
-        if (s2) throw new Error(s2.message);
+        setAreaMessage(((areaMessageRes.data as AreaMessageRow | null)?.message ?? "").trim());
+        setStoreInputs((inputsRes.data || []) as StoreInputRow[]);
+        setTasks((tasksRes.data || []) as TaskRow[]);
+        setServiceRows((serviceRes.data || []) as ServiceShiftRow[]);
+        setCostRows((costRes.data || []) as CostControlRow[]);
+        setOsaRows((osaRes.data || []) as OsaInternalRow[]);
 
-        setServiceWtd((svcWtd || []) as ServiceShiftRow[]);
-        setServiceYesterday((svcY || []) as ServiceShiftRow[]);
-
-        // 4) Cost controls (WTD)
-        const { data: cc, error: c1 } = await supabase
-          .from("cost_control_entries")
-          .select("id,store,shift_date,sales_gbp,labour_cost_gbp,ideal_food_cost_gbp,actual_food_cost_gbp")
-          .gte("shift_date", datesObj.week_start)
-          .lte("shift_date", datesObj.today);
-
-        if (c1) throw new Error(c1.message);
-        setCostWtd((cc || []) as CostControlRow[]);
-
-        // 5) OSA
-        const { data: ow, error: o1 } = await supabase
-          .from("osa_internal_results")
-          .select("*")
-          .gte("shift_date", datesObj.week_start)
-          .lte("shift_date", datesObj.today)
-          .order("created_at", { ascending: false });
-
-        if (o1) throw new Error(o1.message);
-
-        const { data: oy, error: o2 } = await supabase
-          .from("osa_internal_results")
-          .select("*")
-          .eq("shift_date", datesObj.yesterday)
-          .order("created_at", { ascending: false });
-
-        if (o2) throw new Error(o2.message);
-
-        setOsaWtd((ow || []) as OsaRow[]);
-        setOsaYesterday((oy || []) as OsaRow[]);
-
-        // 6) Daily inputs + tasks + message (today)
-        const { data: inp, error: i1 } = await supabase
-          .from("daily_update_store_inputs")
-          .select("*")
-          .eq("date", datesObj.today);
-
-        if (i1) throw new Error(i1.message);
-        setInputsToday((inp || []) as StoreInputRow[]);
-
-        const { data: tk, error: t1 } = await supabase
-          .from("daily_update_store_tasks")
-          .select("*")
-          .eq("date", datesObj.today)
-          .eq("is_complete", false)
-          .order("created_at", { ascending: true });
-
-        if (t1) throw new Error(t1.message);
-        setTasksToday((tk || []) as TaskRow[]);
-
-        const { data: msg, error: m1 } = await supabase
-          .from("daily_update_area_message")
-          .select("message")
-          .eq("date", datesObj.today)
-          .maybeSingle();
-
-        if (m1) throw new Error(m1.message);
-        setMessage(String(msg?.message ?? ""));
-      } catch (e: any) {
-        setErr(e?.message || "Failed to load daily update");
+        const storeSet = new Set<string>();
+        for (const row of [
+          ...(serviceStoresRes.data || []),
+          ...(costStoresRes.data || []),
+          ...(inputStoresRes.data || []),
+        ]) {
+          const s = String((row as { store?: string }).store || "").trim();
+          if (s) storeSet.add(s);
+        }
+        setStores(Array.from(storeSet).sort((a, b) => a.localeCompare(b)));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load daily update data.");
       } finally {
         setLoading(false);
       }
@@ -267,607 +287,871 @@ export default function DailyUpdatePage() {
 
   const inputsByStore = useMemo(() => {
     const m = new Map<string, StoreInputRow>();
-    for (const r of inputsToday) m.set(r.store, r);
+    for (const row of storeInputs) m.set(row.store, row);
     return m;
-  }, [inputsToday]);
+  }, [storeInputs]);
 
   const tasksByStore = useMemo(() => {
     const m = new Map<string, TaskRow[]>();
-    for (const t of tasksToday) {
-      m.set(t.store, [...(m.get(t.store) || []), t]);
-    }
+    for (const row of tasks) m.set(row.store, [...(m.get(row.store) || []), row]);
     return m;
-  }, [tasksToday]);
+  }, [tasks]);
 
-  const areaHeader = useMemo(() => {
-    // Labour WTD from service_shifts.labour_pct (0-100)
-    const labourVals: number[] = [];
-    let addHours = 0;
-
-    for (const r of serviceWtd) {
-      const l = normalisePct(r.labour_pct); // -> 0..1
-      if (l != null) labourVals.push(l);
-      if (typeof r.additional_hours === "number" && Number.isFinite(r.additional_hours)) {
-        addHours += r.additional_hours;
-      }
-    }
-
-    // Food var WTD from cost_control_entries (weighted)
-    const sales = sum(costWtd.map((r) => Number(r.sales_gbp || 0)));
-    const ideal = sum(costWtd.map((r) => Number(r.ideal_food_cost_gbp || 0)));
-    const actual = sum(costWtd.map((r) => Number(r.actual_food_cost_gbp || 0)));
-    const foodVarPctSales = sales > 0 ? (actual - ideal) / sales : null;
-
-    // OSA WTD count
-    const osaCount = osaWtd.length;
-
-    return {
-      labourWtd: avg(labourVals),
-      addHoursWtd: addHours,
-      foodVarPctSales,
-      osaCountWtd: osaCount,
-    };
-  }, [serviceWtd, costWtd, osaWtd]);
-
-  const latestOsaByStore = useMemo(() => {
-    const out = new Map<string, OsaRow>();
-    for (const r of osaWtd) {
-      const s = (r.store || "").trim();
+  const osaCounts = useMemo(() => {
+    const total = osaRows.length;
+    const byStore = new Map<string, number>();
+    for (const r of osaRows) {
+      const s = String(r.store || "").trim();
       if (!s) continue;
-      if (!out.has(s)) out.set(s, r); // already ordered desc in query
+      byStore.set(s, (byStore.get(s) || 0) + 1);
     }
-    return out;
-  }, [osaWtd]);
+    return { total, byStore };
+  }, [osaRows]);
 
-  const storeBlocks = useMemo(() => {
+  const storeCards = useMemo(() => {
     return stores.map((store) => {
-      // Cost WTD per store (weighted)
-      const cc = costWtd.filter((r) => r.store === store);
-      const sales = sum(cc.map((r) => Number(r.sales_gbp || 0)));
-      const labourCost = sum(cc.map((r) => Number(r.labour_cost_gbp || 0)));
-      const ideal = sum(cc.map((r) => Number(r.ideal_food_cost_gbp || 0)));
-      const actual = sum(cc.map((r) => Number(r.actual_food_cost_gbp || 0)));
-      const labourPct = sales > 0 ? labourCost / sales : null; // 0..1
-      const foodVarPctSales = sales > 0 ? (actual - ideal) / sales : null; // 0..1
+      const cost = costRows.filter((row) => row.store === store);
+      const service = serviceRows.filter((row) => row.store === store);
+      const inputs = inputsByStore.get(store) || null;
+      const storeTasks = tasksByStore.get(store) || [];
 
-      // Service yesterday per store
-      const sy = serviceYesterday.filter((r) => r.store === store);
-      const dot = avg(sy.map((r) => normalisePct(r.dot_pct)).filter((x): x is number => x != null));
-      const ext = avg(sy.map((r) => normalisePct(r.extreme_over_40)).filter((x): x is number => x != null));
-      const rnl = avg(sy.map((r) => normalizeRackLoad(r.rnl_minutes)).filter((x): x is number => x != null));
-      const addY = sum(
-        sy.map((r) => (typeof r.additional_hours === "number" && Number.isFinite(r.additional_hours) ? r.additional_hours : 0))
+      const sales = sum(cost.map((row) => Number(row.sales_gbp || 0)));
+      const labourCost = sum(cost.map((row) => Number(row.labour_cost_gbp || 0)));
+      const idealFoodCost = sum(cost.map((row) => Number(row.ideal_food_cost_gbp || 0)));
+      const actualFoodCost = sum(cost.map((row) => Number(row.actual_food_cost_gbp || 0)));
+
+      const labourPct01 = sales > 0 ? labourCost / sales : null;
+      const foodVarPct01 = sales > 0 ? (actualFoodCost - idealFoodCost) / sales : null;
+
+      const dotPct01 = avg(service.map((row) => normalisePct01(row.dot_pct)).filter((v): v is number => v != null));
+      const extremesPct01 = avg(
+        service.map((row) => normalisePct01(row.extreme_over_40)).filter((v): v is number => v != null)
       );
+      const rnlMinutes = avg(service.map((row) => row.rnl_minutes).filter((v): v is number => v != null));
+      const additionalHours = sum(service.map((row) => Number(row.additional_hours || 0)));
 
-      // Manager labels (yesterday)
-      const opening = sy.find((r) => r.opening_manager)?.opening_manager || null;
-      const closing = sy.find((r) => r.closing_manager)?.closing_manager || null;
+      const targets = getTargetsForStore(store, inputs);
 
-      // Additional hours WTD per store
-      const sw = serviceWtd.filter((r) => r.store === store);
-      const addWtd = sum(
-        sw.map((r) => (typeof r.additional_hours === "number" && Number.isFinite(r.additional_hours) ? r.additional_hours : 0))
-      );
-
-      // OSA WTD per store
-      const ow = osaWtd.filter((r) => (r.store || "").trim() === store);
-      const osaCount = ow.length;
-      const osaLatest = latestOsaByStore.get(store) || null;
-
-      // Daily inputs
-      const inp = inputsByStore.get(store) || null;
-
-      // Tasks
-      const tasks = tasksByStore.get(store) || [];
+      const missedCalls01 = to01From100(inputs?.missed_calls_wtd ?? null);
+      const gps01 = to01From100(inputs?.gps_tracked_wtd ?? null);
+      const aof01 = to01From100(inputs?.aof_wtd ?? null);
 
       return {
         store,
-        cost: { sales, labourPct, foodVarPctSales },
-        serviceY: { opening, closing, dot, ext, rnl, addHours: addY },
-        serviceWtd: { addHours: addWtd },
-        osa: { count: osaCount, latest: osaLatest },
-        inputs: inp,
-        tasks,
+        additionalHours,
+        cost: { labourPct01, foodVarPct01 },
+        service: { dotPct01, extremesPct01, rnlMinutes },
+        inputs,
+        tasks: storeTasks,
+        targets,
+        osaWtdCount: osaCounts.byStore.get(store) || 0,
+        daily: { missedCalls01, gps01, aof01 },
       };
     });
-  }, [stores, costWtd, serviceYesterday, serviceWtd, osaWtd, inputsByStore, tasksByStore, latestOsaByStore]);
+  }, [stores, costRows, serviceRows, inputsByStore, tasksByStore, osaCounts.byStore]);
 
-  const exportPdf = async () => {
-    try {
-      const res = await fetch("/api/daily-update/pdf", { method: "POST" });
-      if (!res.ok) throw new Error(`PDF export failed (${res.status})`);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `mourneoids-daily-update-${dates?.today || "today"}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e: any) {
-      alert(e?.message || "Failed to export PDF");
+  const areaRollup = useMemo(() => {
+    const sales = sum(costRows.map((r) => Number(r.sales_gbp || 0)));
+    const labourCost = sum(costRows.map((r) => Number(r.labour_cost_gbp || 0)));
+    const idealFood = sum(costRows.map((r) => Number(r.ideal_food_cost_gbp || 0)));
+    const actualFood = sum(costRows.map((r) => Number(r.actual_food_cost_gbp || 0)));
+
+    const labourPct01 = sales > 0 ? labourCost / sales : null;
+    const foodVarPct01 = sales > 0 ? (actualFood - idealFood) / sales : null;
+
+    const additionalHours = sum(serviceRows.map((r) => Number(r.additional_hours || 0)));
+
+    return { labourPct01, foodVarPct01, additionalHours };
+  }, [costRows, serviceRows]);
+
+  const toggleTask = async (task: TaskRow) => {
+    const willComplete = !task.is_complete;
+    const completedAt = willComplete ? new Date().toISOString() : null;
+
+    setTasks((prev) =>
+      prev.map((row) =>
+        row.id === task.id ? { ...row, is_complete: willComplete, completed_at: completedAt } : row
+      )
+    );
+
+    const { error: updateError } = await supabase
+      .from("daily_update_store_tasks")
+      .update({ is_complete: willComplete, completed_at: completedAt })
+      .eq("id", task.id);
+
+    if (updateError) {
+      setTasks((prev) => prev.map((row) => (row.id === task.id ? task : row)));
+      setError(updateError.message);
     }
   };
 
-  return (
-    <main className={`wrap ${isPrint ? "print" : ""}`}>
-      {!isPrint && (
-        <div className="banner">
-          <img src="/mourneoids_forms_header_1600x400.png" alt="Mourne-oids Header Banner" />
+  const StatusDot = (props: { status: MetricStatus }) => {
+    const cls =
+      props.status === "good"
+        ? "dot good"
+        : props.status === "ok"
+        ? "dot ok"
+        : props.status === "bad"
+        ? "dot bad"
+        : "dot na";
+    return <span className={cls} aria-hidden="true" />;
+  };
+
+  // LABEL bold + divider + VALUE regular (clear separation)
+  const StatTile = (props: { label: string; valueText: string; status: MetricStatus }) => (
+    <div className={`statTile status-${props.status}`}>
+      <div className="tileTopRow">
+        <span className="tileTitle">{props.label}</span>
+        <StatusDot status={props.status} />
+      </div>
+      <div className="tileDivider" />
+      <div className="tileValue">{props.valueText}</div>
+    </div>
+  );
+
+  const MetricCard = (props: { title: string; icon?: string; tone?: "blue" | "purple" | "slate"; children: React.ReactNode }) => {
+    const toneClass = props.tone ? `tone-${props.tone}` : "tone-slate";
+    return (
+      <div className={`metricCard ${toneClass}`}>
+        <div className="metricCardHead">
+          <div className="metricHeadLeft">
+            {props.icon ? (
+              <span className="metricIcon" aria-hidden="true">
+                {props.icon}
+              </span>
+            ) : null}
+            <h3>{props.title}</h3>
+          </div>
         </div>
-      )}
+        <div className="metricCardBody">{props.children}</div>
+      </div>
+    );
+  };
+
+  // Area tiles: title bold + divider + value regular (clear separation)
+  const AreaTile = (props: { icon: string; label: string; value: string }) => (
+    <div className="areaTile">
+      <div className="tileTopRow">
+        <div className="areaTopLeft">
+          <span className="areaTileIcon" aria-hidden="true">
+            {props.icon}
+          </span>
+          <span className="areaTileLabel">{props.label}</span>
+        </div>
+      </div>
+      <div className="tileDivider" />
+      <div className="areaTileValue">{props.value}</div>
+    </div>
+  );
+
+  return (
+    <main className="wrap">
+      <div className="banner">
+        <img src="/mourneoids_forms_header_1600x400.png" alt="Mourne-oids Header Banner" />
+      </div>
 
       <div className="shell">
-        {!isPrint && (
-          <div className="topbar">
-            <button className="navbtn" type="button" onClick={() => router.back()}>
-              ← Back
-            </button>
-            <div className="topbar-spacer" />
-            <button className="navbtn solid" type="button" onClick={() => router.push("/")}>
-              🏠 Home
-            </button>
-            <button className="navbtn" type="button" onClick={exportPdf}>
-              📄 Export PDF
-            </button>
-          </div>
-        )}
+        <div className="topbar print-hidden">
+          <button className="navbtn" type="button" onClick={() => router.back()}>
+            ← Back
+          </button>
+          <div className="topbar-spacer" />
+          <button className="navbtn" type="button" onClick={() => router.push("/")}>
+            🏠 Home
+          </button>
+          <button className="navbtn solid" type="button" onClick={() => window.print()}>
+            📄 Export PDF
+          </button>
+        </div>
 
         <header className="header">
           <h1>Mourne-oids Daily Update</h1>
           <p className="subtitle">
-            {dates ? (
-              <>
-                Date: <b>{dates.today}</b> • Week start: <b>{dates.week_start}</b> (Mon)
-              </>
-            ) : (
-              "Loading dates…"
-            )}
+            Previous business day: {targetDate || "Loading…"}
+            {weekStart ? ` · WTD from ${weekStart}` : ""}
           </p>
         </header>
 
-        {loading && <div className="alert">Loading Daily Update…</div>}
-        {err && <div className="alert error">Error: {err}</div>}
+        {/* ✅ Area overview: each metric is its own outlined tile */}
+        <section className="areaOverview">
+          <div className="areaTiles">
+            <AreaTile icon="🧑‍🤝‍🧑" label="Area Labour" value={fmtPct2(areaRollup.labourPct01)} />
+            <AreaTile icon="🍕" label="Area Food" value={fmtPct2(areaRollup.foodVarPct01)} />
+            <AreaTile icon="⏱️" label="Area Add. Hours" value={fmtNum2(areaRollup.additionalHours)} />
+            <AreaTile icon="✅" label="Area OSA" value={String(osaCounts.total)} />
+          </div>
 
-        {!loading && !err && dates && (
-          <>
-            {/* AREA HEADER STRIP */}
-            <section className="areaStrip">
-              <div className="areaKpi">
-                <div className="kLabel">Area Labour (WTD)</div>
-                <div className={`kValue ${pill(labourTone(areaHeader.labourWtd))}`}>{fmtPct(areaHeader.labourWtd, 1)}</div>
-              </div>
-
-              <div className="areaKpi">
-                <div className="kLabel">Area Food Var (WTD)</div>
-                <div className={`kValue ${pill(foodTone(areaHeader.foodVarPctSales))}`}>{fmtPct(areaHeader.foodVarPctSales, 2)}</div>
-              </div>
-
-              <div className="areaKpi">
-                <div className="kLabel">Area Additional Hours (WTD)</div>
-                <div className={`kValue ${pill("neutral")}`}>{fmtHours(areaHeader.addHoursWtd)}</div>
-              </div>
-
-              <div className="areaKpi">
-                <div className="kLabel">OSA Entries (WTD)</div>
-                <div className={`kValue ${pill("neutral")}`}>{areaHeader.osaCountWtd}</div>
-              </div>
-
-              <div className="osaChips">
-                {stores.map((s) => {
-                  const latest = latestOsaByStore.get(s);
-                  return (
-                    <div key={s} className="chip">
-                      <span className="chipName">{s}</span>
-                      <span className={`chipVal ${latest?.is_elite ? "elite" : ""}`}>
-                        {latest?.stars != null ? `${latest.stars}★` : "—"}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-
-            {/* MESSAGE (optional) */}
-            {message?.trim() && (
-              <section className="message">
-                <div className="sectionHead">
-                  <h2>Message for the day</h2>
-                </div>
-                <div className="messageBody">{message}</div>
-              </section>
-            )}
-
-            {/* STORE GRID */}
-            <section className="storesGrid">
-              {storeBlocks.map((b) => (
-                <div key={b.store} className="storeCard">
-                  <div className="storeHead">
-                    <div className="storeName">{b.store}</div>
-                    <div className="storeMeta">
-                      <span className="metaPill">WTD Add Hours: {fmtHours(b.serviceWtd.addHours)}</span>
-                      <span className="metaPill">OSA WTD: {b.osa.count}</span>
-                    </div>
-                  </div>
-
-                  <div className="cols">
-                    {/* LEFT: Snapshot */}
-                    <div className="col">
-                      <div className="blockTitle">Performance Snapshot</div>
-
-                      <div className="metricRow">
-                        <span>Cost • Sales (WTD)</span>
-                        <b>{fmtMoney(b.cost.sales, 0)}</b>
-                      </div>
-                      <div className="metricRow">
-                        <span>Cost • Labour (WTD)</span>
-                        <b className={pill(labourTone(b.cost.labourPct))}>{fmtPct(b.cost.labourPct, 1)}</b>
-                      </div>
-                      <div className="metricRow">
-                        <span>Cost • Food Var (WTD)</span>
-                        <b className={pill(foodTone(b.cost.foodVarPctSales))}>{fmtPct(b.cost.foodVarPctSales, 2)}</b>
-                      </div>
-
-                      <div className="divider" />
-
-                      <div className="metricRow">
-                        <span>Service • Yesterday (Mgr)</span>
-                        <b>{b.serviceY.opening || b.serviceY.closing ? `${b.serviceY.opening || "—"} / ${b.serviceY.closing || "—"}` : "—"}</b>
-                      </div>
-                      <div className="metricRow">
-                        <span>Service • DOT</span>
-                        <b className={pill(dotTone(b.serviceY.dot))}>{fmtPct(b.serviceY.dot, 1)}</b>
-                      </div>
-                      <div className="metricRow">
-                        <span>Service • Extremes &gt;40</span>
-                        <b className={pill(extremesTone(b.serviceY.ext))}>{fmtPct(b.serviceY.ext, 2)}</b>
-                      </div>
-                      <div className="metricRow">
-                        <span>Service • R&amp;L</span>
-                        <b className={pill("neutral")}>{fmtMinutes(b.serviceY.rnl, 1)}</b>
-                      </div>
-                      <div className="metricRow">
-                        <span>Service • Add Hours (Yday)</span>
-                        <b className={pill("neutral")}>{fmtHours(b.serviceY.addHours)}</b>
-                      </div>
-
-                      <div className="divider" />
-
-                      <div className="metricRow">
-                        <span>OSA • Latest (WTD)</span>
-                        <b className={pill("neutral")}>
-                          {b.osa.latest?.stars != null ? `${b.osa.latest.stars}★` : "—"}
-                          {b.osa.latest?.is_elite ? " • Elite" : ""}
-                        </b>
-                      </div>
-
-                      <div className="divider" />
-
-                      <div className="metricRow">
-                        <span>Missed Calls (WTD)</span>
-                        <b className={pill("neutral")}>{fmtPct100(b.inputs?.missed_calls_wtd ?? null, 1)}</b>
-                      </div>
-                      <div className="metricRow">
-                        <span>GPS Tracked (WTD)</span>
-                        <b className={pill("neutral")}>{fmtPct100(b.inputs?.gps_tracked_wtd ?? null, 1)}</b>
-                      </div>
-                      <div className="metricRow">
-                        <span>AOF (WTD)</span>
-                        <b className={pill("neutral")}>{fmtPct100(b.inputs?.aof_wtd ?? null, 1)}</b>
-                      </div>
-
-                      {b.inputs?.notes?.trim() && (
-                        <div className="note">
-                          <div className="noteTitle">Notes</div>
-                          <div>{b.inputs.notes}</div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* RIGHT: Targets + Tasks */}
-                    <div className="col">
-                      <div className="blockTitle">Service Losing Targets (Today)</div>
-
-                      <div className="targets">
-                        <div className="tRow"><span>Load</span><b>{b.inputs?.target_load_time_mins != null ? `${b.inputs.target_load_time_mins}m` : "—"}</b></div>
-                        <div className="tRow"><span>Rack</span><b>{b.inputs?.target_rack_time_mins != null ? `${b.inputs.target_rack_time_mins}m` : "—"}</b></div>
-                        <div className="tRow"><span>ADT</span><b>{b.inputs?.target_adt_mins != null ? `${b.inputs.target_adt_mins}m` : "—"}</b></div>
-                        <div className="tRow"><span>Extremes &gt;40</span><b>{b.inputs?.target_extremes_over40_pct != null ? `${b.inputs.target_extremes_over40_pct}%` : "—"}</b></div>
-                      </div>
-
-                      <div className="divider" />
-
-                      <div className="blockTitle">Outstanding Tasks (Today)</div>
-                      {b.tasks.length ? (
-                        <ul className="tasks">
-                          {b.tasks.map((t) => (
-                            <li key={t.id}>{t.task}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <div className="empty">No outstanding tasks.</div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+          <div className="osaBreakdown">
+            <div className="osaTitle">OSA Breakdown</div>
+            <div className="osaChips">
+              {stores.map((store) => (
+                <span key={store} className="chip">
+                  {store}: {String(osaCounts.byStore.get(store) || 0)}
+                </span>
               ))}
-            </section>
+              {!stores.length && <span className="chip">No stores loaded</span>}
+            </div>
+          </div>
+        </section>
 
-            {/* OSA BLOCK */}
-            <section className="osaBlock">
-              <div className="sectionHead">
-                <h2>OSA — Yesterday</h2>
-                <p>{dates.yesterday}</p>
-              </div>
+        {areaMessage && (
+          <section className="message">
+            <div className="messageHead">
+              <h2>Area Message</h2>
+              <span className="messagePill">Action focus</span>
+            </div>
+            <p>{areaMessage}</p>
+          </section>
+        )}
 
-              <div className="tableWrap">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Store</th>
-                      <th>Team member</th>
-                      <th>Stars</th>
-                      <th>Points lost</th>
-                      <th>Elite</th>
-                      <th>Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {osaYesterday.map((r) => (
-                      <tr key={r.id}>
-                        <td>{r.store || "—"}</td>
-                        <td>{r.team_member_name || "—"}</td>
-                        <td style={{ textAlign: "right" }}>{r.stars ?? "—"}</td>
-                        <td style={{ textAlign: "right" }}>{r.points_lost ?? "—"}</td>
-                        <td>{r.is_elite ? "Yes" : "—"}</td>
-                        <td>{r.created_at ? new Date(r.created_at).toLocaleString("en-GB") : "—"}</td>
-                      </tr>
-                    ))}
-                    {!osaYesterday.length && (
-                      <tr>
-                        <td colSpan={6} className="emptyRow">No OSA entries yesterday.</td>
-                      </tr>
+        {loading && <div className="alert">Loading daily update…</div>}
+        {error && <div className="alert error">Error: {error}</div>}
+
+        {!loading && !error && (
+          <section className="storesGrid">
+            {storeCards.map((card) => {
+              const dotStatus = statusHigherBetter(card.service.dotPct01, card.targets.dotMin01);
+              const labourStatus = statusLowerBetter(card.cost.labourPct01, card.targets.labourMax01);
+              const rnlStatus = statusLowerBetter(card.service.rnlMinutes, card.targets.rnlMaxMins, 0.1);
+              const extremesStatus = statusLowerBetter(card.service.extremesPct01, card.targets.extremesMax01);
+              const foodVarStatus = statusAbsLowerBetter(card.cost.foodVarPct01, card.targets.foodVarAbsMax01);
+
+              const missedStatus = statusLowerBetter(card.daily.missedCalls01, INPUT_TARGETS.missedCallsMax01);
+              const gpsStatus = statusHigherBetter(card.daily.gps01, INPUT_TARGETS.gpsMin01);
+              const aofStatus = statusHigherBetter(card.daily.aof01, INPUT_TARGETS.aofMin01);
+
+              const addHoursStatus: MetricStatus =
+                card.additionalHours == null
+                  ? "na"
+                  : !Number.isFinite(card.additionalHours)
+                  ? "na"
+                  : card.additionalHours <= 0
+                  ? "good"
+                  : card.additionalHours <= 1
+                  ? "ok"
+                  : "bad";
+
+              return (
+                <article key={card.store} className="storeCard">
+                  <div className="storeHead">
+                    <h2 className="storeName">{card.store}</h2>
+                    <span className="osaChip">OSA WTD: {card.osaWtdCount}</span>
+                  </div>
+
+                  {/* ✅ Service bigger than the other 2 + each section is its own outlined tile */}
+                  <div className="metricCards">
+                    <div className="metricSpan2">
+                      <MetricCard title="Service" icon="🚗" tone="slate">
+                        <div className="tilesGrid">
+                          <StatTile label="DOT" valueText={fmtPct2(card.service.dotPct01)} status={dotStatus} />
+                          <StatTile label="R&L" valueText={fmtMins2(card.service.rnlMinutes)} status={rnlStatus} />
+                          <StatTile label="Extremes >40" valueText={fmtPct2(card.service.extremesPct01)} status={extremesStatus} />
+                          <StatTile label="Add. hours" valueText={fmtNum2(card.additionalHours)} status={addHoursStatus} />
+                        </div>
+                      </MetricCard>
+                    </div>
+
+                    <MetricCard title="Cost Controls" icon="💷" tone="blue">
+                      <div className="tilesGrid oneCol">
+                        <StatTile label="Labour" valueText={fmtPct2(card.cost.labourPct01)} status={labourStatus} />
+                        <StatTile label="Food" valueText={fmtPct2(card.cost.foodVarPct01)} status={foodVarStatus} />
+                      </div>
+                    </MetricCard>
+
+                    <MetricCard title="Others WTD" icon="🧾" tone="purple">
+                      <div className="tilesGrid oneCol">
+                        <StatTile label="Missed Calls" valueText={fmtPct2(card.daily.missedCalls01)} status={missedStatus} />
+                        <StatTile label="GPS Tracked" valueText={fmtPct2(card.daily.gps01)} status={gpsStatus} />
+                        <StatTile label="AOF" valueText={fmtPct2(card.daily.aof01)} status={aofStatus} />
+                      </div>
+                    </MetricCard>
+                  </div>
+
+                  <section className="notes">
+                    <div className="sectionHead">
+                      <h3>Notes</h3>
+                      <span className="sectionPill">From store</span>
+                    </div>
+                    <p>{card.inputs?.notes?.trim() || "—"}</p>
+                  </section>
+
+                  <section className="targets">
+                    <div className="sectionHead">
+                      <h3>Service Losing Targets</h3>
+                      <span className="sectionPill">Input</span>
+                    </div>
+                    <div className="targetsGrid">
+                      <div className="lineItem">
+                        <span>Load (mins)</span>
+                        <strong>{fmtNum2(card.inputs?.target_load_time_mins ?? null)}</strong>
+                      </div>
+                      <div className="lineItem">
+                        <span>Rack (mins)</span>
+                        <strong>{fmtNum2(card.inputs?.target_rack_time_mins ?? null)}</strong>
+                      </div>
+                      <div className="lineItem">
+                        <span>ADT (mins)</span>
+                        <strong>{fmtNum2(card.inputs?.target_adt_mins ?? null)}</strong>
+                      </div>
+                      <div className="lineItem">
+                        <span>Extremes %</span>
+                        <strong>
+                          {card.inputs?.target_extremes_over40_pct == null
+                            ? "—"
+                            : `${Number(card.inputs.target_extremes_over40_pct).toFixed(2)}%`}
+                        </strong>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="tasks">
+                    <div className="sectionHead">
+                      <h3>Tasks</h3>
+                      <span className="sectionPill">To action</span>
+                    </div>
+                    {card.tasks.length === 0 ? (
+                      <p className="placeholder">No tasks for this store on {targetDate}.</p>
+                    ) : (
+                      <ul>
+                        {card.tasks.map((task) => (
+                          <li key={task.id}>
+                            <label>
+                              <input type="checkbox" checked={task.is_complete} onChange={() => toggleTask(task)} />
+                              <span className={task.is_complete ? "done" : ""}>{task.task}</span>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
                     )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          </>
+                  </section>
+                </article>
+              );
+            })}
+          </section>
         )}
       </div>
-
-      <footer className="footer">
-        <p>© 2026 Mourne-oids | Domino’s Pizza | Racz Group</p>
-      </footer>
 
       <style jsx>{`
         .wrap {
           min-height: 100dvh;
-          background: radial-gradient(circle at top, rgba(0,100,145,0.08), transparent 45%),
-            linear-gradient(180deg,#e3edf4 0%,#f2f5f9 30%,#f2f5f9 100%);
-          display: flex;
-          flex-direction: column;
-          align-items: center;
+          background: radial-gradient(circle at top, rgba(0, 100, 145, 0.08), transparent 45%),
+            linear-gradient(180deg, #e3edf4 0%, #f2f5f9 30%, #f2f5f9 100%);
           color: #0f172a;
-          padding-bottom: 40px;
-        }
-        .banner { display:flex; justify-content:center; align-items:center; background:#fff; border-bottom:3px solid #006491; box-shadow:0 12px 35px rgba(2,6,23,.08); width:100%; }
-        .banner img { max-width:min(1160px,92%); height:auto; display:block; }
-
-        .shell { width:min(1180px, 95vw); margin-top:18px; background:rgba(255,255,255,.65); backdrop-filter:saturate(160%) blur(6px); border:1px solid rgba(255,255,255,.22); border-radius:1.5rem; box-shadow:0 16px 40px rgba(0,0,0,.05); padding:18px 22px 26px; }
-        .topbar { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
-        .topbar-spacer { flex:1; }
-        .navbtn { border-radius:14px; border:2px solid #006491; background:#fff; color:#006491; font-weight:900; font-size:14px; padding:8px 12px; cursor:pointer; box-shadow:0 6px 14px rgba(0,100,145,.12); }
-        .navbtn.solid { background:#006491; color:#fff; }
-
-        .header { text-align:center; margin-bottom: 12px; }
-        .header h1 { font-size: clamp(2rem, 3vw, 2.3rem); font-weight: 900; margin: 0; }
-        .subtitle { margin: 6px 0 0; color:#64748b; font-weight: 700; font-size: 0.95rem; }
-
-        .alert { margin-top: 12px; border-radius: 14px; padding: 12px 14px; font-weight: 800; background: rgba(255, 255, 255, 0.85); border: 1px solid rgba(15, 23, 42, 0.1); color: #334155; }
-        .alert.error { background: rgba(254,242,242,0.9); border-color: rgba(239,68,68,0.25); color: #7f1d1d; }
-
-        .areaStrip{
-          display:grid;
-          gap:10px;
-          padding:14px;
-          border-radius: 16px;
-          background: rgba(255,255,255,0.92);
-          border: 1px solid rgba(0,100,145,0.14);
-          box-shadow: 0 12px 28px rgba(2,6,23,0.05);
-        }
-        .areaKpi{
-          display:flex;
-          justify-content:space-between;
-          align-items:center;
-          gap:10px;
-          padding:8px 10px;
-          border-radius: 12px;
-          border: 1px solid rgba(15,23,42,0.08);
-          background: rgba(255,255,255,0.9);
-        }
-        .kLabel{ font-size:12px; font-weight:900; color:#334155; text-transform:uppercase; letter-spacing:.03em; }
-        .kValue{ display:inline-flex; align-items:center; }
-
-        .osaChips{
-          display:flex;
-          flex-wrap:wrap;
-          gap:8px;
-          margin-top:6px;
-        }
-        .chip{
-          display:inline-flex;
-          gap:8px;
-          align-items:center;
-          padding:6px 10px;
-          border-radius:999px;
-          border:1px solid rgba(0,100,145,0.18);
-          background: rgba(0,100,145,0.08);
-          font-weight:900;
-          font-size:12px;
-          color:#004b75;
-        }
-        .chipVal.elite{ color:#166534; }
-
-        .message{
-          margin-top: 14px;
-          padding: 14px;
-          border-radius: 16px;
-          background: rgba(255,255,255,0.92);
-          border: 1px solid rgba(0,100,145,0.14);
-          box-shadow: 0 12px 28px rgba(2,6,23,0.05);
-        }
-        .messageBody{
-          white-space: pre-wrap;
-          font-weight: 700;
-          color:#334155;
-          line-height: 1.45;
+          padding-bottom: 32px;
         }
 
-        .storesGrid{
-          margin-top: 14px;
-          display:grid;
-          gap: 12px;
-          grid-template-columns: repeat(2, minmax(0,1fr));
+        .banner {
+          display: flex;
+          justify-content: center;
+          background: #fff;
+          border-bottom: 3px solid #006491;
+        }
+        .banner img {
+          max-width: min(1160px, 92%);
+          height: auto;
+          display: block;
         }
 
-        .storeCard{
-          background: rgba(255,255,255,0.92);
-          border-radius: 18px;
-          border: 1px solid rgba(0,100,145,0.14);
-          box-shadow: 0 12px 28px rgba(2,6,23,0.05);
-          padding: 12px 14px;
+        .shell {
+          width: min(1180px, 95vw);
+          margin: 20px auto;
+          background: rgba(255, 255, 255, 0.65);
+          backdrop-filter: saturate(160%) blur(6px);
+          border: 1px solid rgba(255, 255, 255, 0.22);
+          border-radius: 1.5rem;
+          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.05);
+          padding: 18px;
         }
 
-        .storeHead{
-          display:flex;
-          justify-content:space-between;
-          align-items:flex-start;
-          gap:10px;
+        .topbar {
+          display: flex;
+          gap: 10px;
           margin-bottom: 10px;
         }
-        .storeName{ font-size:18px; font-weight: 900; }
-        .storeMeta{ display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; }
-        .metaPill{
-          font-size: 11px;
+        .topbar-spacer {
+          flex: 1;
+        }
+        .navbtn {
+          border-radius: 14px;
+          border: 2px solid #006491;
+          background: #fff;
+          color: #006491;
           font-weight: 900;
-          padding: 4px 10px;
-          border-radius: 999px;
-          border: 1px solid rgba(15,23,42,.10);
-          background: rgba(241,245,249,.9);
-          color: #334155;
-          white-space: nowrap;
+          font-size: 14px;
+          padding: 8px 12px;
+          cursor: pointer;
+        }
+        .navbtn.solid {
+          background: #006491;
+          color: #fff;
         }
 
-        .cols{
-          display:grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 12px;
+        .header {
+          text-align: center;
+          margin-bottom: 12px;
         }
-        .col{ display:grid; gap: 8px; }
-        .blockTitle{
-          font-size: 12px;
-          text-transform: uppercase;
-          letter-spacing: .03em;
-          color:#475569;
-          font-weight: 900;
+        .header h1 {
+          font-size: clamp(2rem, 3vw, 2.3rem);
+          margin: 0;
+        }
+        .subtitle {
+          color: #64748b;
+          font-weight: 800;
+          margin: 4px 0 0;
         }
 
-        .metricRow{
-          display:flex;
-          justify-content:space-between;
-          align-items:center;
+        /* Shared: strong separation between title + value */
+        .tileTopRow {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
           gap: 10px;
-          font-size: 13px;
-          color:#334155;
-          font-weight: 800;
         }
-        .divider{
+        .tileDivider {
           height: 1px;
-          background: rgba(15,23,42,0.08);
-          margin: 4px 0;
+          background: rgba(15, 23, 42, 0.10);
+          margin-top: 10px;
+        }
+        .tileTitle {
+          font-weight: 900;
+          letter-spacing: 0.2px;
+          color: #0f172a;
+        }
+        .tileValue {
+          margin-top: 12px; /* bigger gap = better separation */
+          font-size: 22px;
+          font-weight: 500; /* value NOT bold */
+          color: #0f172a;
+          font-variant-numeric: tabular-nums;
         }
 
-        .targets{ display:grid; gap: 6px; }
-        .tRow{
-          display:flex;
-          justify-content:space-between;
-          align-items:center;
+        /* === Area Overview === */
+        .areaOverview {
+          background: rgba(255, 255, 255, 0.92);
+          border: 1px solid rgba(0, 100, 145, 0.16);
+          border-radius: 18px;
+          padding: 12px;
+          display: grid;
+          gap: 10px;
+        }
+        .areaTiles {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .areaTile {
+          border-radius: 18px;
+          background: rgba(255, 255, 255, 0.98);
+          border: 2px solid rgba(0, 100, 145, 0.35); /* stronger outline */
+          box-shadow: 0 10px 22px rgba(0, 0, 0, 0.04);
+          padding: 12px 14px;
+        }
+        .areaTopLeft {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+        }
+        .areaTileIcon {
+          font-size: 16px;
+          line-height: 1;
+          flex-shrink: 0;
+        }
+        .areaTileLabel {
           font-size: 13px;
-          font-weight: 800;
-          color:#334155;
-          padding: 8px 10px;
-          border-radius: 12px;
-          border: 1px solid rgba(15,23,42,0.08);
-          background: rgba(255,255,255,0.9);
-        }
-
-        .tasks{ margin: 0; padding-left: 18px; display:grid; gap: 6px; font-weight: 800; color:#334155; }
-        .empty{ color:#64748b; font-weight: 800; }
-
-        .note{
-          margin-top: 4px;
-          padding: 10px;
-          border-radius: 12px;
-          border: 1px dashed rgba(0,100,145,0.25);
-          background: rgba(0,100,145,0.05);
-          color:#334155;
-          font-weight: 800;
-        }
-        .noteTitle{
-          font-size: 11px;
+          font-weight: 900; /* bold title */
           text-transform: uppercase;
-          letter-spacing: .03em;
-          font-weight: 900;
-          color:#004b75;
-          margin-bottom: 4px;
+          letter-spacing: 0.35px;
+          color: #0f172a;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .areaTileValue {
+          margin-top: 12px;
+          font-size: 26px;
+          font-weight: 500; /* value regular */
+          color: #0b4f70;
+          font-variant-numeric: tabular-nums;
         }
 
-        .osaBlock{ margin-top: 14px; }
-        .sectionHead{ display:flex; justify-content:space-between; align-items:flex-end; gap: 10px; margin-bottom: 10px; }
-        .sectionHead h2{ margin:0; font-size: 15px; font-weight: 900; }
-        .sectionHead p{ margin:0; font-size: 12px; color:#64748b; font-weight: 800; }
-
-        .tableWrap{
-          overflow-x:auto;
+        .osaBreakdown {
           border-radius: 16px;
-          border: 1px solid rgba(15,23,42,0.08);
-          background: rgba(255,255,255,0.9);
-          box-shadow: 0 12px 28px rgba(2,6,23,0.05);
+          padding: 10px;
+          background: rgba(15, 23, 42, 0.03);
+          border: 1px solid rgba(15, 23, 42, 0.06);
         }
-        .table{ width:100%; border-collapse: collapse; }
-        .table th, .table td{ padding: 10px 12px; font-size: 13px; text-align:left; }
-        .table th{ background: rgba(0,100,145,0.08); font-weight: 900; }
-        .table tr + tr td{ border-top: 1px solid rgba(15,23,42,0.06); }
-        .emptyRow{ text-align:left; color:#475569; font-weight: 800; }
-
-        .pill{
-          font-size: 11px;
-          font-weight: 900;
-          padding: 4px 10px;
+        .osaTitle {
+          font-size: 12px;
+          font-weight: 950;
+          text-transform: uppercase;
+          color: #334155;
+          margin-bottom: 8px;
+          letter-spacing: 0.35px;
+        }
+        .osaChips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+        .chip {
+          border: 1px solid rgba(0, 100, 145, 0.16);
           border-radius: 999px;
-          border: 1px solid rgba(15,23,42,.12);
-          background: rgba(241,245,249,.9);
+          padding: 6px 10px;
+          background: rgba(0, 100, 145, 0.08);
+          font-size: 12px;
+          font-weight: 900;
+        }
+
+        /* Area Message */
+        .message {
+          margin-top: 12px;
+          border: 2px solid rgba(0, 100, 145, 0.22);
+          border-radius: 18px;
+          background: rgba(0, 100, 145, 0.06);
+          padding: 14px;
+          box-shadow: 0 10px 24px rgba(0, 0, 0, 0.05);
+        }
+        .messageHead {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 8px;
+        }
+        .message h2 {
+          margin: 0;
+          font-size: 16px;
+        }
+        .messagePill {
+          font-size: 12px;
+          font-weight: 950;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(0, 100, 145, 0.10);
+          border: 1px solid rgba(0, 100, 145, 0.18);
+          color: #0f172a;
+          white-space: nowrap;
+        }
+        .message p {
+          margin: 0;
+          white-space: pre-wrap;
+          font-weight: 850;
+          color: #334155;
+          line-height: 1.35;
+        }
+
+        .alert {
+          margin-top: 12px;
+          border-radius: 14px;
+          padding: 12px;
+          font-weight: 800;
+          background: rgba(255, 255, 255, 0.85);
+          border: 1px solid rgba(15, 23, 42, 0.1);
+        }
+        .alert.error {
+          background: rgba(254, 242, 242, 0.9);
+          border-color: rgba(239, 68, 68, 0.25);
+          color: #7f1d1d;
+        }
+
+        /* Store cards */
+        .storesGrid {
+          margin-top: 12px;
+          display: grid;
+          gap: 12px;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .storeCard {
+          background: rgba(255, 255, 255, 0.92);
+          border: 1px solid rgba(0, 100, 145, 0.14);
+          border-radius: 18px;
+          padding: 14px;
+        }
+        .storeHead {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+        .storeName {
+          margin: 0;
+          font-size: 22px;
+          letter-spacing: 0.2px;
+        }
+        .osaChip {
+          border-radius: 999px;
+          padding: 7px 12px;
+          background: rgba(124, 58, 237, 0.08);
+          border: 1px solid rgba(124, 58, 237, 0.18);
+          color: #4c1d95;
+          font-weight: 950;
+          font-size: 12px;
+          white-space: nowrap;
+        }
+
+        /* KPI modules */
+        .metricCards {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr)); /* Service spans 2 */
+          gap: 10px;
+          align-items: start;
+        }
+        .metricSpan2 {
+          grid-column: span 2;
+        }
+
+        .metricCard {
+          border-radius: 18px;
+          background: #fff;
+          border: 2px solid rgba(15, 23, 42, 0.14); /* stronger outline */
+          box-shadow: 0 10px 22px rgba(0, 0, 0, 0.05);
+          overflow: hidden;
+        }
+        .metricCardHead {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          padding: 10px 12px;
+          border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+        }
+        .metricHeadLeft {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .metricIcon {
+          font-size: 15px;
+          line-height: 1;
+        }
+        .metricCardHead h3 {
+          margin: 0;
+          font-size: 13px;
+          letter-spacing: 0.35px;
+          text-transform: uppercase;
+          font-weight: 1000;
+          color: #0f172a;
+        }
+        .metricCardBody {
+          padding: 12px;
+        }
+        .tone-blue .metricCardHead {
+          background: linear-gradient(90deg, rgba(0, 100, 145, 0.16), rgba(0, 100, 145, 0.03));
+        }
+        .tone-purple .metricCardHead {
+          background: linear-gradient(90deg, rgba(124, 58, 237, 0.14), rgba(124, 58, 237, 0.03));
+        }
+        .tone-slate .metricCardHead {
+          background: linear-gradient(90deg, rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.02));
+        }
+
+        /* Tiles inside cards */
+        .tilesGrid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .tilesGrid.oneCol {
+          grid-template-columns: 1fr;
+        }
+
+        .statTile {
+          border-radius: 16px;
+          padding: 12px 14px;
+          border: 2px solid rgba(15, 23, 42, 0.18); /* stronger outline */
+          background: rgba(255, 255, 255, 0.98);
+        }
+
+        /* Bigger value text for service tiles (readability) */
+        .metricSpan2 .tileValue {
+          font-size: 24px;
+        }
+
+        /* Subtle status tint */
+        .status-good {
+          background: rgba(220, 252, 231, 0.35);
+        }
+        .status-ok {
+          background: rgba(255, 237, 213, 0.35);
+        }
+        .status-bad {
+          background: rgba(254, 226, 226, 0.35);
+        }
+        .status-na {
+          background: rgba(248, 250, 252, 0.95);
+        }
+
+        .dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 23, 42, 0.15);
+          display: inline-block;
+          flex-shrink: 0;
+        }
+        .dot.good {
+          background: rgba(34, 197, 94, 0.85);
+          border-color: rgba(34, 197, 94, 0.45);
+        }
+        .dot.ok {
+          background: rgba(245, 158, 11, 0.85);
+          border-color: rgba(245, 158, 11, 0.45);
+        }
+        .dot.bad {
+          background: rgba(239, 68, 68, 0.85);
+          border-color: rgba(239, 68, 68, 0.45);
+        }
+        .dot.na {
+          background: rgba(148, 163, 184, 0.70);
+          border-color: rgba(148, 163, 184, 0.45);
+        }
+
+        /* Notes/Targets/Tasks */
+        .notes,
+        .targets,
+        .tasks {
+          margin-top: 12px;
+          border-radius: 16px;
+          background: rgba(255, 255, 255, 0.98);
+          padding: 12px;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          box-shadow: 0 10px 22px rgba(0, 0, 0, 0.04);
+        }
+        .sectionHead {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+        .sectionHead h3 {
+          margin: 0;
+          font-size: 13px;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+          color: #334155;
+          font-weight: 1000;
+        }
+        .sectionPill {
+          font-size: 12px;
+          font-weight: 950;
+          padding: 6px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          background: rgba(15, 23, 42, 0.05);
           color: #334155;
           white-space: nowrap;
         }
-        .pill.green{ background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.25); color:#166534; }
-        .pill.amber{ background: rgba(245,158,11,0.14); border-color: rgba(245,158,11,0.28); color:#92400e; }
-        .pill.red{ background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.26); color:#991b1b; }
-        .pill.neutral{ background: rgba(0,100,145,0.1); border-color: rgba(0,100,145,0.2); color:#004b75; }
 
-        .footer{ text-align:center; margin-top: 18px; color:#94a3b8; font-size: .8rem; }
-
-        @media (max-width: 980px){
-          .storesGrid{ grid-template-columns: 1fr; }
-          .cols{ grid-template-columns: 1fr; }
+        .notes {
+          border-left: 6px solid rgba(0, 100, 145, 0.7);
+        }
+        .notes p {
+          margin: 0;
+          white-space: pre-wrap;
+          font-weight: 850;
+          color: #334155;
+          line-height: 1.35;
         }
 
-        /* PRINT / PDF */
+        .tasks {
+          border-left: 6px solid rgba(124, 58, 237, 0.55);
+        }
+        .tasks ul {
+          margin: 0;
+          padding-left: 0;
+          list-style: none;
+          display: grid;
+          gap: 10px;
+        }
+        .tasks label {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-weight: 850;
+        }
+        .done {
+          text-decoration: line-through;
+          color: #64748b;
+        }
+
+        .targetsGrid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .lineItem {
+          display: flex;
+          justify-content: space-between;
+          gap: 10px;
+          border: 1px solid rgba(15, 23, 42, 0.06);
+          border-radius: 14px;
+          padding: 10px 12px;
+          background: rgba(248, 250, 252, 0.8);
+          font-size: 13px;
+        }
+        .lineItem strong {
+          white-space: nowrap;
+          font-weight: 1000;
+          font-variant-numeric: tabular-nums;
+        }
+
+        .placeholder {
+          margin: 0;
+          color: #64748b;
+          font-weight: 800;
+        }
+
+        @media (max-width: 980px) {
+          .storesGrid {
+            grid-template-columns: 1fr;
+          }
+          .areaTiles {
+            grid-template-columns: 1fr;
+          }
+          .metricCards {
+            grid-template-columns: 1fr;
+          }
+          .metricSpan2 {
+            grid-column: span 1;
+          }
+          .tilesGrid {
+            grid-template-columns: 1fr;
+          }
+        }
+
         @media print {
-          .banner, .topbar, .footer { display: none !important; }
-          .shell { width: 100% !important; margin-top: 0 !important; box-shadow: none !important; }
-          .storesGrid { grid-template-columns: repeat(2, minmax(0,1fr)) !important; }
-          .storeCard { break-inside: avoid; page-break-inside: avoid; }
+          .print-hidden,
+          .banner {
+            display: none !important;
+          }
+          .wrap {
+            background: #fff;
+            padding: 0;
+          }
+          .shell {
+            width: 100%;
+            margin: 0;
+            border: none;
+            box-shadow: none;
+            background: #fff;
+            padding: 0;
+          }
+          .storesGrid {
+            grid-template-columns: 1fr;
+          }
+          .storeCard,
+          .metricCard,
+          .notes,
+          .targets,
+          .tasks,
+          .areaOverview,
+          .message {
+            break-inside: avoid;
+            box-shadow: none;
+          }
         }
       `}</style>
     </main>
