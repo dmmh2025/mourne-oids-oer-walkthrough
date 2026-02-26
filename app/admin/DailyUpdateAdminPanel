@@ -74,24 +74,21 @@ function clampPct0to100(n: number | null): number | null {
 
 export default function DailyUpdateAdminPanel() {
   const todayUK = useMemo(() => toISODateUK(new Date()), []);
-  const [date] = useState<string>(todayUK);
+  const [date, setDate] = useState<string>(todayUK);
 
-  // stores list (dynamic, falls back)
   const [stores, setStores] = useState<string[]>(DEFAULT_STORES);
 
-  // loading flags
   const [loading, setLoading] = useState(true);
   const [savingMsg, setSavingMsg] = useState(false);
+  const [savingAll, setSavingAll] = useState(false);
   const [savingInputs, setSavingInputs] = useState<Record<string, boolean>>({});
   const [savingTask, setSavingTask] = useState<Record<string, boolean>>({});
 
-  // messages + inputs state
   const [areaMessage, setAreaMessage] = useState<string>("");
   const [storeInputs, setStoreInputs] = useState<Record<string, StoreInputRow>>(
     {}
   );
 
-  // tasks state
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [newTaskText, setNewTaskText] = useState<Record<string, string>>({});
 
@@ -110,13 +107,10 @@ export default function DailyUpdateAdminPanel() {
     notes: null,
   });
 
-  // Pull stores from recent tables to allow future area changes
   const loadStores = async () => {
     if (!supabase) return DEFAULT_STORES;
-
     const uniq = new Set<string>();
 
-    // 1) from service_shifts (most reliable "stores that exist")
     try {
       const { data } = await supabase
         .from("service_shifts")
@@ -130,7 +124,6 @@ export default function DailyUpdateAdminPanel() {
       });
     } catch {}
 
-    // 2) from cost_control_entries
     try {
       const { data } = await supabase
         .from("cost_control_entries")
@@ -144,7 +137,6 @@ export default function DailyUpdateAdminPanel() {
       });
     } catch {}
 
-    // 3) from daily_update_store_inputs
     try {
       const { data } = await supabase
         .from("daily_update_store_inputs")
@@ -159,19 +151,23 @@ export default function DailyUpdateAdminPanel() {
     } catch {}
 
     const arr = Array.from(uniq);
-    // If nothing found, fall back to known list
     return arr.length ? arr.sort((a, b) => a.localeCompare(b)) : DEFAULT_STORES;
   };
 
   const load = async () => {
-    if (!supabase) return;
+    if (!supabase) {
+      setLoading(false);
+      setStatusMsg("❌ Supabase client not available (env vars missing?)");
+      return;
+    }
+
     setLoading(true);
     setStatusMsg(null);
 
     const storeList = await loadStores();
     setStores(storeList);
 
-    // Load area message
+    // Area message
     const { data: msgData, error: msgErr } = await supabase
       .from("daily_update_area_message")
       .select("date,message")
@@ -184,7 +180,7 @@ export default function DailyUpdateAdminPanel() {
       setAreaMessage(String(msgData?.message || ""));
     }
 
-    // Load store inputs for today
+    // Store inputs
     const { data: inputsData, error: inputsErr } = await supabase
       .from("daily_update_store_inputs")
       .select(
@@ -218,7 +214,7 @@ export default function DailyUpdateAdminPanel() {
 
     setStoreInputs(nextInputs);
 
-    // Load tasks for today
+    // Tasks
     const { data: taskData, error: taskErr } = await supabase
       .from("daily_update_store_tasks")
       .select("id,date,store,task,is_complete,created_at,completed_at")
@@ -260,6 +256,13 @@ export default function DailyUpdateAdminPanel() {
     setSavingMsg(false);
   };
 
+  const setField = (store: string, patch: Partial<StoreInputRow>) => {
+    setStoreInputs((prev) => ({
+      ...prev,
+      [store]: { ...(prev[store] ?? ensureStoreRow(store)), ...patch },
+    }));
+  };
+
   const saveStoreInput = async (store: string) => {
     if (!supabase) return;
     setSavingInputs((p) => ({ ...p, [store]: true }));
@@ -290,11 +293,17 @@ export default function DailyUpdateAdminPanel() {
     setSavingInputs((p) => ({ ...p, [store]: false }));
   };
 
-  const setField = (store: string, patch: Partial<StoreInputRow>) => {
-    setStoreInputs((prev) => ({
-      ...prev,
-      [store]: { ...(prev[store] ?? ensureStoreRow(store)), ...patch },
-    }));
+  const saveAllStores = async () => {
+    setSavingAll(true);
+    try {
+      for (const s of stores) {
+        // eslint-disable-next-line no-await-in-loop
+        await saveStoreInput(s);
+      }
+      setStatusMsg("✅ All store inputs saved.");
+    } finally {
+      setSavingAll(false);
+    }
   };
 
   const addTask = async (store: string) => {
@@ -355,7 +364,6 @@ export default function DailyUpdateAdminPanel() {
 
   const storeTasks = (store: string) =>
     tasks.filter((t) => t.store === store).sort((a, b) => {
-      // incomplete first
       if (a.is_complete !== b.is_complete) return a.is_complete ? 1 : -1;
       return String(a.created_at || "").localeCompare(String(b.created_at || ""));
     });
@@ -364,15 +372,45 @@ export default function DailyUpdateAdminPanel() {
     <>
       <section className="card">
         <div className="headRow">
-          <h2>Daily Update Inputs</h2>
-          <span className="pill">Date (UK): {date}</span>
+          <div>
+            <h2 style={{ margin: 0 }}>Daily Update Inputs</h2>
+            <p className="muted" style={{ margin: "6px 0 0" }}>
+              Feeds the Daily Update page via{" "}
+              <code>daily_update_area_message</code>,{" "}
+              <code>daily_update_store_inputs</code>,{" "}
+              <code>daily_update_store_tasks</code>.
+            </p>
+          </div>
+
+          <div className="headActions">
+            <div className="dateBox">
+              <label style={{ marginBottom: 4 }}>Date (UK)</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            </div>
+
+            <button className="ghostBtn" onClick={load} disabled={loading}>
+              🔄 Reload
+            </button>
+
+            <button
+              className="upload-btn"
+              onClick={saveAllStores}
+              disabled={loading || savingAll}
+              title="Saves inputs for every store shown below"
+            >
+              {savingAll ? "Saving…" : "💾 Save all stores"}
+            </button>
+          </div>
         </div>
-        <p className="muted">
-          This panel feeds the Daily Update page. Stores auto-discover from your
-          existing data, so the area can change without code changes.
-        </p>
+
         {loading ? (
-          <p className="muted">Loading…</p>
+          <p className="muted" style={{ marginTop: 10 }}>
+            Loading…
+          </p>
         ) : (
           <>
             <div className="form-row">
@@ -384,11 +422,20 @@ export default function DailyUpdateAdminPanel() {
                 placeholder="e.g. Food focus today: cheese control + counts accuracy. Push DOT & keep add hours at zero."
               />
             </div>
-            <button className="upload-btn" onClick={saveAreaMessage} disabled={savingMsg}>
+
+            <button
+              className="upload-btn"
+              onClick={saveAreaMessage}
+              disabled={savingMsg}
+            >
               {savingMsg ? "Saving…" : "Save area message"}
             </button>
 
-            {statusMsg && <p className="muted" style={{ marginTop: 10 }}>{statusMsg}</p>}
+            {statusMsg && (
+              <p className="status" style={{ marginTop: 10 }}>
+                {statusMsg}
+              </p>
+            )}
           </>
         )}
       </section>
@@ -397,10 +444,11 @@ export default function DailyUpdateAdminPanel() {
         stores.map((store) => {
           const r = storeInputs[store] ?? ensureStoreRow(store);
           const stTasks = storeTasks(store);
+
           return (
             <section key={store} className="card">
               <div className="headRow">
-                <h2>{store}</h2>
+                <h2 style={{ margin: 0 }}>{store}</h2>
                 <button
                   className="smallBtn"
                   onClick={() => saveStoreInput(store)}
@@ -417,14 +465,16 @@ export default function DailyUpdateAdminPanel() {
                     type="number"
                     value={r.missed_calls_wtd ?? ""}
                     onChange={(e) =>
-                      setField(store, { missed_calls_wtd: numOrNull(e.target.value) })
+                      setField(store, {
+                        missed_calls_wtd: numOrNull(e.target.value),
+                      })
                     }
                     placeholder="0"
                   />
                 </div>
 
                 <div>
-                  <label>GPS tracked (WTD %) </label>
+                  <label>GPS tracked (WTD %, 0–100)</label>
                   <input
                     type="number"
                     value={r.gps_tracked_wtd ?? ""}
@@ -436,7 +486,7 @@ export default function DailyUpdateAdminPanel() {
                 </div>
 
                 <div>
-                  <label>AOF (WTD %) </label>
+                  <label>AOF (WTD %, 0–100)</label>
                   <input
                     type="number"
                     value={r.aof_wtd ?? ""}
@@ -454,7 +504,9 @@ export default function DailyUpdateAdminPanel() {
                     step="0.1"
                     value={r.target_load_time_mins ?? ""}
                     onChange={(e) =>
-                      setField(store, { target_load_time_mins: numOrNull(e.target.value) })
+                      setField(store, {
+                        target_load_time_mins: numOrNull(e.target.value),
+                      })
                     }
                     placeholder="10"
                   />
@@ -467,7 +519,9 @@ export default function DailyUpdateAdminPanel() {
                     step="0.1"
                     value={r.target_rack_time_mins ?? ""}
                     onChange={(e) =>
-                      setField(store, { target_rack_time_mins: numOrNull(e.target.value) })
+                      setField(store, {
+                        target_rack_time_mins: numOrNull(e.target.value),
+                      })
                     }
                     placeholder="10"
                   />
@@ -514,7 +568,7 @@ export default function DailyUpdateAdminPanel() {
 
               <div className="taskBlock">
                 <div className="taskHead">
-                  <h3>Outstanding tasks</h3>
+                  <h3 style={{ margin: 0 }}>Outstanding tasks</h3>
                 </div>
 
                 <div className="taskAdd">
@@ -529,7 +583,9 @@ export default function DailyUpdateAdminPanel() {
                   <button
                     className="smallBtn"
                     onClick={() => addTask(store)}
-                    disabled={!!savingTask[store] || !(newTaskText[store] || "").trim()}
+                    disabled={
+                      !!savingTask[store] || !(newTaskText[store] || "").trim()
+                    }
                   >
                     {savingTask[store] ? "Adding…" : "Add"}
                   </button>
@@ -537,7 +593,7 @@ export default function DailyUpdateAdminPanel() {
 
                 {stTasks.length === 0 ? (
                   <p className="muted" style={{ marginTop: 8 }}>
-                    No tasks logged for today.
+                    No tasks logged for this date.
                   </p>
                 ) : (
                   <ul className="taskList">
@@ -561,60 +617,152 @@ export default function DailyUpdateAdminPanel() {
         })}
 
       <style jsx>{`
+        .card {
+          background: #fff;
+          width: min(980px, 94vw);
+          margin-top: 18px;
+          border-radius: 16px;
+          box-shadow: 0 10px 18px rgba(2, 6, 23, 0.04);
+          padding: 16px 18px 20px;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+        }
+
         .headRow {
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           justify-content: space-between;
+          gap: 12px;
+        }
+
+        .headActions {
+          display: flex;
           gap: 10px;
+          align-items: flex-end;
+          flex-wrap: wrap;
+          justify-content: flex-end;
         }
-        .pill {
-          font-size: 11px;
+
+        .dateBox {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          min-width: 170px;
+        }
+
+        label {
+          display: block;
+          font-weight: 800;
+          margin-bottom: 6px;
+          color: #0f172a;
+        }
+
+        .muted {
+          color: #64748b;
+          font-size: 0.85rem;
           font-weight: 700;
-          padding: 4px 10px;
-          border-radius: 999px;
-          border: 1px solid rgba(15, 23, 42, 0.12);
-          background: rgba(241, 245, 249, 0.9);
-          color: #334155;
-          white-space: nowrap;
         }
+
+        .status {
+          color: #334155;
+          font-size: 0.85rem;
+          font-weight: 800;
+        }
+
+        .form-row {
+          margin-top: 12px;
+        }
+
+        textarea {
+          width: 100%;
+          border-radius: 12px;
+          border: 1px solid #d4dbe3;
+          padding: 10px;
+          font-size: 0.95rem;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="date"] {
+          width: 100%;
+          border-radius: 12px;
+          border: 1px solid #d4dbe3;
+          padding: 8px 10px;
+          font-size: 0.95rem;
+          background: #fff;
+        }
+
         .grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
           gap: 12px;
-          margin-top: 10px;
+          margin-top: 12px;
         }
+
+        .upload-btn {
+          background: #006491;
+          color: #fff;
+          border: none;
+          border-radius: 12px;
+          padding: 10px 14px;
+          font-weight: 900;
+          cursor: pointer;
+          box-shadow: 0 10px 18px rgba(2, 6, 23, 0.08);
+        }
+
+        .upload-btn:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
+        }
+
+        .ghostBtn {
+          background: #fff;
+          border: 1px solid rgba(0, 100, 145, 0.35);
+          color: #006491;
+          border-radius: 12px;
+          padding: 10px 14px;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .ghostBtn:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
+        }
+
         .smallBtn {
           background: transparent;
           border: 1px solid #006491;
           color: #006491;
           border-radius: 999px;
-          padding: 6px 12px;
+          padding: 8px 12px;
           font-size: 12px;
-          font-weight: 800;
+          font-weight: 900;
           cursor: pointer;
+          white-space: nowrap;
         }
+
         .smallBtn:disabled {
           opacity: 0.6;
           cursor: not-allowed;
         }
+
         .taskBlock {
-          margin-top: 14px;
+          margin-top: 16px;
           padding-top: 12px;
           border-top: 1px solid #e2e8f0;
         }
-        .taskHead h3 {
-          margin: 0;
-          font-size: 14px;
-        }
+
         .taskAdd {
-          margin-top: 8px;
+          margin-top: 10px;
           display: flex;
           gap: 10px;
           align-items: center;
         }
+
         .taskAdd input {
           flex: 1;
         }
+
         .taskList {
           list-style: none;
           padding: 0;
@@ -622,24 +770,38 @@ export default function DailyUpdateAdminPanel() {
           display: grid;
           gap: 8px;
         }
+
         .taskRow {
           display: flex;
           gap: 10px;
           align-items: flex-start;
-          font-weight: 700;
+          font-weight: 800;
           color: #0f172a;
         }
+
         .taskList li {
           border: 1px solid #e2e8f0;
-          border-radius: 10px;
+          border-radius: 12px;
           padding: 10px 12px;
           background: #f8fafc;
         }
+
         .taskList li.done {
           opacity: 0.75;
         }
+
         .taskList li.done span {
           text-decoration: line-through;
+        }
+
+        @media (max-width: 720px) {
+          .headRow {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .headActions {
+            justify-content: flex-start;
+          }
         }
       `}</style>
     </>
