@@ -205,34 +205,16 @@ const statusLowerBetter = (value: number | null, targetMax: number, tol = 0.002)
   return "bad";
 };
 
-const statusAbsLowerBetter = (value: number | null, targetAbsMax: number, tol = 0.002): MetricStatus => {
+const statusAbsLowerBetter = (
+  value: number | null,
+  targetAbsMax: number,
+  tol = 0.002
+): MetricStatus => {
   if (value == null || !Number.isFinite(value)) return "na";
   const absVal = Math.abs(value);
   if (absVal <= targetAbsMax - tol) return "good";
   if (within(absVal, targetAbsMax, tol)) return "ok";
   return "bad";
-};
-
-const arrowHigherBetter = (value: number | null, targetMin: number, tol = 0.002) => {
-  if (value == null) return "—";
-  if (value >= targetMin + tol) return "⬆️";
-  if (within(value, targetMin, tol)) return "➡️";
-  return "⬇️";
-};
-
-const arrowLowerBetter = (value: number | null, targetMax: number, tol = 0.002) => {
-  if (value == null) return "—";
-  if (value <= targetMax - tol) return "⬇️";
-  if (within(value, targetMax, tol)) return "➡️";
-  return "⬆️";
-};
-
-const arrowAbsLowerBetter = (value: number | null, targetAbsMax: number, tol = 0.002) => {
-  if (value == null) return "—";
-  const absVal = Math.abs(value);
-  if (absVal <= targetAbsMax - tol) return "⬇️";
-  if (within(absVal, targetAbsMax, tol)) return "➡️";
-  return "⬆️";
 };
 
 export default function DailyUpdateClient() {
@@ -412,7 +394,7 @@ export default function DailyUpdateClient() {
 
       const targets = getTargetsForStore(store, inputs);
 
-      // ✅ daily input values converted to 0–1 for comparisons + formatting
+      // daily input values converted to 0–1 for comparisons + formatting
       const missedCalls01 = to01From100(inputs?.missed_calls_wtd ?? null);
       const gps01 = to01From100(inputs?.gps_tracked_wtd ?? null);
       const aof01 = to01From100(inputs?.aof_wtd ?? null);
@@ -467,13 +449,7 @@ export default function DailyUpdateClient() {
     }
   };
 
-  const MetricLine = (props: {
-    label: string;
-    valueText: string;
-    targetText?: string;
-    status: MetricStatus;
-    arrow?: string;
-  }) => {
+  const MetricLine = (props: { label: string; valueText: string; status: MetricStatus }) => {
     const cls =
       props.status === "good"
         ? "metric good"
@@ -487,13 +463,21 @@ export default function DailyUpdateClient() {
       <div className={cls}>
         <span className="mLabel">{props.label}</span>
         <span className="mRight">
-          {props.arrow ? <span className="mArrow">{props.arrow}</span> : null}
           <strong className="mValue">{props.valueText}</strong>
-          {props.targetText ? <span className="mTarget"> · tgt {props.targetText}</span> : null}
         </span>
       </div>
     );
   };
+
+  const AreaBox = (props: { label: string; value: string; sub?: string }) => (
+    <div className="areaBox">
+      <div className="areaBoxTop">
+        <span className="areaBoxLabel">{props.label}</span>
+      </div>
+      <div className="areaBoxValue">{props.value}</div>
+      {props.sub ? <div className="areaBoxSub">{props.sub}</div> : null}
+    </div>
+  );
 
   return (
     <main className="wrap">
@@ -523,23 +507,12 @@ export default function DailyUpdateClient() {
           </p>
         </header>
 
-        <section className="areaStrip">
-          <div className="areaKpi">
-            <span className="kLabel">Area Labour</span>
-            <span className="kValue">{fmtPct2(areaRollup.labourPct01)}</span>
-          </div>
-          <div className="areaKpi">
-            <span className="kLabel">Area Food Var</span>
-            <span className="kValue">{fmtPct2(areaRollup.foodVarPct01)}</span>
-          </div>
-          <div className="areaKpi">
-            <span className="kLabel">Area Additional Hours</span>
-            <span className="kValue">{fmtNum2(areaRollup.additionalHours)}</span>
-          </div>
-          <div className="areaKpi">
-            <span className="kLabel">OSA WTD count</span>
-            <span className="kValue">{String(osaCounts.total)}</span>
-          </div>
+        {/* Area overview: 4 highlighted boxes in one row */}
+        <section className="areaOverview">
+          <AreaBox label="Area Labour" value={fmtPct2(areaRollup.labourPct01)} />
+          <AreaBox label="Area Food Var" value={fmtPct2(areaRollup.foodVarPct01)} />
+          <AreaBox label="Area Add. Hours" value={fmtNum2(areaRollup.additionalHours)} />
+          <AreaBox label="OSA WTD" value={String(osaCounts.total)} sub="Total checks WTD" />
 
           <div className="storeOsaRow">
             {stores.map((store) => (
@@ -570,10 +543,21 @@ export default function DailyUpdateClient() {
               const extremesStatus = statusLowerBetter(card.service.extremesPct01, card.targets.extremesMax01);
               const foodVarStatus = statusAbsLowerBetter(card.cost.foodVarPct01, card.targets.foodVarAbsMax01);
 
-              // ✅ Daily input KPI statuses + arrows (YOUR targets)
+              // Daily input KPI statuses (targets: Missed <6%, GPS >95%, AOF >62%)
               const missedStatus = statusLowerBetter(card.daily.missedCalls01, INPUT_TARGETS.missedCallsMax01);
               const gpsStatus = statusHigherBetter(card.daily.gps01, INPUT_TARGETS.gpsMin01);
               const aofStatus = statusHigherBetter(card.daily.aof01, INPUT_TARGETS.aofMin01);
+
+              const addHoursStatus: MetricStatus =
+                card.additionalHours == null
+                  ? "na"
+                  : !Number.isFinite(card.additionalHours)
+                  ? "na"
+                  : card.additionalHours <= 0
+                  ? "good"
+                  : card.additionalHours <= 1
+                  ? "ok"
+                  : "bad";
 
               return (
                 <article key={card.store} className="storeCard">
@@ -585,78 +569,49 @@ export default function DailyUpdateClient() {
                   <div className="metricGrid">
                     <div className="metricBlock">
                       <h3>Cost Controls</h3>
-                      {MetricLine({
-                        label: "Labour %",
-                        valueText: fmtPct2(card.cost.labourPct01),
-                        targetText: fmtPct2(card.targets.labourMax01),
-                        status: labourStatus,
-                        arrow: arrowLowerBetter(card.cost.labourPct01, card.targets.labourMax01),
-                      })}
-                      {MetricLine({
-                        label: "Food var % of sales",
-                        valueText: fmtPct2(card.cost.foodVarPct01),
-                        targetText: `±${fmtPct2(card.targets.foodVarAbsMax01)}`,
-                        status: foodVarStatus,
-                        arrow: arrowAbsLowerBetter(card.cost.foodVarPct01, card.targets.foodVarAbsMax01),
-                      })}
+                      <MetricLine label="Labour %" valueText={fmtPct2(card.cost.labourPct01)} status={labourStatus} />
+                      <MetricLine
+                        label="Food var % of sales"
+                        valueText={fmtPct2(card.cost.foodVarPct01)}
+                        status={foodVarStatus}
+                      />
                     </div>
 
                     <div className="metricBlock">
                       <h3>Service</h3>
-                      {MetricLine({
-                        label: "DOT %",
-                        valueText: fmtPct2(card.service.dotPct01),
-                        targetText: fmtPct2(card.targets.dotMin01),
-                        status: dotStatus,
-                        arrow: arrowHigherBetter(card.service.dotPct01, card.targets.dotMin01),
-                      })}
-                      {MetricLine({
-                        label: "R&L mins",
-                        valueText: fmtMins2(card.service.rnlMinutes),
-                        targetText: fmtMins2(card.targets.rnlMaxMins),
-                        status: rnlStatus,
-                        arrow: arrowLowerBetter(card.service.rnlMinutes, card.targets.rnlMaxMins, 0.1),
-                      })}
-                      {MetricLine({
-                        label: "Extremes >40",
-                        valueText: fmtPct2(card.service.extremesPct01),
-                        targetText: fmtPct2(card.targets.extremesMax01),
-                        status: extremesStatus,
-                        arrow: arrowLowerBetter(card.service.extremesPct01, card.targets.extremesMax01),
-                      })}
+                      <MetricLine label="DOT %" valueText={fmtPct2(card.service.dotPct01)} status={dotStatus} />
+                      <MetricLine label="R&L mins" valueText={fmtMins2(card.service.rnlMinutes)} status={rnlStatus} />
+                      <MetricLine
+                        label="Extremes >40"
+                        valueText={fmtPct2(card.service.extremesPct01)}
+                        status={extremesStatus}
+                      />
+                      <MetricLine label="Additional hours" valueText={fmtNum2(card.additionalHours)} status={addHoursStatus} />
                     </div>
 
                     <div className="metricBlock">
                       <h3>Daily Inputs</h3>
-                      {MetricLine({
-                        label: "Missed Calls (WTD %)",
-                        valueText: fmtPct2(card.daily.missedCalls01),
-                        targetText: "< 6.00%",
-                        status: missedStatus,
-                        arrow: arrowLowerBetter(card.daily.missedCalls01, INPUT_TARGETS.missedCallsMax01),
-                      })}
-                      {MetricLine({
-                        label: "GPS Tracked (WTD %)",
-                        valueText: fmtPct2(card.daily.gps01),
-                        targetText: "> 95.00%",
-                        status: gpsStatus,
-                        arrow: arrowHigherBetter(card.daily.gps01, INPUT_TARGETS.gpsMin01),
-                      })}
-                      {MetricLine({
-                        label: "AOF (WTD %)",
-                        valueText: fmtPct2(card.daily.aof01),
-                        targetText: "> 62.00%",
-                        status: aofStatus,
-                        arrow: arrowHigherBetter(card.daily.aof01, INPUT_TARGETS.aofMin01),
-                      })}
+                      <MetricLine
+                        label="Missed Calls (WTD %)"
+                        valueText={fmtPct2(card.daily.missedCalls01)}
+                        status={missedStatus}
+                      />
+                      <MetricLine
+                        label="GPS Tracked (WTD %)"
+                        valueText={fmtPct2(card.daily.gps01)}
+                        status={gpsStatus}
+                      />
+                      <MetricLine label="AOF (WTD %)" valueText={fmtPct2(card.daily.aof01)} status={aofStatus} />
                     </div>
                   </div>
 
+                  {/* Notes: make it stand out */}
                   <section className="notes">
                     <h3>Notes</h3>
                     <p>{card.inputs?.notes?.trim() || "—"}</p>
                   </section>
 
+                  {/* Targets: keep the data but remove arrows/extra notes; keep it compact */}
                   <section className="targets">
                     <h3>Service Losing Targets</h3>
                     <div className="metricGrid compact">
@@ -680,19 +635,10 @@ export default function DailyUpdateClient() {
                             : `${Number(card.inputs.target_extremes_over40_pct).toFixed(2)}%`}
                         </strong>
                       </div>
-                      <div className="lineItem">
-                        <span>Additional hours (actual)</span>
-                        <strong>{fmtNum2(card.additionalHours)}</strong>
-                      </div>
                     </div>
-
-                    <p className="mutedSmall">
-                      Note: Load/Rack/ADT actuals are not available from current tables on this page.
-                      If you want those compared with arrows too, we need to add those fields to{" "}
-                      <code>service_shifts</code> (or a separate table) and query them here.
-                    </p>
                   </section>
 
+                  {/* Tasks: make it stand out */}
                   <section className="tasks">
                     <h3>Tasks</h3>
                     {card.tasks.length === 0 ? (
@@ -778,11 +724,12 @@ export default function DailyUpdateClient() {
         }
         .subtitle {
           color: #64748b;
-          font-weight: 700;
+          font-weight: 800;
           margin: 4px 0 0;
         }
 
-        .areaStrip {
+        /* === Area overview: 4 boxes row === */
+        .areaOverview {
           display: grid;
           gap: 10px;
           background: rgba(255, 255, 255, 0.92);
@@ -790,28 +737,47 @@ export default function DailyUpdateClient() {
           border-radius: 16px;
           padding: 12px;
         }
-        .areaKpi {
+        .areaBox {
+          border-radius: 16px;
+          background: rgba(0, 100, 145, 0.08);
+          border: 1px solid rgba(0, 100, 145, 0.16);
+          padding: 10px 12px;
+        }
+        .areaBoxTop {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          border-radius: 12px;
-          padding: 8px 10px;
-          background: rgba(255, 255, 255, 0.9);
+          gap: 8px;
         }
-        .kLabel {
+        .areaBoxLabel {
           font-size: 12px;
-          font-weight: 900;
-          text-transform: uppercase;
-        }
-        .kValue {
           font-weight: 950;
-          color: #006491;
+          text-transform: uppercase;
+          color: #0f172a;
         }
+        .areaBoxValue {
+          margin-top: 6px;
+          font-weight: 950;
+          font-size: 20px;
+          color: #006491;
+          letter-spacing: 0.2px;
+        }
+        .areaBoxSub {
+          margin-top: 4px;
+          font-size: 12px;
+          font-weight: 800;
+          color: #475569;
+        }
+        .areaOverview {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
         .storeOsaRow {
+          grid-column: 1 / -1;
           display: flex;
           flex-wrap: wrap;
           gap: 8px;
+          margin-top: 2px;
         }
         .chip {
           border: 1px solid rgba(0, 100, 145, 0.16);
@@ -822,21 +788,24 @@ export default function DailyUpdateClient() {
           font-weight: 900;
         }
 
+        /* === Message: pop === */
         .message {
           margin-top: 12px;
-          border: 1px solid rgba(0, 100, 145, 0.14);
+          border: 2px solid rgba(0, 100, 145, 0.22);
           border-radius: 16px;
-          background: rgba(255, 255, 255, 0.92);
+          background: rgba(0, 100, 145, 0.06);
           padding: 12px;
+          box-shadow: 0 10px 24px rgba(0, 0, 0, 0.05);
         }
         .message h2 {
           margin: 0 0 6px;
           font-size: 16px;
+          letter-spacing: 0.2px;
         }
         .message p {
           margin: 0;
           white-space: pre-wrap;
-          font-weight: 800;
+          font-weight: 950;
           color: #334155;
         }
 
@@ -920,11 +889,11 @@ export default function DailyUpdateClient() {
           align-items: center;
           gap: 10px;
           border-radius: 12px;
-          padding: 7px 10px;
+          padding: 9px 12px;
           margin-top: 8px;
           font-size: 13px;
-          border: 1px solid rgba(15, 23, 42, 0.06);
-          background: rgba(248, 250, 252, 0.85);
+          border: 1px solid rgba(15, 23, 42, 0.05);
+          background: rgba(248, 250, 252, 0.75);
         }
         .metric.good {
           background: rgba(220, 252, 231, 0.75);
@@ -952,17 +921,9 @@ export default function DailyUpdateClient() {
           gap: 6px;
           white-space: nowrap;
         }
-        .mArrow {
-          font-size: 14px;
-        }
         .mValue {
           font-weight: 950;
           color: #0f172a;
-        }
-        .mTarget {
-          color: #475569;
-          font-weight: 900;
-          font-size: 12px;
         }
 
         .lineItem {
@@ -983,36 +944,38 @@ export default function DailyUpdateClient() {
         .placeholder {
           margin: 0;
           color: #64748b;
-          font-weight: 700;
+          font-weight: 800;
         }
 
         .notes,
         .targets,
         .tasks {
           margin-top: 10px;
-          border: 1px solid rgba(15, 23, 42, 0.08);
+          border: 2px solid rgba(15, 23, 42, 0.1);
           border-radius: 12px;
           background: #fff;
           padding: 10px;
         }
+
+        /* Notes stand out */
+        .notes {
+          box-shadow: 0 10px 24px rgba(0, 0, 0, 0.05);
+          border-left: 6px solid rgba(0, 100, 145, 0.7);
+          background: rgba(255, 255, 255, 0.98);
+        }
         .notes p {
           margin: 0;
           white-space: pre-wrap;
-          font-weight: 700;
+          font-weight: 850;
           color: #334155;
         }
 
-        .mutedSmall {
-          margin: 10px 0 0;
-          color: #64748b;
-          font-weight: 800;
-          font-size: 12px;
+        /* Tasks stand out */
+        .tasks {
+          box-shadow: 0 10px 24px rgba(0, 0, 0, 0.05);
+          border-left: 6px solid rgba(124, 58, 237, 0.55);
+          background: rgba(255, 255, 255, 0.98);
         }
-        .mutedSmall code {
-          font-weight: 950;
-          color: #0f172a;
-        }
-
         .tasks ul {
           margin: 0;
           padding-left: 0;
@@ -1024,7 +987,7 @@ export default function DailyUpdateClient() {
           display: flex;
           align-items: center;
           gap: 8px;
-          font-weight: 700;
+          font-weight: 800;
         }
         .done {
           text-decoration: line-through;
@@ -1035,6 +998,9 @@ export default function DailyUpdateClient() {
           .storesGrid,
           .metricGrid,
           .metricGrid.compact {
+            grid-template-columns: 1fr;
+          }
+          .areaOverview {
             grid-template-columns: 1fr;
           }
         }
@@ -1064,7 +1030,7 @@ export default function DailyUpdateClient() {
           .notes,
           .targets,
           .tasks,
-          .areaStrip,
+          .areaOverview,
           .message {
             break-inside: avoid;
             box-shadow: none;
