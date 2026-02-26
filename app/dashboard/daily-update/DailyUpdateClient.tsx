@@ -398,51 +398,66 @@ export default function DailyUpdateClient() {
     }
   };
 
-  const MetricLine = (props: { label: string; valueText: string; status: MetricStatus }) => {
+  const StatusDot = (props: { status: MetricStatus }) => {
     const cls =
       props.status === "good"
-        ? "metric good"
+        ? "dot good"
         : props.status === "ok"
-        ? "metric ok"
+        ? "dot ok"
         : props.status === "bad"
-        ? "metric bad"
-        : "metric na";
-
-    return (
-      <div className={cls}>
-        <span className="mLabel">{props.label}</span>
-        <span className="mRight">
-          <strong className="mValue">{props.valueText}</strong>
-        </span>
-      </div>
-    );
+        ? "dot bad"
+        : "dot na";
+    return <span className={cls} aria-hidden="true" />;
   };
+
+  const StatRow = (props: {
+    label: string;
+    valueText: string;
+    status: MetricStatus;
+    badgeText?: string; // e.g. "WTD"
+  }) => (
+    <div className={`statRow status-${props.status}`}>
+      <div className="statLeft">
+        <span className="statLabel">{props.label}</span>
+        {props.badgeText ? <span className="tinyBadge">{props.badgeText}</span> : null}
+      </div>
+      <div className="statRight">
+        <span className="statValue">{props.valueText}</span>
+        <StatusDot status={props.status} />
+      </div>
+    </div>
+  );
 
   const MetricCard = (props: {
     title: string;
-    badge?: string;
+    icon?: string;
     children: React.ReactNode;
     tone?: "blue" | "purple" | "slate";
+    emphasize?: boolean; // make Service visually heavier
   }) => {
     const toneClass = props.tone ? `tone-${props.tone}` : "tone-slate";
+    const emph = props.emphasize ? "emph" : "";
     return (
-      <div className={`metricCard ${toneClass}`}>
+      <div className={`metricCard ${toneClass} ${emph}`}>
         <div className="metricCardHead">
-          <h3>{props.title}</h3>
-          {props.badge ? <span className="metricBadge">{props.badge}</span> : null}
+          <div className="metricHeadLeft">
+            {props.icon ? <span className="metricIcon" aria-hidden="true">{props.icon}</span> : null}
+            <h3>{props.title}</h3>
+          </div>
         </div>
         <div className="metricCardBody">{props.children}</div>
       </div>
     );
   };
 
-  const AreaBox = (props: { label: string; value: string; sub?: string }) => (
-    <div className="areaBox">
-      <div className="areaBoxTop">
-        <span className="areaBoxLabel">{props.label}</span>
+  const AreaTile = (props: { icon: string; label: string; value: string; sub?: string }) => (
+    <div className="areaTile">
+      <div className="areaTileTop">
+        <span className="areaTileIcon" aria-hidden="true">{props.icon}</span>
+        <span className="areaTileLabel">{props.label}</span>
       </div>
-      <div className="areaBoxValue">{props.value}</div>
-      {props.sub ? <div className="areaBoxSub">{props.sub}</div> : null}
+      <div className="areaTileValue">{props.value}</div>
+      {props.sub ? <div className="areaTileSub">{props.sub}</div> : null}
     </div>
   );
 
@@ -474,26 +489,34 @@ export default function DailyUpdateClient() {
           </p>
         </header>
 
-        {/* Area overview: 4 highlighted boxes in one row */}
+        {/* Area overview: KPI tiles + separate OSA breakdown row */}
         <section className="areaOverview">
-          <AreaBox label="Area Labour" value={fmtPct2(areaRollup.labourPct01)} />
-          <AreaBox label="Area Food Var" value={fmtPct2(areaRollup.foodVarPct01)} />
-          <AreaBox label="Area Add. Hours" value={fmtNum2(areaRollup.additionalHours)} />
-          <AreaBox label="OSA WTD" value={String(osaCounts.total)} sub="Total checks WTD" />
+          <div className="areaTiles">
+            <AreaTile icon="🧑‍🤝‍🧑" label="Area Labour" value={fmtPct2(areaRollup.labourPct01)} />
+            <AreaTile icon="🍕" label="Area Food" value={fmtPct2(areaRollup.foodVarPct01)} sub="Var % of sales" />
+            <AreaTile icon="⏱️" label="Area Add. Hours" value={fmtNum2(areaRollup.additionalHours)} />
+            <AreaTile icon="✅" label="OSA WTD" value={String(osaCounts.total)} sub="Total checks WTD" />
+          </div>
 
-          <div className="storeOsaRow">
-            {stores.map((store) => (
-              <span key={store} className="chip">
-                {store}: {String(osaCounts.byStore.get(store) || 0)}
-              </span>
-            ))}
-            {!stores.length && <span className="chip">No stores loaded</span>}
+          <div className="osaBreakdown">
+            <div className="osaTitle">OSA Breakdown</div>
+            <div className="osaChips">
+              {stores.map((store) => (
+                <span key={store} className="chip">
+                  {store}: {String(osaCounts.byStore.get(store) || 0)}
+                </span>
+              ))}
+              {!stores.length && <span className="chip">No stores loaded</span>}
+            </div>
           </div>
         </section>
 
         {areaMessage && (
           <section className="message">
-            <h2>Area Message</h2>
+            <div className="messageHead">
+              <h2>Area Message</h2>
+              <span className="messagePill">Action focus</span>
+            </div>
             <p>{areaMessage}</p>
           </section>
         )}
@@ -533,51 +556,57 @@ export default function DailyUpdateClient() {
                     <span className="osaChip">OSA WTD: {card.osaWtdCount}</span>
                   </div>
 
-                  {/* Visually upgraded KPI cards */}
+                  {/* KPI cards: Service emphasized + stat rows with right-aligned values + dots + WTD badges */}
                   <div className="metricCards">
-                    <MetricCard title="Cost Controls" tone="blue">
-                      <MetricLine label="Labour" valueText={fmtPct2(card.cost.labourPct01)} status={labourStatus} />
-                      <MetricLine label="Food" valueText={fmtPct2(card.cost.foodVarPct01)} status={foodVarStatus} />
+                    <MetricCard title="Service" icon="🚗" tone="slate" emphasize>
+                      <StatRow label="DOT" valueText={fmtPct2(card.service.dotPct01)} status={dotStatus} />
+                      <StatRow label="R&L" valueText={fmtMins2(card.service.rnlMinutes)} status={rnlStatus} />
+                      <StatRow label="Extremes >40" valueText={fmtPct2(card.service.extremesPct01)} status={extremesStatus} />
+                      <StatRow label="Add. hours" valueText={fmtNum2(card.additionalHours)} status={addHoursStatus} />
                     </MetricCard>
 
-                    <MetricCard title="Service" tone="slate">
-                      <MetricLine label="DOT" valueText={fmtPct2(card.service.dotPct01)} status={dotStatus} />
-                      <MetricLine label="R&L" valueText={fmtMins2(card.service.rnlMinutes)} status={rnlStatus} />
-                      <MetricLine label="Extremes >40" valueText={fmtPct2(card.service.extremesPct01)} status={extremesStatus} />
-                      <MetricLine label="Additional hours" valueText={fmtNum2(card.additionalHours)} status={addHoursStatus} />
+                    <MetricCard title="Cost Controls" icon="💷" tone="blue">
+                      <StatRow label="Labour" valueText={fmtPct2(card.cost.labourPct01)} status={labourStatus} />
+                      <StatRow label="Food" valueText={fmtPct2(card.cost.foodVarPct01)} status={foodVarStatus} />
                     </MetricCard>
 
-                    <MetricCard title="Others" tone="purple">
-                      <MetricLine label="Missed Calls (WTD %)" valueText={fmtPct2(card.daily.missedCalls01)} status={missedStatus} />
-                      <MetricLine label="GPS Tracked (WTD %)" valueText={fmtPct2(card.daily.gps01)} status={gpsStatus} />
-                      <MetricLine label="AOF (WTD %)" valueText={fmtPct2(card.daily.aof01)} status={aofStatus} />
+                    <MetricCard title="Others" icon="🧾" tone="purple">
+                      <StatRow label="Missed Calls" badgeText="WTD" valueText={fmtPct2(card.daily.missedCalls01)} status={missedStatus} />
+                      <StatRow label="GPS Tracked" badgeText="WTD" valueText={fmtPct2(card.daily.gps01)} status={gpsStatus} />
+                      <StatRow label="AOF" badgeText="WTD" valueText={fmtPct2(card.daily.aof01)} status={aofStatus} />
                     </MetricCard>
                   </div>
 
                   {/* Notes: make it stand out */}
                   <section className="notes">
-                    <h3>Notes</h3>
+                    <div className="sectionHead">
+                      <h3>Notes</h3>
+                      <span className="sectionPill">From store</span>
+                    </div>
                     <p>{card.inputs?.notes?.trim() || "—"}</p>
                   </section>
 
-                  {/* Targets: keep data, compact */}
+                  {/* Targets: compact */}
                   <section className="targets">
-                    <h3>Service Losing Targets</h3>
-                    <div className="metricGrid compact">
+                    <div className="sectionHead">
+                      <h3>Service Losing Targets</h3>
+                      <span className="sectionPill">Input</span>
+                    </div>
+                    <div className="targetsGrid">
                       <div className="lineItem">
-                        <span>Load target (mins)</span>
+                        <span>Load (mins)</span>
                         <strong>{fmtNum2(card.inputs?.target_load_time_mins ?? null)}</strong>
                       </div>
                       <div className="lineItem">
-                        <span>Rack target (mins)</span>
+                        <span>Rack (mins)</span>
                         <strong>{fmtNum2(card.inputs?.target_rack_time_mins ?? null)}</strong>
                       </div>
                       <div className="lineItem">
-                        <span>ADT target (mins)</span>
+                        <span>ADT (mins)</span>
                         <strong>{fmtNum2(card.inputs?.target_adt_mins ?? null)}</strong>
                       </div>
                       <div className="lineItem">
-                        <span>Extremes target %</span>
+                        <span>Extremes %</span>
                         <strong>
                           {card.inputs?.target_extremes_over40_pct == null
                             ? "—"
@@ -589,7 +618,10 @@ export default function DailyUpdateClient() {
 
                   {/* Tasks: make it stand out */}
                   <section className="tasks">
-                    <h3>Tasks</h3>
+                    <div className="sectionHead">
+                      <h3>Tasks</h3>
+                      <span className="sectionPill">To action</span>
+                    </div>
                     {card.tasks.length === 0 ? (
                       <p className="placeholder">No tasks for this store on {targetDate}.</p>
                     ) : (
@@ -641,6 +673,7 @@ export default function DailyUpdateClient() {
           box-shadow: 0 16px 40px rgba(0, 0, 0, 0.05);
           padding: 18px;
         }
+
         .topbar {
           display: flex;
           gap: 10px;
@@ -663,6 +696,7 @@ export default function DailyUpdateClient() {
           background: #006491;
           color: #fff;
         }
+
         .header {
           text-align: center;
           margin-bottom: 12px;
@@ -677,76 +711,121 @@ export default function DailyUpdateClient() {
           margin: 4px 0 0;
         }
 
-        /* === Area overview: 4 boxes row === */
+        /* === Area Overview === */
         .areaOverview {
-          display: grid;
-          gap: 10px;
           background: rgba(255, 255, 255, 0.92);
           border: 1px solid rgba(0, 100, 145, 0.14);
           border-radius: 16px;
           padding: 12px;
+          display: grid;
+          gap: 10px;
+        }
+        .areaTiles {
+          display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
         }
-        .areaBox {
-          border-radius: 16px;
-          background: rgba(0, 100, 145, 0.08);
+        .areaTile {
+          border-radius: 18px;
+          background: rgba(0, 100, 145, 0.07);
           border: 1px solid rgba(0, 100, 145, 0.16);
-          padding: 10px 12px;
+          padding: 12px 12px 10px;
         }
-        .areaBoxLabel {
+        .areaTileTop {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .areaTileIcon {
+          font-size: 16px;
+          line-height: 1;
+        }
+        .areaTileLabel {
           font-size: 12px;
           font-weight: 950;
           text-transform: uppercase;
-          color: #0f172a;
+          letter-spacing: 0.3px;
         }
-        .areaBoxValue {
-          margin-top: 8px;
-          font-weight: 950;
-          font-size: 22px;
+        .areaTileValue {
+          margin-top: 10px;
+          font-weight: 980;
+          font-size: 28px;
           color: #006491;
           letter-spacing: 0.2px;
+          font-variant-numeric: tabular-nums;
         }
-        .areaBoxSub {
+        .areaTileSub {
           margin-top: 6px;
           font-size: 12px;
           font-weight: 800;
           color: #475569;
         }
-        .storeOsaRow {
-          grid-column: 1 / -1;
+
+        .osaBreakdown {
+          border-radius: 14px;
+          padding: 10px 10px;
+          background: rgba(15, 23, 42, 0.03);
+          border: 1px solid rgba(15, 23, 42, 0.06);
+        }
+        .osaTitle {
+          font-size: 12px;
+          font-weight: 950;
+          text-transform: uppercase;
+          color: #334155;
+          margin-bottom: 8px;
+          letter-spacing: 0.3px;
+        }
+        .osaChips {
           display: flex;
           flex-wrap: wrap;
           gap: 8px;
-          margin-top: 2px;
         }
         .chip {
           border: 1px solid rgba(0, 100, 145, 0.16);
           border-radius: 999px;
-          padding: 4px 10px;
+          padding: 6px 10px;
           background: rgba(0, 100, 145, 0.08);
           font-size: 12px;
           font-weight: 900;
         }
 
-        /* === Message: pop === */
+        /* === Area Message === */
         .message {
           margin-top: 12px;
           border: 2px solid rgba(0, 100, 145, 0.22);
-          border-radius: 16px;
+          border-radius: 18px;
           background: rgba(0, 100, 145, 0.06);
-          padding: 12px;
+          padding: 14px;
           box-shadow: 0 10px 24px rgba(0, 0, 0, 0.05);
         }
+        .messageHead {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 8px;
+        }
         .message h2 {
-          margin: 0 0 6px;
+          margin: 0;
           font-size: 16px;
           letter-spacing: 0.2px;
+        }
+        .messagePill {
+          font-size: 12px;
+          font-weight: 950;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(0, 100, 145, 0.10);
+          border: 1px solid rgba(0, 100, 145, 0.18);
+          color: #0f172a;
+          white-space: nowrap;
         }
         .message p {
           margin: 0;
           white-space: pre-wrap;
-          font-weight: 950;
+          font-weight: 900;
           color: #334155;
+          line-height: 1.35;
         }
 
         .alert {
@@ -763,6 +842,7 @@ export default function DailyUpdateClient() {
           color: #7f1d1d;
         }
 
+        /* === Store cards === */
         .storesGrid {
           margin-top: 12px;
           display: grid;
@@ -780,15 +860,16 @@ export default function DailyUpdateClient() {
           align-items: center;
           justify-content: space-between;
           gap: 10px;
-          margin-bottom: 10px;
+          margin-bottom: 12px;
         }
         .storeName {
           margin: 0;
-          font-size: 20px;
+          font-size: 22px;
+          letter-spacing: 0.2px;
         }
         .osaChip {
           border-radius: 999px;
-          padding: 6px 10px;
+          padding: 7px 12px;
           background: rgba(124, 58, 237, 0.08);
           border: 1px solid rgba(124, 58, 237, 0.18);
           color: #4c1d95;
@@ -797,18 +878,23 @@ export default function DailyUpdateClient() {
           white-space: nowrap;
         }
 
-        /* === New KPI card layout === */
+        /* === KPI Cards (3 across) === */
         .metricCards {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 10px;
+          align-items: start;
         }
         .metricCard {
-          border-radius: 16px;
+          border-radius: 18px;
           background: #fff;
           border: 1px solid rgba(15, 23, 42, 0.08);
           box-shadow: 0 10px 22px rgba(0, 0, 0, 0.05);
           overflow: hidden;
+        }
+        .metricCard.emph {
+          border-color: rgba(15, 23, 42, 0.12);
+          box-shadow: 0 14px 28px rgba(0, 0, 0, 0.07);
         }
         .metricCardHead {
           display: flex;
@@ -818,163 +904,223 @@ export default function DailyUpdateClient() {
           padding: 10px 12px;
           border-bottom: 1px solid rgba(15, 23, 42, 0.06);
         }
+        .metricHeadLeft {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .metricIcon {
+          font-size: 16px;
+          line-height: 1;
+        }
         .metricCardHead h3 {
           margin: 0;
           font-size: 13px;
-          letter-spacing: 0.3px;
+          letter-spacing: 0.35px;
           text-transform: uppercase;
-          font-weight: 950;
+          font-weight: 980;
           color: #0f172a;
         }
-        .metricBadge {
-          font-size: 12px;
-          font-weight: 900;
-          padding: 4px 10px;
-          border-radius: 999px;
-          background: rgba(15, 23, 42, 0.06);
-          border: 1px solid rgba(15, 23, 42, 0.08);
-        }
         .metricCardBody {
-          padding: 10px 12px 12px;
+          padding: 12px;
+          display: grid;
+          gap: 10px;
         }
+
         .tone-blue .metricCardHead {
-          background: linear-gradient(90deg, rgba(0, 100, 145, 0.14), rgba(0, 100, 145, 0.04));
+          background: linear-gradient(90deg, rgba(0, 100, 145, 0.16), rgba(0, 100, 145, 0.04));
         }
         .tone-purple .metricCardHead {
           background: linear-gradient(90deg, rgba(124, 58, 237, 0.14), rgba(124, 58, 237, 0.04));
         }
         .tone-slate .metricCardHead {
-          background: linear-gradient(90deg, rgba(15, 23, 42, 0.10), rgba(15, 23, 42, 0.02));
+          background: linear-gradient(90deg, rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.02));
         }
 
-        .metric {
+        /* === Stat Rows: fixed alignment + spacing + no wrap issues === */
+        .statRow {
           display: flex;
-          justify-content: space-between;
           align-items: center;
-          gap: 14px;
-          border-radius: 12px;
+          justify-content: space-between;
+          gap: 12px;
           padding: 10px 12px;
-          margin-top: 10px; /* more breathing room */
-          font-size: 13px;
-          border: 1px solid rgba(15, 23, 42, 0.05);
-          background: rgba(248, 250, 252, 0.75);
+          border-radius: 14px;
+          border: 1px solid rgba(15, 23, 42, 0.06);
+          background: rgba(248, 250, 252, 0.8);
         }
-        .metric.good {
-          background: rgba(220, 252, 231, 0.75);
-          border-color: rgba(34, 197, 94, 0.25);
-        }
-        .metric.ok {
-          background: rgba(255, 237, 213, 0.7);
-          border-color: rgba(245, 158, 11, 0.25);
-        }
-        .metric.bad {
-          background: rgba(254, 226, 226, 0.75);
-          border-color: rgba(239, 68, 68, 0.25);
-        }
-        .metric.na {
-          opacity: 0.85;
-        }
-        .mLabel {
-          font-weight: 950;
-          color: #0f172a;
-        }
-        .mRight {
+        .statLeft {
           display: inline-flex;
           align-items: center;
-          gap: 10px; /* extra spacing between label and value */
-          white-space: nowrap;
+          gap: 8px;
+          min-width: 0;
         }
-        .mValue {
+        .statLabel {
           font-weight: 950;
           color: #0f172a;
-        }
-
-        /* Targets */
-        .metricGrid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 10px;
-        }
-        .metricGrid.compact {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          margin-top: 10px;
-        }
-        .lineItem {
-          display: flex;
-          justify-content: space-between;
-          gap: 10px;
-          border: 1px solid rgba(15, 23, 42, 0.06);
-          border-radius: 12px;
-          padding: 8px 10px;
-          background: rgba(248, 250, 252, 0.8);
-          font-size: 13px;
-          margin-top: 8px;
-        }
-        .lineItem strong {
           white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 190px;
+        }
+        .tinyBadge {
+          font-size: 11px;
           font-weight: 950;
+          padding: 3px 8px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          background: rgba(15, 23, 42, 0.05);
+          color: #334155;
+          white-space: nowrap;
+        }
+        .statRight {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          flex-shrink: 0;
+        }
+        .statValue {
+          font-weight: 980;
+          font-variant-numeric: tabular-nums;
+          letter-spacing: 0.2px;
         }
 
-        .placeholder {
-          margin: 0;
-          color: #64748b;
-          font-weight: 800;
+        /* Status dots */
+        .dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 23, 42, 0.15);
+          display: inline-block;
+        }
+        .dot.good {
+          background: rgba(34, 197, 94, 0.8);
+          border-color: rgba(34, 197, 94, 0.45);
+        }
+        .dot.ok {
+          background: rgba(245, 158, 11, 0.8);
+          border-color: rgba(245, 158, 11, 0.45);
+        }
+        .dot.bad {
+          background: rgba(239, 68, 68, 0.8);
+          border-color: rgba(239, 68, 68, 0.45);
+        }
+        .dot.na {
+          background: rgba(148, 163, 184, 0.65);
+          border-color: rgba(148, 163, 184, 0.45);
         }
 
+        /* Optional: subtle row tint by status */
+        .status-good {
+          background: rgba(220, 252, 231, 0.65);
+          border-color: rgba(34, 197, 94, 0.22);
+        }
+        .status-ok {
+          background: rgba(255, 237, 213, 0.6);
+          border-color: rgba(245, 158, 11, 0.22);
+        }
+        .status-bad {
+          background: rgba(254, 226, 226, 0.62);
+          border-color: rgba(239, 68, 68, 0.22);
+        }
+        .status-na {
+          opacity: 0.92;
+        }
+
+        /* === Section styling (Notes/Targets/Tasks) === */
         .notes,
         .targets,
         .tasks {
-          margin-top: 10px;
-          border: 2px solid rgba(15, 23, 42, 0.1);
-          border-radius: 12px;
-          background: #fff;
-          padding: 10px;
-        }
-
-        /* Notes stand out */
-        .notes {
-          box-shadow: 0 10px 24px rgba(0, 0, 0, 0.05);
-          border-left: 6px solid rgba(0, 100, 145, 0.7);
+          margin-top: 12px;
+          border-radius: 16px;
           background: rgba(255, 255, 255, 0.98);
+          padding: 12px;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          box-shadow: 0 10px 22px rgba(0, 0, 0, 0.04);
         }
-        .notes h3,
-        .targets h3,
-        .tasks h3 {
-          margin: 0 0 8px;
+        .sectionHead {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+        .sectionHead h3 {
+          margin: 0;
           font-size: 13px;
           text-transform: uppercase;
+          letter-spacing: 0.3px;
           color: #334155;
+          font-weight: 980;
+        }
+        .sectionPill {
+          font-size: 12px;
           font-weight: 950;
+          padding: 6px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          background: rgba(15, 23, 42, 0.05);
+          color: #334155;
+          white-space: nowrap;
+        }
+
+        .notes {
+          border-left: 6px solid rgba(0, 100, 145, 0.7);
         }
         .notes p {
           margin: 0;
           white-space: pre-wrap;
           font-weight: 850;
           color: #334155;
+          line-height: 1.35;
         }
 
-        /* Tasks stand out */
         .tasks {
-          box-shadow: 0 10px 24px rgba(0, 0, 0, 0.05);
           border-left: 6px solid rgba(124, 58, 237, 0.55);
-          background: rgba(255, 255, 255, 0.98);
         }
         .tasks ul {
           margin: 0;
           padding-left: 0;
           list-style: none;
           display: grid;
-          gap: 8px;
+          gap: 10px;
         }
         .tasks label {
           display: flex;
           align-items: center;
-          gap: 8px;
-          font-weight: 800;
+          gap: 10px;
+          font-weight: 850;
         }
         .done {
           text-decoration: line-through;
           color: #64748b;
+        }
+
+        /* Targets grid */
+        .targetsGrid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .lineItem {
+          display: flex;
+          justify-content: space-between;
+          gap: 10px;
+          border: 1px solid rgba(15, 23, 42, 0.06);
+          border-radius: 14px;
+          padding: 10px 12px;
+          background: rgba(248, 250, 252, 0.8);
+          font-size: 13px;
+        }
+        .lineItem strong {
+          white-space: nowrap;
+          font-weight: 980;
+          font-variant-numeric: tabular-nums;
+        }
+
+        .placeholder {
+          margin: 0;
+          color: #64748b;
+          font-weight: 800;
         }
 
         @media (max-width: 980px) {
@@ -984,7 +1130,7 @@ export default function DailyUpdateClient() {
           .metricCards {
             grid-template-columns: 1fr;
           }
-          .areaOverview {
+          .areaTiles {
             grid-template-columns: 1fr;
           }
         }
