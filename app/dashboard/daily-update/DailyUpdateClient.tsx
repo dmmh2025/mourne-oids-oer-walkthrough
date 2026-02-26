@@ -116,18 +116,11 @@ const to01From100 = (v0to100: number | null) => {
   return v0to100 / 100;
 };
 
-const fmtPct2 = (v01: number | null) =>
-  v01 == null ? "—" : `${(v01 * 100).toFixed(2)}%`;
+const fmtPct2 = (v01: number | null) => (v01 == null ? "—" : `${(v01 * 100).toFixed(2)}%`);
+const fmtNum2 = (v: number | null) => (v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}`);
+const fmtMins2 = (v: number | null) => (v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}m`);
 
-const fmtNum2 = (v: number | null) =>
-  v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}`;
-
-const fmtMins2 = (v: number | null) =>
-  v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}m`;
-
-const avg = (arr: number[]) =>
-  arr.length ? arr.reduce((acc, val) => acc + val, 0) / arr.length : null;
-
+const avg = (arr: number[]) => (arr.length ? arr.reduce((acc, val) => acc + val, 0) / arr.length : null);
 const sum = (arr: number[]) => arr.reduce((acc, val) => acc + val, 0);
 
 type Targets = {
@@ -139,34 +132,10 @@ type Targets = {
 };
 
 const DEFAULT_TARGETS: Record<string, Targets> = {
-  Downpatrick: {
-    dotMin01: 0.82,
-    labourMax01: 0.25,
-    rnlMaxMins: 9,
-    extremesMax01: 0.03,
-    foodVarAbsMax01: 0.003,
-  },
-  Kilkeel: {
-    dotMin01: 0.78,
-    labourMax01: 0.28,
-    rnlMaxMins: 8,
-    extremesMax01: 0.04,
-    foodVarAbsMax01: 0.003,
-  },
-  Newcastle: {
-    dotMin01: 0.78,
-    labourMax01: 0.25,
-    rnlMaxMins: 9,
-    extremesMax01: 0.04,
-    foodVarAbsMax01: 0.003,
-  },
-  Ballynahinch: {
-    dotMin01: 0.78,
-    labourMax01: 0.28,
-    rnlMaxMins: 9,
-    extremesMax01: 0.04,
-    foodVarAbsMax01: 0.003,
-  },
+  Downpatrick: { dotMin01: 0.82, labourMax01: 0.25, rnlMaxMins: 9, extremesMax01: 0.03, foodVarAbsMax01: 0.003 },
+  Kilkeel: { dotMin01: 0.78, labourMax01: 0.28, rnlMaxMins: 8, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
+  Newcastle: { dotMin01: 0.78, labourMax01: 0.25, rnlMaxMins: 9, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
+  Ballynahinch: { dotMin01: 0.78, labourMax01: 0.28, rnlMaxMins: 9, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
 };
 
 const getTargetsForStore = (store: string, inputs: StoreInputRow | null): Targets => {
@@ -180,9 +149,7 @@ const getTargetsForStore = (store: string, inputs: StoreInputRow | null): Target
     };
 
   const extFromInputs01 =
-    inputs?.target_extremes_over40_pct != null
-      ? to01From100(inputs.target_extremes_over40_pct)
-      : null;
+    inputs?.target_extremes_over40_pct != null ? to01From100(inputs.target_extremes_over40_pct) : null;
 
   return { ...base, extremesMax01: extFromInputs01 ?? base.extremesMax01 };
 };
@@ -205,11 +172,7 @@ const statusLowerBetter = (value: number | null, targetMax: number, tol = 0.002)
   return "bad";
 };
 
-const statusAbsLowerBetter = (
-  value: number | null,
-  targetAbsMax: number,
-  tol = 0.002
-): MetricStatus => {
+const statusAbsLowerBetter = (value: number | null, targetAbsMax: number, tol = 0.002): MetricStatus => {
   if (value == null || !Number.isFinite(value)) return "na";
   const absVal = Math.abs(value);
   if (absVal <= targetAbsMax - tol) return "good";
@@ -257,11 +220,7 @@ export default function DailyUpdateClient() {
           costStoresRes,
           inputStoresRes,
         ] = await Promise.all([
-          supabase
-            .from("daily_update_area_message")
-            .select("date,message")
-            .eq("date", previousBusinessDay)
-            .maybeSingle(),
+          supabase.from("daily_update_area_message").select("date,message").eq("date", previousBusinessDay).maybeSingle(),
           supabase
             .from("daily_update_store_inputs")
             .select(
@@ -286,21 +245,13 @@ export default function DailyUpdateClient() {
             .select("shift_date,store")
             .gte("shift_date", wkStart)
             .lte("shift_date", previousBusinessDay),
-          supabase
-            .from("service_shifts")
-            .select("store,shift_date")
-            .order("shift_date", { ascending: false })
-            .limit(500),
+          supabase.from("service_shifts").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
           supabase
             .from("cost_control_entries")
             .select("store,shift_date")
             .order("shift_date", { ascending: false })
             .limit(500),
-          supabase
-            .from("daily_update_store_inputs")
-            .select("store,date")
-            .order("date", { ascending: false })
-            .limit(500),
+          supabase.from("daily_update_store_inputs").select("store,date").order("date", { ascending: false }).limit(500),
         ]);
 
         const firstError = [
@@ -382,9 +333,7 @@ export default function DailyUpdateClient() {
       const labourPct01 = sales > 0 ? labourCost / sales : null;
       const foodVarPct01 = sales > 0 ? (actualFoodCost - idealFoodCost) / sales : null;
 
-      const dotPct01 = avg(
-        service.map((row) => normalisePct01(row.dot_pct)).filter((v): v is number => v != null)
-      );
+      const dotPct01 = avg(service.map((row) => normalisePct01(row.dot_pct)).filter((v): v is number => v != null));
       const extremesPct01 = avg(
         service.map((row) => normalisePct01(row.extreme_over_40)).filter((v): v is number => v != null)
       );
@@ -465,6 +414,24 @@ export default function DailyUpdateClient() {
         <span className="mRight">
           <strong className="mValue">{props.valueText}</strong>
         </span>
+      </div>
+    );
+  };
+
+  const MetricCard = (props: {
+    title: string;
+    badge?: string;
+    children: React.ReactNode;
+    tone?: "blue" | "purple" | "slate";
+  }) => {
+    const toneClass = props.tone ? `tone-${props.tone}` : "tone-slate";
+    return (
+      <div className={`metricCard ${toneClass}`}>
+        <div className="metricCardHead">
+          <h3>{props.title}</h3>
+          {props.badge ? <span className="metricBadge">{props.badge}</span> : null}
+        </div>
+        <div className="metricCardBody">{props.children}</div>
       </div>
     );
   };
@@ -566,43 +533,25 @@ export default function DailyUpdateClient() {
                     <span className="osaChip">OSA WTD: {card.osaWtdCount}</span>
                   </div>
 
-                  <div className="metricGrid">
-                    <div className="metricBlock">
-                      <h3>Cost Controls</h3>
-                      <MetricLine label="Labour %" valueText={fmtPct2(card.cost.labourPct01)} status={labourStatus} />
-                      <MetricLine
-                        label="Food var % of sales"
-                        valueText={fmtPct2(card.cost.foodVarPct01)}
-                        status={foodVarStatus}
-                      />
-                    </div>
+                  {/* Visually upgraded KPI cards */}
+                  <div className="metricCards">
+                    <MetricCard title="Cost Controls" tone="blue">
+                      <MetricLine label="Labour" valueText={fmtPct2(card.cost.labourPct01)} status={labourStatus} />
+                      <MetricLine label="Food" valueText={fmtPct2(card.cost.foodVarPct01)} status={foodVarStatus} />
+                    </MetricCard>
 
-                    <div className="metricBlock">
-                      <h3>Service</h3>
-                      <MetricLine label="DOT %" valueText={fmtPct2(card.service.dotPct01)} status={dotStatus} />
-                      <MetricLine label="R&L mins" valueText={fmtMins2(card.service.rnlMinutes)} status={rnlStatus} />
-                      <MetricLine
-                        label="Extremes >40"
-                        valueText={fmtPct2(card.service.extremesPct01)}
-                        status={extremesStatus}
-                      />
+                    <MetricCard title="Service" tone="slate">
+                      <MetricLine label="DOT" valueText={fmtPct2(card.service.dotPct01)} status={dotStatus} />
+                      <MetricLine label="R&L" valueText={fmtMins2(card.service.rnlMinutes)} status={rnlStatus} />
+                      <MetricLine label="Extremes >40" valueText={fmtPct2(card.service.extremesPct01)} status={extremesStatus} />
                       <MetricLine label="Additional hours" valueText={fmtNum2(card.additionalHours)} status={addHoursStatus} />
-                    </div>
+                    </MetricCard>
 
-                    <div className="metricBlock">
-                      <h3>Daily Inputs</h3>
-                      <MetricLine
-                        label="Missed Calls (WTD %)"
-                        valueText={fmtPct2(card.daily.missedCalls01)}
-                        status={missedStatus}
-                      />
-                      <MetricLine
-                        label="GPS Tracked (WTD %)"
-                        valueText={fmtPct2(card.daily.gps01)}
-                        status={gpsStatus}
-                      />
+                    <MetricCard title="Others" tone="purple">
+                      <MetricLine label="Missed Calls (WTD %)" valueText={fmtPct2(card.daily.missedCalls01)} status={missedStatus} />
+                      <MetricLine label="GPS Tracked (WTD %)" valueText={fmtPct2(card.daily.gps01)} status={gpsStatus} />
                       <MetricLine label="AOF (WTD %)" valueText={fmtPct2(card.daily.aof01)} status={aofStatus} />
-                    </div>
+                    </MetricCard>
                   </div>
 
                   {/* Notes: make it stand out */}
@@ -611,7 +560,7 @@ export default function DailyUpdateClient() {
                     <p>{card.inputs?.notes?.trim() || "—"}</p>
                   </section>
 
-                  {/* Targets: keep the data but remove arrows/extra notes; keep it compact */}
+                  {/* Targets: keep data, compact */}
                   <section className="targets">
                     <h3>Service Losing Targets</h3>
                     <div className="metricGrid compact">
@@ -736,18 +685,13 @@ export default function DailyUpdateClient() {
           border: 1px solid rgba(0, 100, 145, 0.14);
           border-radius: 16px;
           padding: 12px;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
         }
         .areaBox {
           border-radius: 16px;
           background: rgba(0, 100, 145, 0.08);
           border: 1px solid rgba(0, 100, 145, 0.16);
           padding: 10px 12px;
-        }
-        .areaBoxTop {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 8px;
         }
         .areaBoxLabel {
           font-size: 12px;
@@ -756,22 +700,18 @@ export default function DailyUpdateClient() {
           color: #0f172a;
         }
         .areaBoxValue {
-          margin-top: 6px;
+          margin-top: 8px;
           font-weight: 950;
-          font-size: 20px;
+          font-size: 22px;
           color: #006491;
           letter-spacing: 0.2px;
         }
         .areaBoxSub {
-          margin-top: 4px;
+          margin-top: 6px;
           font-size: 12px;
           font-weight: 800;
           color: #475569;
         }
-        .areaOverview {
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-        }
-
         .storeOsaRow {
           grid-column: 1 / -1;
           display: flex;
@@ -857,40 +797,64 @@ export default function DailyUpdateClient() {
           white-space: nowrap;
         }
 
-        .metricGrid {
+        /* === New KPI card layout === */
+        .metricCards {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 10px;
         }
-        .metricGrid.compact {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          margin-top: 10px;
-        }
-
-        .metricBlock {
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          border-radius: 12px;
+        .metricCard {
+          border-radius: 16px;
           background: #fff;
-          padding: 10px;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          box-shadow: 0 10px 22px rgba(0, 0, 0, 0.05);
+          overflow: hidden;
         }
-        .metricBlock h3,
-        .notes h3,
-        .targets h3,
-        .tasks h3 {
-          margin: 0 0 8px;
+        .metricCardHead {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          padding: 10px 12px;
+          border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+        }
+        .metricCardHead h3 {
+          margin: 0;
           font-size: 13px;
+          letter-spacing: 0.3px;
           text-transform: uppercase;
-          color: #334155;
+          font-weight: 950;
+          color: #0f172a;
+        }
+        .metricBadge {
+          font-size: 12px;
+          font-weight: 900;
+          padding: 4px 10px;
+          border-radius: 999px;
+          background: rgba(15, 23, 42, 0.06);
+          border: 1px solid rgba(15, 23, 42, 0.08);
+        }
+        .metricCardBody {
+          padding: 10px 12px 12px;
+        }
+        .tone-blue .metricCardHead {
+          background: linear-gradient(90deg, rgba(0, 100, 145, 0.14), rgba(0, 100, 145, 0.04));
+        }
+        .tone-purple .metricCardHead {
+          background: linear-gradient(90deg, rgba(124, 58, 237, 0.14), rgba(124, 58, 237, 0.04));
+        }
+        .tone-slate .metricCardHead {
+          background: linear-gradient(90deg, rgba(15, 23, 42, 0.10), rgba(15, 23, 42, 0.02));
         }
 
         .metric {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          gap: 10px;
+          gap: 14px;
           border-radius: 12px;
-          padding: 9px 12px;
-          margin-top: 8px;
+          padding: 10px 12px;
+          margin-top: 10px; /* more breathing room */
           font-size: 13px;
           border: 1px solid rgba(15, 23, 42, 0.05);
           background: rgba(248, 250, 252, 0.75);
@@ -908,17 +872,16 @@ export default function DailyUpdateClient() {
           border-color: rgba(239, 68, 68, 0.25);
         }
         .metric.na {
-          opacity: 0.8;
+          opacity: 0.85;
         }
-
         .mLabel {
-          font-weight: 900;
+          font-weight: 950;
           color: #0f172a;
         }
         .mRight {
           display: inline-flex;
           align-items: center;
-          gap: 6px;
+          gap: 10px; /* extra spacing between label and value */
           white-space: nowrap;
         }
         .mValue {
@@ -926,19 +889,30 @@ export default function DailyUpdateClient() {
           color: #0f172a;
         }
 
+        /* Targets */
+        .metricGrid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .metricGrid.compact {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          margin-top: 10px;
+        }
         .lineItem {
           display: flex;
           justify-content: space-between;
-          gap: 8px;
+          gap: 10px;
           border: 1px solid rgba(15, 23, 42, 0.06);
-          border-radius: 10px;
-          padding: 6px 8px;
+          border-radius: 12px;
+          padding: 8px 10px;
           background: rgba(248, 250, 252, 0.8);
           font-size: 13px;
-          margin-top: 6px;
+          margin-top: 8px;
         }
         .lineItem strong {
           white-space: nowrap;
+          font-weight: 950;
         }
 
         .placeholder {
@@ -962,6 +936,15 @@ export default function DailyUpdateClient() {
           box-shadow: 0 10px 24px rgba(0, 0, 0, 0.05);
           border-left: 6px solid rgba(0, 100, 145, 0.7);
           background: rgba(255, 255, 255, 0.98);
+        }
+        .notes h3,
+        .targets h3,
+        .tasks h3 {
+          margin: 0 0 8px;
+          font-size: 13px;
+          text-transform: uppercase;
+          color: #334155;
+          font-weight: 950;
         }
         .notes p {
           margin: 0;
@@ -995,9 +978,10 @@ export default function DailyUpdateClient() {
         }
 
         @media (max-width: 980px) {
-          .storesGrid,
-          .metricGrid,
-          .metricGrid.compact {
+          .storesGrid {
+            grid-template-columns: 1fr;
+          }
+          .metricCards {
             grid-template-columns: 1fr;
           }
           .areaOverview {
@@ -1026,7 +1010,7 @@ export default function DailyUpdateClient() {
             grid-template-columns: 1fr;
           }
           .storeCard,
-          .metricBlock,
+          .metricCard,
           .notes,
           .targets,
           .tasks,
