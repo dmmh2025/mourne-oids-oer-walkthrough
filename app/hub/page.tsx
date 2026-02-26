@@ -82,6 +82,7 @@ type TileVariant =
   | "reports"
   | "osa"
   | "costcontrols" // ✅ ADDED
+  | "dailyupdate" // ✅ ADDED
   | "profile"
   | "deepclean"
   | "memomailer"
@@ -155,6 +156,15 @@ const TILES: Tile[] = [
     icon: "💷",
     badge: "NEW",
   },
+  {
+    href: "/dashboard/daily-update",
+    title: "Daily Update",
+    desc: "Today’s message, targets, tasks + yesterday’s service recap.",
+    variant: "dailyupdate",
+    pill: "Daily",
+    icon: "🧾",
+    badge: "NEW",
+  },
 
   {
     href: "/profiles",
@@ -217,6 +227,8 @@ function accent(variant: TileVariant) {
     // ✅ ADDED: Cost Controls accent
     case "costcontrols":
       return { a: "#0F766E", b: "#065F46" };
+    case "dailyupdate":
+      return { a: "#2563EB", b: "#1E3A8A" };
 
     case "profile":
       return { a: "#0EA5E9", b: "#0369A1" };
