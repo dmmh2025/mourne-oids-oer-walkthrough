@@ -399,21 +399,22 @@ export default function DailyUpdateClient() {
     return <span className={cls} aria-hidden="true" />;
   };
 
-  const StatRow = (props: {
+  // ✅ KPI TILE (label top, value big, status dot)
+  const StatTile = (props: {
     label: string;
     valueText: string;
     status: MetricStatus;
     badgeText?: string;
   }) => (
-    <div className={`statRow status-${props.status}`}>
-      <div className="statLeft">
-        <span className="statLabel">{props.label}</span>
-        {props.badgeText ? <span className="tinyBadge">{props.badgeText}</span> : null}
-      </div>
-      <div className="statRight">
-        <span className="statValue">{props.valueText}</span>
+    <div className={`statTile status-${props.status}`}>
+      <div className="statTileTop">
+        <div className="statTileLabelRow">
+          <span className="statTileLabel">{props.label}</span>
+          {props.badgeText ? <span className="tinyBadge">{props.badgeText}</span> : null}
+        </div>
         <StatusDot status={props.status} />
       </div>
+      <div className="statTileValue">{props.valueText}</div>
     </div>
   );
 
@@ -421,13 +422,11 @@ export default function DailyUpdateClient() {
     title: string;
     icon?: string;
     tone?: "blue" | "purple" | "slate";
-    emphasize?: boolean;
     children: React.ReactNode;
   }) => {
     const toneClass = props.tone ? `tone-${props.tone}` : "tone-slate";
-    const emph = props.emphasize ? "emph" : "";
     return (
-      <div className={`metricCard ${toneClass} ${emph}`}>
+      <div className={`metricCard ${toneClass}`}>
         <div className="metricCardHead">
           <div className="metricHeadLeft">
             {props.icon ? (
@@ -550,23 +549,30 @@ export default function DailyUpdateClient() {
                     <span className="osaChip">OSA WTD: {card.osaWtdCount}</span>
                   </div>
 
+                  {/* ✅ KPI blocks now use tiles */}
                   <div className="metricCards">
-                    <MetricCard title="Service" icon="🚗" tone="slate" emphasize>
-                      <StatRow label="DOT" valueText={fmtPct2(card.service.dotPct01)} status={dotStatus} />
-                      <StatRow label="R&L" valueText={fmtMins2(card.service.rnlMinutes)} status={rnlStatus} />
-                      <StatRow label="Extremes >40" valueText={fmtPct2(card.service.extremesPct01)} status={extremesStatus} />
-                      <StatRow label="Add. hours" valueText={fmtNum2(card.additionalHours)} status={addHoursStatus} />
+                    <MetricCard title="Service" icon="🚗" tone="slate">
+                      <div className="tilesGrid">
+                        <StatTile label="DOT" valueText={fmtPct2(card.service.dotPct01)} status={dotStatus} />
+                        <StatTile label="R&L" valueText={fmtMins2(card.service.rnlMinutes)} status={rnlStatus} />
+                        <StatTile label="Extremes >40" valueText={fmtPct2(card.service.extremesPct01)} status={extremesStatus} />
+                        <StatTile label="Add. hours" valueText={fmtNum2(card.additionalHours)} status={addHoursStatus} />
+                      </div>
                     </MetricCard>
 
                     <MetricCard title="Cost Controls" icon="💷" tone="blue">
-                      <StatRow label="Labour" valueText={fmtPct2(card.cost.labourPct01)} status={labourStatus} />
-                      <StatRow label="Food" valueText={fmtPct2(card.cost.foodVarPct01)} status={foodVarStatus} />
+                      <div className="tilesGrid tilesGrid-2">
+                        <StatTile label="Labour" valueText={fmtPct2(card.cost.labourPct01)} status={labourStatus} />
+                        <StatTile label="Food" valueText={fmtPct2(card.cost.foodVarPct01)} status={foodVarStatus} />
+                      </div>
                     </MetricCard>
 
                     <MetricCard title="Others" icon="🧾" tone="purple">
-                      <StatRow label="Missed Calls" badgeText="WTD" valueText={fmtPct2(card.daily.missedCalls01)} status={missedStatus} />
-                      <StatRow label="GPS Tracked" badgeText="WTD" valueText={fmtPct2(card.daily.gps01)} status={gpsStatus} />
-                      <StatRow label="AOF" badgeText="WTD" valueText={fmtPct2(card.daily.aof01)} status={aofStatus} />
+                      <div className="tilesGrid">
+                        <StatTile label="Missed Calls" badgeText="WTD" valueText={fmtPct2(card.daily.missedCalls01)} status={missedStatus} />
+                        <StatTile label="GPS Tracked" badgeText="WTD" valueText={fmtPct2(card.daily.gps01)} status={gpsStatus} />
+                        <StatTile label="AOF" badgeText="WTD" valueText={fmtPct2(card.daily.aof01)} status={aofStatus} />
+                      </div>
                     </MetricCard>
                   </div>
 
@@ -703,7 +709,7 @@ export default function DailyUpdateClient() {
           margin: 4px 0 0;
         }
 
-        /* === Area Overview (more designed, less “texty”) === */
+        /* Area Overview */
         .areaOverview {
           background: rgba(255, 255, 255, 0.92);
           border: 1px solid rgba(0, 100, 145, 0.14);
@@ -721,7 +727,7 @@ export default function DailyUpdateClient() {
           border-radius: 18px;
           background: linear-gradient(180deg, rgba(0, 100, 145, 0.10), rgba(255, 255, 255, 0.92));
           border: 1px solid rgba(0, 100, 145, 0.16);
-          padding: 10px 12px 10px;
+          padding: 10px 12px;
         }
         .areaTileTop {
           display: flex;
@@ -744,7 +750,6 @@ export default function DailyUpdateClient() {
           font-weight: 1000;
           font-size: 28px;
           color: #0b4f70;
-          letter-spacing: 0.2px;
           font-variant-numeric: tabular-nums;
         }
         .areaTileSub {
@@ -782,7 +787,7 @@ export default function DailyUpdateClient() {
           font-weight: 900;
         }
 
-        /* === Area Message === */
+        /* Area Message */
         .message {
           margin-top: 12px;
           border: 2px solid rgba(0, 100, 145, 0.22);
@@ -801,7 +806,6 @@ export default function DailyUpdateClient() {
         .message h2 {
           margin: 0;
           font-size: 16px;
-          letter-spacing: 0.2px;
         }
         .messagePill {
           font-size: 12px;
@@ -835,7 +839,7 @@ export default function DailyUpdateClient() {
           color: #7f1d1d;
         }
 
-        /* === Stores === */
+        /* Store cards */
         .storesGrid {
           margin-top: 12px;
           display: grid;
@@ -871,7 +875,7 @@ export default function DailyUpdateClient() {
           white-space: nowrap;
         }
 
-        /* KPI cards: tighter, more “dashboard” */
+        /* KPI modules */
         .metricCards {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -884,10 +888,6 @@ export default function DailyUpdateClient() {
           border: 1px solid rgba(15, 23, 42, 0.08);
           box-shadow: 0 10px 22px rgba(0, 0, 0, 0.05);
           overflow: hidden;
-        }
-        .metricCard.emph {
-          border-color: rgba(15, 23, 42, 0.12);
-          box-shadow: 0 14px 28px rgba(0, 0, 0, 0.07);
         }
         .metricCardHead {
           display: flex;
@@ -916,10 +916,7 @@ export default function DailyUpdateClient() {
         }
         .metricCardBody {
           padding: 10px 10px 12px;
-          display: grid;
-          gap: 8px;
         }
-
         .tone-blue .metricCardHead {
           background: linear-gradient(90deg, rgba(0, 100, 145, 0.16), rgba(0, 100, 145, 0.03));
         }
@@ -930,31 +927,51 @@ export default function DailyUpdateClient() {
           background: linear-gradient(90deg, rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.02));
         }
 
-        /* Stat rows: explicit spacing + consistent alignment */
-        .statRow {
+        /* ✅ KPI tiles grid */
+        .tilesGrid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .tilesGrid-2 {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .statTile {
+          border-radius: 16px;
+          padding: 10px 12px;
+          border: 1px solid rgba(15, 23, 42, 0.06);
+          background: rgba(248, 250, 252, 0.88);
+          display: grid;
+          gap: 8px;
+        }
+        .statTileTop {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 12px;
-          padding: 10px 12px;
-          border-radius: 14px;
-          border: 1px solid rgba(15, 23, 42, 0.06);
-          background: rgba(248, 250, 252, 0.82);
+          gap: 10px;
         }
-        .statLeft {
+        .statTileLabelRow {
           display: flex;
           align-items: center;
           min-width: 0;
         }
-        .statLabel {
+        .statTileLabel {
           font-weight: 980;
           color: #0f172a;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          max-width: 200px;
+          max-width: 180px;
         }
-        /* IMPORTANT: explicit margin prevents “Missed CallsWTD” style collisions */
+        .statTileValue {
+          font-size: 20px;
+          font-weight: 1100;
+          letter-spacing: 0.2px;
+          font-variant-numeric: tabular-nums;
+        }
+
+        /* WTD pill spacing fixed */
         .tinyBadge {
           margin-left: 8px;
           font-size: 11px;
@@ -966,27 +983,31 @@ export default function DailyUpdateClient() {
           color: #334155;
           white-space: nowrap;
         }
-        .statRight {
-          display: inline-flex;
-          align-items: center;
-          gap: 10px;
-          flex-shrink: 0;
+
+        /* Status coloring */
+        .status-good {
+          background: rgba(220, 252, 231, 0.60);
+          border-color: rgba(34, 197, 94, 0.20);
         }
-        .statValue {
-          font-weight: 1000;
-          font-variant-numeric: tabular-nums;
-          letter-spacing: 0.2px;
-          min-width: 72px;
-          text-align: right;
+        .status-ok {
+          background: rgba(255, 237, 213, 0.58);
+          border-color: rgba(245, 158, 11, 0.20);
+        }
+        .status-bad {
+          background: rgba(254, 226, 226, 0.60);
+          border-color: rgba(239, 68, 68, 0.20);
+        }
+        .status-na {
+          opacity: 0.95;
         }
 
-        /* Status dots */
         .dot {
           width: 10px;
           height: 10px;
           border-radius: 999px;
           border: 1px solid rgba(15, 23, 42, 0.15);
           display: inline-block;
+          flex-shrink: 0;
         }
         .dot.good {
           background: rgba(34, 197, 94, 0.85);
@@ -1003,22 +1024,6 @@ export default function DailyUpdateClient() {
         .dot.na {
           background: rgba(148, 163, 184, 0.70);
           border-color: rgba(148, 163, 184, 0.45);
-        }
-
-        .status-good {
-          background: rgba(220, 252, 231, 0.60);
-          border-color: rgba(34, 197, 94, 0.20);
-        }
-        .status-ok {
-          background: rgba(255, 237, 213, 0.58);
-          border-color: rgba(245, 158, 11, 0.20);
-        }
-        .status-bad {
-          background: rgba(254, 226, 226, 0.60);
-          border-color: rgba(239, 68, 68, 0.20);
-        }
-        .status-na {
-          opacity: 0.95;
         }
 
         /* Notes/Targets/Tasks */
@@ -1126,6 +1131,9 @@ export default function DailyUpdateClient() {
           }
           .areaTiles {
             grid-template-columns: 1fr;
+          }
+          .tilesGrid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
           }
         }
 
