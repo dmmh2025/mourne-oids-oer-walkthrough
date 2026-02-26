@@ -236,7 +236,11 @@ export default function DailyUpdateClient() {
             .gte("shift_date", wkStart)
             .lte("shift_date", previousBusinessDay),
           supabase.from("service_shifts").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
-          supabase.from("cost_control_entries").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
+          supabase
+            .from("cost_control_entries")
+            .select("store,shift_date")
+            .order("shift_date", { ascending: false })
+            .limit(500),
           supabase.from("daily_update_store_inputs").select("store,date").order("date", { ascending: false }).limit(500),
         ]);
 
@@ -324,8 +328,8 @@ export default function DailyUpdateClient() {
         service.map((row) => normalisePct01(row.extreme_over_40)).filter((v): v is number => v != null)
       );
       const rnlMinutes = avg(service.map((row) => row.rnl_minutes).filter((v): v is number => v != null));
-
       const additionalHours = sum(service.map((row) => Number(row.additional_hours || 0)));
+
       const targets = getTargetsForStore(store, inputs);
 
       const missedCalls01 = to01From100(inputs?.missed_calls_wtd ?? null);
@@ -334,7 +338,6 @@ export default function DailyUpdateClient() {
 
       return {
         store,
-        sales,
         additionalHours,
         cost: { labourPct01, foodVarPct01 },
         service: { dotPct01, extremesPct01, rnlMinutes },
@@ -358,7 +361,7 @@ export default function DailyUpdateClient() {
 
     const additionalHours = sum(serviceRows.map((r) => Number(r.additional_hours || 0)));
 
-    return { sales, labourPct01, foodVarPct01, additionalHours };
+    return { labourPct01, foodVarPct01, additionalHours };
   }, [costRows, serviceRows]);
 
   const toggleTask = async (task: TaskRow) => {
@@ -394,15 +397,15 @@ export default function DailyUpdateClient() {
     return <span className={cls} aria-hidden="true" />;
   };
 
-  // Tile: LABEL bold, VALUE normal + clear separation line
+  // LABEL bold + divider + VALUE regular (clear separation)
   const StatTile = (props: { label: string; valueText: string; status: MetricStatus }) => (
     <div className={`statTile status-${props.status}`}>
-      <div className="statTileTop">
-        <span className="statTileLabel">{props.label}</span>
+      <div className="tileTopRow">
+        <span className="tileTitle">{props.label}</span>
         <StatusDot status={props.status} />
       </div>
-      <div className="statDivider" />
-      <div className="statTileValue">{props.valueText}</div>
+      <div className="tileDivider" />
+      <div className="tileValue">{props.valueText}</div>
     </div>
   );
 
@@ -425,18 +428,19 @@ export default function DailyUpdateClient() {
     );
   };
 
-  // Area tiles: label bold + divider + more spacing so label/value don't blend
-  const AreaTile = (props: { icon: string; label: string; value: string; sub?: string }) => (
+  // Area tiles: title bold + divider + value regular (clear separation)
+  const AreaTile = (props: { icon: string; label: string; value: string }) => (
     <div className="areaTile">
-      <div className="areaTileTop">
-        <span className="areaTileIcon" aria-hidden="true">
-          {props.icon}
-        </span>
-        <span className="areaTileLabel">{props.label}</span>
+      <div className="tileTopRow">
+        <div className="areaTopLeft">
+          <span className="areaTileIcon" aria-hidden="true">
+            {props.icon}
+          </span>
+          <span className="areaTileLabel">{props.label}</span>
+        </div>
       </div>
-      <div className="areaDivider" />
+      <div className="tileDivider" />
       <div className="areaTileValue">{props.value}</div>
-      {props.sub ? <div className="areaTileSub">{props.sub}</div> : null}
     </div>
   );
 
@@ -468,13 +472,13 @@ export default function DailyUpdateClient() {
           </p>
         </header>
 
+        {/* ✅ Area overview: each metric is its own outlined tile */}
         <section className="areaOverview">
           <div className="areaTiles">
             <AreaTile icon="🧑‍🤝‍🧑" label="Area Labour" value={fmtPct2(areaRollup.labourPct01)} />
-            {/* ✅ no “Var % of sales” */}
             <AreaTile icon="🍕" label="Area Food" value={fmtPct2(areaRollup.foodVarPct01)} />
             <AreaTile icon="⏱️" label="Area Add. Hours" value={fmtNum2(areaRollup.additionalHours)} />
-            <AreaTile icon="✅" label="Area OSA" value={String(osaCounts.total)} sub="Total checks WTD" />
+            <AreaTile icon="✅" label="Area OSA" value={String(osaCounts.total)} />
           </div>
 
           <div className="osaBreakdown">
@@ -534,11 +538,11 @@ export default function DailyUpdateClient() {
                     <span className="osaChip">OSA WTD: {card.osaWtdCount}</span>
                   </div>
 
-                  {/* Service bigger than the other 2 */}
+                  {/* ✅ Service bigger than the other 2 + each section is its own outlined tile */}
                   <div className="metricCards">
                     <div className="metricSpan2">
                       <MetricCard title="Service" icon="🚗" tone="slate">
-                        <div className="tilesGrid serviceTiles">
+                        <div className="tilesGrid">
                           <StatTile label="DOT" valueText={fmtPct2(card.service.dotPct01)} status={dotStatus} />
                           <StatTile label="R&L" valueText={fmtMins2(card.service.rnlMinutes)} status={rnlStatus} />
                           <StatTile label="Extremes >40" valueText={fmtPct2(card.service.extremesPct01)} status={extremesStatus} />
@@ -548,15 +552,14 @@ export default function DailyUpdateClient() {
                     </div>
 
                     <MetricCard title="Cost Controls" icon="💷" tone="blue">
-                      <div className="tilesGrid">
+                      <div className="tilesGrid oneCol">
                         <StatTile label="Labour" valueText={fmtPct2(card.cost.labourPct01)} status={labourStatus} />
                         <StatTile label="Food" valueText={fmtPct2(card.cost.foodVarPct01)} status={foodVarStatus} />
                       </div>
                     </MetricCard>
 
-                    {/* ✅ rename to Others WTD + remove “WTD” beside metric names */}
                     <MetricCard title="Others WTD" icon="🧾" tone="purple">
-                      <div className="tilesGrid">
+                      <div className="tilesGrid oneCol">
                         <StatTile label="Missed Calls" valueText={fmtPct2(card.daily.missedCalls01)} status={missedStatus} />
                         <StatTile label="GPS Tracked" valueText={fmtPct2(card.daily.gps01)} status={gpsStatus} />
                         <StatTile label="AOF" valueText={fmtPct2(card.daily.aof01)} status={aofStatus} />
@@ -697,7 +700,32 @@ export default function DailyUpdateClient() {
           margin: 4px 0 0;
         }
 
-        /* === Area Overview -> outlined tiles + clear label/value separation === */
+        /* Shared: strong separation between title + value */
+        .tileTopRow {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+        .tileDivider {
+          height: 1px;
+          background: rgba(15, 23, 42, 0.10);
+          margin-top: 10px;
+        }
+        .tileTitle {
+          font-weight: 900;
+          letter-spacing: 0.2px;
+          color: #0f172a;
+        }
+        .tileValue {
+          margin-top: 12px; /* bigger gap = better separation */
+          font-size: 22px;
+          font-weight: 500; /* value NOT bold */
+          color: #0f172a;
+          font-variant-numeric: tabular-nums;
+        }
+
+        /* === Area Overview === */
         .areaOverview {
           background: rgba(255, 255, 255, 0.92);
           border: 1px solid rgba(0, 100, 145, 0.16);
@@ -713,45 +741,38 @@ export default function DailyUpdateClient() {
         }
         .areaTile {
           border-radius: 18px;
-          background: rgba(255, 255, 255, 0.92);
-          border: 2px solid rgba(0, 100, 145, 0.28);
-          padding: 12px 12px 14px;
+          background: rgba(255, 255, 255, 0.98);
+          border: 2px solid rgba(0, 100, 145, 0.35); /* stronger outline */
           box-shadow: 0 10px 22px rgba(0, 0, 0, 0.04);
+          padding: 12px 14px;
         }
-        .areaTileTop {
-          display: flex;
+        .areaTopLeft {
+          display: inline-flex;
           align-items: center;
           gap: 8px;
+          min-width: 0;
         }
         .areaTileIcon {
           font-size: 16px;
           line-height: 1;
+          flex-shrink: 0;
         }
         .areaTileLabel {
-          font-size: 12px;
-          font-weight: 1000; /* ✅ bold title */
+          font-size: 13px;
+          font-weight: 900; /* bold title */
           text-transform: uppercase;
-          letter-spacing: 0.45px;
+          letter-spacing: 0.35px;
           color: #0f172a;
-        }
-        .areaDivider {
-          margin-top: 10px; /* ✅ stronger separation */
-          height: 1px;
-          background: rgba(15, 23, 42, 0.10);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
         .areaTileValue {
-          margin-top: 10px; /* ✅ separation from title */
-          font-weight: 700; /* value not “shouty” */
-          font-size: 28px;
+          margin-top: 12px;
+          font-size: 26px;
+          font-weight: 500; /* value regular */
           color: #0b4f70;
           font-variant-numeric: tabular-nums;
-          line-height: 1.1;
-        }
-        .areaTileSub {
-          margin-top: 8px;
-          font-size: 12px;
-          font-weight: 800;
-          color: #475569;
         }
 
         .osaBreakdown {
@@ -762,7 +783,7 @@ export default function DailyUpdateClient() {
         }
         .osaTitle {
           font-size: 12px;
-          font-weight: 980;
+          font-weight: 950;
           text-transform: uppercase;
           color: #334155;
           margin-bottom: 8px;
@@ -815,7 +836,7 @@ export default function DailyUpdateClient() {
         .message p {
           margin: 0;
           white-space: pre-wrap;
-          font-weight: 900;
+          font-weight: 850;
           color: #334155;
           line-height: 1.35;
         }
@@ -873,7 +894,7 @@ export default function DailyUpdateClient() {
         /* KPI modules */
         .metricCards {
           display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
+          grid-template-columns: repeat(4, minmax(0, 1fr)); /* Service spans 2 */
           gap: 10px;
           align-items: start;
         }
@@ -884,7 +905,7 @@ export default function DailyUpdateClient() {
         .metricCard {
           border-radius: 18px;
           background: #fff;
-          border: 1px solid rgba(15, 23, 42, 0.10);
+          border: 2px solid rgba(15, 23, 42, 0.14); /* stronger outline */
           box-shadow: 0 10px 22px rgba(0, 0, 0, 0.05);
           overflow: hidden;
         }
@@ -914,7 +935,7 @@ export default function DailyUpdateClient() {
           color: #0f172a;
         }
         .metricCardBody {
-          padding: 10px 10px 12px;
+          padding: 12px;
         }
         .tone-blue .metricCardHead {
           background: linear-gradient(90deg, rgba(0, 100, 145, 0.16), rgba(0, 100, 145, 0.03));
@@ -926,51 +947,29 @@ export default function DailyUpdateClient() {
           background: linear-gradient(90deg, rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.02));
         }
 
-        /* Tiles */
+        /* Tiles inside cards */
         .tilesGrid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px;
         }
-        .serviceTiles .statTileValue {
-          font-size: 22px;
+        .tilesGrid.oneCol {
+          grid-template-columns: 1fr;
         }
 
         .statTile {
           border-radius: 16px;
-          padding: 12px 12px 14px;
-          border: 2px solid rgba(15, 23, 42, 0.20);
-          background: rgba(255, 255, 255, 0.92);
-          display: grid;
-          gap: 8px;
-        }
-        .statTileTop {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-        }
-        .statTileLabel {
-          font-weight: 1000; /* ✅ bold metric titles: DOT, Labour, Food etc */
-          color: #0f172a;
-          letter-spacing: 0.2px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .statDivider {
-          height: 1px; /* ✅ separation line */
-          background: rgba(15, 23, 42, 0.10);
-        }
-        .statTileValue {
-          font-size: 20px;
-          font-weight: 650; /* value not bold */
-          color: #0f172a;
-          font-variant-numeric: tabular-nums;
-          line-height: 1.15;
+          padding: 12px 14px;
+          border: 2px solid rgba(15, 23, 42, 0.18); /* stronger outline */
+          background: rgba(255, 255, 255, 0.98);
         }
 
-        /* Status tint stays subtle */
+        /* Bigger value text for service tiles (readability) */
+        .metricSpan2 .tileValue {
+          font-size: 24px;
+        }
+
+        /* Subtle status tint */
         .status-good {
           background: rgba(220, 252, 231, 0.35);
         }
@@ -981,7 +980,7 @@ export default function DailyUpdateClient() {
           background: rgba(254, 226, 226, 0.35);
         }
         .status-na {
-          background: rgba(248, 250, 252, 0.85);
+          background: rgba(248, 250, 252, 0.95);
         }
 
         .dot {
@@ -1117,6 +1116,9 @@ export default function DailyUpdateClient() {
           }
           .metricSpan2 {
             grid-column: span 1;
+          }
+          .tilesGrid {
+            grid-template-columns: 1fr;
           }
         }
 
