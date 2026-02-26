@@ -2,7 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -97,8 +98,13 @@ const sum = (arr: number[]) => arr.reduce((acc, val) => acc + val, 0);
 
 export default function DailyUpdatePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isPrintMode = searchParams.get("print") === "1";
 
   const [targetDate, setTargetDate] = useState<string>("");
+  const [requestedDate, setRequestedDate] = useState<string>("");
+  const [fallbackDate, setFallbackDate] = useState<string | null>(null);
+  const [hasAnyInputData, setHasAnyInputData] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -114,13 +120,67 @@ export default function DailyUpdatePage() {
       try {
         setLoading(true);
         setError(null);
+        setFallbackDate(null);
+        setHasAnyInputData(true);
 
         const previousBusinessDay = getPreviousBusinessDayUk();
-        setTargetDate(previousBusinessDay);
+        setRequestedDate(previousBusinessDay);
+
+        const targetInputsRes = await supabase
+          .from("daily_update_store_inputs")
+          .select(
+            "date,store,missed_calls_wtd,gps_tracked_wtd,aof_wtd,target_load_time_mins,target_rack_time_mins,target_adt_mins,target_extremes_over40_pct,notes"
+          )
+          .eq("date", previousBusinessDay);
+
+        if (targetInputsRes.error) throw new Error(targetInputsRes.error.message);
+
+        const targetInputs = (targetInputsRes.data || []) as StoreInputRow[];
+        let effectiveDate = previousBusinessDay;
+        let inputsForDate = targetInputs;
+
+        if (!targetInputs.length) {
+          const latestInputDateRes = await supabase
+            .from("daily_update_store_inputs")
+            .select("date")
+            .order("date", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (latestInputDateRes.error) throw new Error(latestInputDateRes.error.message);
+
+          const latestDate = latestInputDateRes.data?.date?.trim();
+
+          if (!latestDate) {
+            setHasAnyInputData(false);
+            setTargetDate(previousBusinessDay);
+            setAreaMessage("");
+            setStoreInputs([]);
+            setTasks([]);
+            setServiceRows([]);
+            setCostRows([]);
+            setStores([]);
+            return;
+          }
+
+          effectiveDate = latestDate;
+          setFallbackDate(latestDate);
+
+          const fallbackInputsRes = await supabase
+            .from("daily_update_store_inputs")
+            .select(
+              "date,store,missed_calls_wtd,gps_tracked_wtd,aof_wtd,target_load_time_mins,target_rack_time_mins,target_adt_mins,target_extremes_over40_pct,notes"
+            )
+            .eq("date", latestDate);
+
+          if (fallbackInputsRes.error) throw new Error(fallbackInputsRes.error.message);
+          inputsForDate = (fallbackInputsRes.data || []) as StoreInputRow[];
+        }
+
+        setTargetDate(effectiveDate);
 
         const [
           areaMessageRes,
-          inputsRes,
           tasksRes,
           serviceRes,
           costRes,
@@ -131,27 +191,21 @@ export default function DailyUpdatePage() {
           supabase
             .from("daily_update_area_message")
             .select("date,message")
-            .eq("date", previousBusinessDay)
+            .eq("date", effectiveDate)
             .maybeSingle(),
-          supabase
-            .from("daily_update_store_inputs")
-            .select(
-              "date,store,missed_calls_wtd,gps_tracked_wtd,aof_wtd,target_load_time_mins,target_rack_time_mins,target_adt_mins,target_extremes_over40_pct,notes"
-            )
-            .eq("date", previousBusinessDay),
           supabase
             .from("daily_update_store_tasks")
             .select("id,date,store,task,is_complete,created_at,completed_at")
-            .eq("date", previousBusinessDay)
+            .eq("date", effectiveDate)
             .order("created_at", { ascending: true }),
           supabase
             .from("service_shifts")
             .select("shift_date,store,dot_pct,labour_pct,extreme_over_40,rnl_minutes")
-            .eq("shift_date", previousBusinessDay),
+            .eq("shift_date", effectiveDate),
           supabase
             .from("cost_control_entries")
             .select("shift_date,store,sales_gbp,labour_cost_gbp,ideal_food_cost_gbp,actual_food_cost_gbp")
-            .eq("shift_date", previousBusinessDay),
+            .eq("shift_date", effectiveDate),
           supabase.from("service_shifts").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
           supabase
             .from("cost_control_entries")
@@ -163,7 +217,6 @@ export default function DailyUpdatePage() {
 
         const firstError = [
           areaMessageRes.error,
-          inputsRes.error,
           tasksRes.error,
           serviceRes.error,
           costRes.error,
@@ -175,7 +228,7 @@ export default function DailyUpdatePage() {
         if (firstError) throw new Error(firstError.message);
 
         setAreaMessage(((areaMessageRes.data as AreaMessageRow | null)?.message ?? "").trim());
-        setStoreInputs((inputsRes.data || []) as StoreInputRow[]);
+        setStoreInputs(inputsForDate);
         setTasks((tasksRes.data || []) as TaskRow[]);
         setServiceRows((serviceRes.data || []) as ServiceShiftRow[]);
         setCostRows((costRes.data || []) as CostControlRow[]);
@@ -195,6 +248,12 @@ export default function DailyUpdatePage() {
 
     load();
   }, []);
+
+  useEffect(() => {
+    if (!isPrintMode || loading || error || !hasAnyInputData) return;
+    const timer = window.setTimeout(() => window.print(), 250);
+    return () => window.clearTimeout(timer);
+  }, [isPrintMode, loading, error, hasAnyInputData]);
 
   const inputsByStore = useMemo(() => {
     const m = new Map<string, StoreInputRow>();
@@ -261,8 +320,8 @@ export default function DailyUpdatePage() {
   };
 
   return (
-    <main className="wrap">
-      <div className="banner">
+    <main className={`wrap ${isPrintMode ? "print-mode" : ""}`}>
+      <div className="banner print-hidden">
         <img src="/mourneoids_forms_header_1600x400.png" alt="Mourne-oids Header Banner" />
       </div>
 
@@ -275,15 +334,26 @@ export default function DailyUpdatePage() {
           <button className="navbtn" type="button" onClick={() => router.push("/")}>
             🏠 Home
           </button>
-          <button className="navbtn solid" type="button" onClick={() => window.print()}>
+          <button
+            className="navbtn solid"
+            type="button"
+            onClick={() => window.open(`/dashboard/daily-update?print=1`, "_blank", "noopener,noreferrer")}
+          >
             📄 Export PDF
           </button>
         </div>
 
         <header className="header">
           <h1>Mourne-oids Daily Update</h1>
-          <p className="subtitle">Previous business day: {targetDate || "Loading…"}</p>
+          <p className="subtitle">Previous business day target: {requestedDate || "Loading…"}</p>
+          <p className="subtitle">Showing date: {targetDate || "Loading…"}</p>
         </header>
+
+        {!loading && !error && !!fallbackDate && (
+          <div className="alert info">
+            No Daily Update submitted for {requestedDate} — showing latest available: {fallbackDate}.
+          </div>
+        )}
 
         <section className="areaStrip">
           <div className="areaKpi">
@@ -322,7 +392,17 @@ export default function DailyUpdatePage() {
         {loading && <div className="alert">Loading daily update…</div>}
         {error && <div className="alert error">Error: {error}</div>}
 
-        {!loading && !error && (
+        {!loading && !error && !hasAnyInputData && (
+          <section className="emptyState">
+            <h2>No Daily Update data available</h2>
+            <p>There are no rows in daily_update_store_inputs yet. Submit a Daily Update to populate this page.</p>
+            <Link className="ctaLink" href="/admin/ticker?tab=daily_update">
+              Go to Admin Ticker (Daily Update input)
+            </Link>
+          </section>
+        )}
+
+        {!loading && !error && hasAnyInputData && (
           <section className="storesGrid">
             {storeCards.map((card) => (
               <article key={card.store} className="storeCard">
@@ -400,6 +480,7 @@ export default function DailyUpdatePage() {
                               type="checkbox"
                               checked={task.is_complete}
                               onChange={() => toggleTask(task)}
+                              disabled={isPrintMode}
                             />
                             <span className={task.is_complete ? "done" : ""}>{task.task}</span>
                           </label>
@@ -522,6 +603,39 @@ export default function DailyUpdatePage() {
           border-color: rgba(239, 68, 68, 0.25);
           color: #7f1d1d;
         }
+        .alert.info {
+          background: rgba(219, 234, 254, 0.7);
+          border-color: rgba(37, 99, 235, 0.3);
+          color: #1e3a8a;
+        }
+        .emptyState {
+          margin-top: 14px;
+          border-radius: 18px;
+          border: 1px solid rgba(0, 100, 145, 0.2);
+          padding: 22px;
+          background: #fff;
+          text-align: center;
+        }
+        .emptyState h2 {
+          margin: 0;
+          font-size: 20px;
+        }
+        .emptyState p {
+          margin: 10px 0 16px;
+          color: #475569;
+          font-weight: 600;
+        }
+        .ctaLink {
+          display: inline-block;
+          border-radius: 14px;
+          border: 2px solid #006491;
+          background: #006491;
+          color: #fff;
+          font-weight: 900;
+          font-size: 14px;
+          text-decoration: none;
+          padding: 10px 14px;
+        }
         .storesGrid {
           margin-top: 12px;
           display: grid;
@@ -595,6 +709,10 @@ export default function DailyUpdatePage() {
         }
 
         @media print {
+          @page {
+            size: A4 portrait;
+            margin: 12mm;
+          }
           .print-hidden,
           .banner {
             display: none !important;
@@ -611,7 +729,17 @@ export default function DailyUpdatePage() {
             background: #fff;
             padding: 0;
           }
-          .storesGrid { grid-template-columns: 1fr; }
+          .storesGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .storeName { font-size: 17px; }
+          .header h1 { font-size: 24px; }
+          .subtitle { font-size: 12px; }
+          .lineItem,
+          .notes p,
+          .placeholder,
+          .tasks label,
+          .message p {
+            font-size: 11px;
+          }
           .storeCard,
           .metricBlock,
           .notes,
@@ -620,8 +748,34 @@ export default function DailyUpdatePage() {
           .areaStrip,
           .message {
             break-inside: avoid;
+            page-break-inside: avoid;
             box-shadow: none;
           }
+        }
+
+        .print-mode .wrap,
+        .print-mode {
+          background: #fff;
+        }
+        .print-mode .shell {
+          width: min(210mm, 95vw);
+          background: #fff;
+          box-shadow: none;
+        }
+        .print-mode .storesGrid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .print-mode .storeCard,
+        .print-mode .metricBlock,
+        .print-mode .notes,
+        .print-mode .targets,
+        .print-mode .tasks,
+        .print-mode .areaStrip,
+        .print-mode .message {
+          break-inside: avoid;
+        }
+        .print-mode .tasks input {
+          display: none;
         }
       `}</style>
     </main>
