@@ -63,6 +63,14 @@ const INPUT_TARGETS = {
   gpsMin01: 0.95,
 };
 
+// Area targets = store targets (director view). Use consistent WTD targets.
+const AREA_TARGETS = {
+  labourMax01: 0.26,
+  foodVarAbsMax01: 0.003,
+  // "Additional hours" is contextual; treat <=0 as good, 0-1 ok, >1 bad (same logic as store)
+  addHoursOkMax: 1,
+};
+
 const toISODateUK = (date: Date) => {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/London",
@@ -107,11 +115,15 @@ const to01From100 = (v0to100: number | null) => {
   return v0to100 / 100;
 };
 
-const fmtPct2 = (v01: number | null) => (v01 == null ? "—" : `${(v01 * 100).toFixed(2)}%`);
-const fmtNum2 = (v: number | null) => (v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}`);
-const fmtMins2 = (v: number | null) => (v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}m`);
+const fmtPct2 = (v01: number | null) =>
+  v01 == null || !Number.isFinite(v01) ? "—" : `${(v01 * 100).toFixed(2)}%`;
+const fmtNum2 = (v: number | null) =>
+  v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}`;
+const fmtMins2 = (v: number | null) =>
+  v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}m`;
 
-const avg = (arr: number[]) => (arr.length ? arr.reduce((acc, val) => acc + val, 0) / arr.length : null);
+const avg = (arr: number[]) =>
+  arr.length ? arr.reduce((acc, val) => acc + val, 0) / arr.length : null;
 const sum = (arr: number[]) => arr.reduce((acc, val) => acc + val, 0);
 
 type Targets = {
@@ -123,10 +135,34 @@ type Targets = {
 };
 
 const DEFAULT_TARGETS: Record<string, Targets> = {
-  Downpatrick: { dotMin01: 0.82, labourMax01: 0.25, rnlMaxMins: 9, extremesMax01: 0.03, foodVarAbsMax01: 0.003 },
-  Kilkeel: { dotMin01: 0.78, labourMax01: 0.28, rnlMaxMins: 8, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
-  Newcastle: { dotMin01: 0.78, labourMax01: 0.25, rnlMaxMins: 9, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
-  Ballynahinch: { dotMin01: 0.78, labourMax01: 0.28, rnlMaxMins: 9, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
+  Downpatrick: {
+    dotMin01: 0.82,
+    labourMax01: 0.25,
+    rnlMaxMins: 9,
+    extremesMax01: 0.03,
+    foodVarAbsMax01: 0.003,
+  },
+  Kilkeel: {
+    dotMin01: 0.78,
+    labourMax01: 0.28,
+    rnlMaxMins: 8,
+    extremesMax01: 0.04,
+    foodVarAbsMax01: 0.003,
+  },
+  Newcastle: {
+    dotMin01: 0.78,
+    labourMax01: 0.25,
+    rnlMaxMins: 9,
+    extremesMax01: 0.04,
+    foodVarAbsMax01: 0.003,
+  },
+  Ballynahinch: {
+    dotMin01: 0.78,
+    labourMax01: 0.28,
+    rnlMaxMins: 9,
+    extremesMax01: 0.04,
+    foodVarAbsMax01: 0.003,
+  },
 };
 
 const getTargetsForStore = (store: string, inputs: StoreInputRow | null): Targets => {
@@ -236,11 +272,7 @@ export default function DailyUpdateClient() {
             .gte("shift_date", wkStart)
             .lte("shift_date", previousBusinessDay),
           supabase.from("service_shifts").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
-          supabase
-            .from("cost_control_entries")
-            .select("store,shift_date")
-            .order("shift_date", { ascending: false })
-            .limit(500),
+          supabase.from("cost_control_entries").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
           supabase.from("daily_update_store_inputs").select("store,date").order("date", { ascending: false }).limit(500),
         ]);
 
@@ -266,11 +298,7 @@ export default function DailyUpdateClient() {
         setOsaRows((osaRes.data || []) as OsaInternalRow[]);
 
         const storeSet = new Set<string>();
-        for (const row of [
-          ...(serviceStoresRes.data || []),
-          ...(costStoresRes.data || []),
-          ...(inputStoresRes.data || []),
-        ]) {
+        for (const row of [...(serviceStoresRes.data || []), ...(costStoresRes.data || []), ...(inputStoresRes.data || [])]) {
           const s = String((row as { store?: string }).store || "").trim();
           if (s) storeSet.add(s);
         }
@@ -324,9 +352,7 @@ export default function DailyUpdateClient() {
       const foodVarPct01 = sales > 0 ? (actualFoodCost - idealFoodCost) / sales : null;
 
       const dotPct01 = avg(service.map((row) => normalisePct01(row.dot_pct)).filter((v): v is number => v != null));
-      const extremesPct01 = avg(
-        service.map((row) => normalisePct01(row.extreme_over_40)).filter((v): v is number => v != null)
-      );
+      const extremesPct01 = avg(service.map((row) => normalisePct01(row.extreme_over_40)).filter((v): v is number => v != null));
       const rnlMinutes = avg(service.map((row) => row.rnl_minutes).filter((v): v is number => v != null));
       const additionalHours = sum(service.map((row) => Number(row.additional_hours || 0)));
 
@@ -368,11 +394,7 @@ export default function DailyUpdateClient() {
     const willComplete = !task.is_complete;
     const completedAt = willComplete ? new Date().toISOString() : null;
 
-    setTasks((prev) =>
-      prev.map((row) =>
-        row.id === task.id ? { ...row, is_complete: willComplete, completed_at: completedAt } : row
-      )
-    );
+    setTasks((prev) => prev.map((row) => (row.id === task.id ? { ...row, is_complete: willComplete, completed_at: completedAt } : row)));
 
     const { error: updateError } = await supabase
       .from("daily_update_store_tasks")
@@ -386,20 +408,26 @@ export default function DailyUpdateClient() {
   };
 
   const StatusDot = ({ status }: { status: MetricStatus }) => (
-    <span className={`dot dot-${status}`} aria-hidden="true" />
+    <span className={`dot dot-${status}`} aria-hidden="true" title={status === "na" ? "No data" : status} />
   );
 
-  const ValueBubble = (props: { status?: MetricStatus; children: React.ReactNode }) => {
-    const s = props.status || "na";
-    return <span className={`valueBubble valueBubble-${s}`}>{props.children}</span>;
-  };
+  const ValuePill = (props: { status: MetricStatus; children: React.ReactNode }) => (
+    <span className={`valuePill valuePill-${props.status}`}>{props.children}</span>
+  );
 
   const Pill = (props: { children: React.ReactNode; tone?: "slate" | "blue" | "purple" | "red" | "amber" | "green" }) => {
     const tone = props.tone || "slate";
     return <span className={`pill pill-${tone}`}>{props.children}</span>;
   };
 
-  const KpiTile = (props: { icon?: string; label: string; value: string; sub?: string }) => {
+  const toneFromStatus = (s: MetricStatus): "green" | "amber" | "red" | "slate" => {
+    if (s === "good") return "green";
+    if (s === "ok") return "amber";
+    if (s === "bad") return "red";
+    return "slate";
+  };
+
+  const KpiTile = (props: { icon?: string; label: string; value: string; sub?: string; status: MetricStatus }) => {
     return (
       <div className="kpiTile">
         <div className="kpiTop">
@@ -407,10 +435,13 @@ export default function DailyUpdateClient() {
             {props.icon ? <span className="kpiIcon" aria-hidden="true">{props.icon}</span> : null}
             <span className="kpiLabel">{props.label}</span>
           </div>
+          <StatusDot status={props.status} />
         </div>
+
         <div className="kpiValueRow">
-          <ValueBubble status="na">{props.value}</ValueBubble>
+          <ValuePill status={props.status}>{props.value}</ValuePill>
         </div>
+
         {props.sub ? <div className="kpiSub">{props.sub}</div> : null}
       </div>
     );
@@ -419,12 +450,14 @@ export default function DailyUpdateClient() {
   const MiniMetric = (props: { label: string; value: string; status: MetricStatus; hint?: string }) => (
     <div className="miniMetric">
       <div className="miniTop">
-        <span className="miniLabel" title={props.label}>{props.label}</span>
+        <span className="miniLabel" title={props.label}>
+          {props.label}
+        </span>
         <StatusDot status={props.status} />
       </div>
 
       <div className="miniValueRow">
-        <ValueBubble status={props.status}>{props.value}</ValueBubble>
+        <ValuePill status={props.status}>{props.value}</ValuePill>
       </div>
 
       {props.hint ? <div className="miniHint">{props.hint}</div> : null}
@@ -437,6 +470,20 @@ export default function DailyUpdateClient() {
       <strong className="kvValue">{props.value}</strong>
     </div>
   );
+
+  // Area statuses
+  const areaLabourStatus = statusLowerBetter(areaRollup.labourPct01, AREA_TARGETS.labourMax01);
+  const areaFoodStatus = statusAbsLowerBetter(areaRollup.foodVarPct01, AREA_TARGETS.foodVarAbsMax01);
+  const areaAddHoursStatus: MetricStatus =
+    areaRollup.additionalHours == null || !Number.isFinite(areaRollup.additionalHours)
+      ? "na"
+      : areaRollup.additionalHours <= 0
+        ? "good"
+        : areaRollup.additionalHours <= AREA_TARGETS.addHoursOkMax
+          ? "ok"
+          : "bad";
+  const areaOsaStatus: MetricStatus =
+    osaCounts.total <= 0 ? "good" : osaCounts.total <= 1 ? "ok" : "bad";
 
   return (
     <main className="page">
@@ -484,15 +531,39 @@ export default function DailyUpdateClient() {
           <div className="sectionHead">
             <h2>Area snapshot</h2>
             <div className="chipRow">
-              <Pill tone="purple">OSA WTD: {String(osaCounts.total)}</Pill>
+              <Pill tone={toneFromStatus(areaOsaStatus)}>OSA WTD: {String(osaCounts.total)}</Pill>
             </div>
           </div>
 
           <div className="kpiGrid">
-            <KpiTile icon="🧑‍🤝‍🧑" label="Labour" value={fmtPct2(areaRollup.labourPct01)} sub="Area labour % (WTD)" />
-            <KpiTile icon="🍕" label="Food" value={fmtPct2(areaRollup.foodVarPct01)} sub="Variance vs ideal (WTD)" />
-            <KpiTile icon="⏱️" label="Additional hours" value={fmtNum2(areaRollup.additionalHours)} sub="Actual vs rota (WTD)" />
-            <KpiTile icon="✅" label="OSA items" value={String(osaCounts.total)} sub="Internal OSA logged (WTD)" />
+            <KpiTile
+              icon="🧑‍🤝‍🧑"
+              label="Labour"
+              value={fmtPct2(areaRollup.labourPct01)}
+              sub={`Target ≤ ${(AREA_TARGETS.labourMax01 * 100).toFixed(0)}%`}
+              status={areaLabourStatus}
+            />
+            <KpiTile
+              icon="🍕"
+              label="Food variance"
+              value={fmtPct2(areaRollup.foodVarPct01)}
+              sub={`Abs ≤ ${(AREA_TARGETS.foodVarAbsMax01 * 100).toFixed(2)}%`}
+              status={areaFoodStatus}
+            />
+            <KpiTile
+              icon="⏱️"
+              label="Additional hours"
+              value={fmtNum2(areaRollup.additionalHours)}
+              sub="Actual vs rota (WTD)"
+              status={areaAddHoursStatus}
+            />
+            <KpiTile
+              icon="✅"
+              label="OSA items"
+              value={String(osaCounts.total)}
+              sub="Internal OSA logged (WTD)"
+              status={areaOsaStatus}
+            />
           </div>
 
           <div className="osaBreakdown">
@@ -500,15 +571,15 @@ export default function DailyUpdateClient() {
             <div className="osaChips">
               {stores.map((store) => {
                 const v = osaCounts.byStore.get(store) || 0;
-                const tone = v > 0 ? "purple" : "slate";
+                const s: MetricStatus = v <= 0 ? "good" : v <= 1 ? "ok" : "bad";
                 return (
-                  <span key={store} className={`osaChip osaChip-${tone}`}>
+                  <span key={store} className="osaChip">
                     <span className="osaChipName">{store}</span>
-                    <span className="osaChipVal">{v}</span>
+                    <ValuePill status={s}>{v}</ValuePill>
                   </span>
                 );
               })}
-              {!stores.length && <span className="osaChip osaChip-slate">No stores loaded</span>}
+              {!stores.length && <span className="osaChip">No stores loaded</span>}
             </div>
           </div>
         </section>
@@ -530,7 +601,7 @@ export default function DailyUpdateClient() {
           <section className="section">
             <div className="sectionHead">
               <h2>Stores</h2>
-              <span className="mutedSmall">2-up layout. Screenshot friendly.</span>
+              <span className="mutedSmall">2-up layout. Screenshot friendly. Traffic-light value bubbles.</span>
             </div>
 
             <div className="storeGrid">
@@ -546,22 +617,16 @@ export default function DailyUpdateClient() {
                 const aofStatus = statusHigherBetter(card.daily.aof01, INPUT_TARGETS.aofMin01);
 
                 const addHoursStatus: MetricStatus =
-                  card.additionalHours == null
+                  card.additionalHours == null || !Number.isFinite(card.additionalHours)
                     ? "na"
-                    : !Number.isFinite(card.additionalHours)
-                      ? "na"
-                      : card.additionalHours <= 0
-                        ? "good"
-                        : card.additionalHours <= 1
-                          ? "ok"
-                          : "bad";
+                    : card.additionalHours <= 0
+                      ? "good"
+                      : card.additionalHours <= 1
+                        ? "ok"
+                        : "bad";
 
-                const chipToneFromStatus = (s: MetricStatus): any => {
-                  if (s === "good") return "green";
-                  if (s === "ok") return "amber";
-                  if (s === "bad") return "red";
-                  return "slate";
-                };
+                const osaStatus: MetricStatus =
+                  card.osaWtdCount <= 0 ? "good" : card.osaWtdCount <= 1 ? "ok" : "bad";
 
                 return (
                   <article key={card.store} className="storeCard">
@@ -569,27 +634,54 @@ export default function DailyUpdateClient() {
                       <div className="storeTitle">
                         <h3>{card.store}</h3>
                         <div className="storeChips">
-                          <Pill tone="purple">OSA WTD: {card.osaWtdCount}</Pill>
-                          <Pill tone={chipToneFromStatus(dotStatus)}>DOT {fmtPct2(card.service.dotPct01)}</Pill>
-                          <Pill tone={chipToneFromStatus(labourStatus)}>Lab {fmtPct2(card.cost.labourPct01)}</Pill>
-                          <Pill tone={chipToneFromStatus(foodVarStatus)}>Food {fmtPct2(card.cost.foodVarPct01)}</Pill>
+                          <Pill tone={toneFromStatus(osaStatus)}>OSA WTD: {card.osaWtdCount}</Pill>
                         </div>
                       </div>
                     </div>
 
                     <div className="metricGrid">
-                      <MiniMetric label="DOT" value={fmtPct2(card.service.dotPct01)} status={dotStatus} hint={`Target ≥ ${(card.targets.dotMin01 * 100).toFixed(0)}%`} />
-                      <MiniMetric label="Labour" value={fmtPct2(card.cost.labourPct01)} status={labourStatus} hint={`Target ≤ ${(card.targets.labourMax01 * 100).toFixed(0)}%`} />
-                      <MiniMetric label="R&L" value={fmtMins2(card.service.rnlMinutes)} status={rnlStatus} hint={`Target ≤ ${card.targets.rnlMaxMins.toFixed(0)}m`} />
-                      <MiniMetric label="Extremes >40" value={fmtPct2(card.service.extremesPct01)} status={extremesStatus} hint={`Target ≤ ${(card.targets.extremesMax01 * 100).toFixed(0)}%`} />
-                      <MiniMetric label="Add. hours" value={fmtNum2(card.additionalHours)} status={addHoursStatus} hint="Actual vs rota" />
-                      <MiniMetric label="Food variance" value={fmtPct2(card.cost.foodVarPct01)} status={foodVarStatus} hint={`Abs ≤ ${(card.targets.foodVarAbsMax01 * 100).toFixed(2)}%`} />
+                      <MiniMetric
+                        label="DOT"
+                        value={fmtPct2(card.service.dotPct01)}
+                        status={dotStatus}
+                        hint={`Target ≥ ${(card.targets.dotMin01 * 100).toFixed(0)}%`}
+                      />
+                      <MiniMetric
+                        label="Labour"
+                        value={fmtPct2(card.cost.labourPct01)}
+                        status={labourStatus}
+                        hint={`Target ≤ ${(card.targets.labourMax01 * 100).toFixed(0)}%`}
+                      />
+                      <MiniMetric
+                        label="R&L"
+                        value={fmtMins2(card.service.rnlMinutes)}
+                        status={rnlStatus}
+                        hint={`Target ≤ ${card.targets.rnlMaxMins.toFixed(0)}m`}
+                      />
+                      <MiniMetric
+                        label="Extremes >40"
+                        value={fmtPct2(card.service.extremesPct01)}
+                        status={extremesStatus}
+                        hint={`Target ≤ ${(card.targets.extremesMax01 * 100).toFixed(0)}%`}
+                      />
+                      <MiniMetric
+                        label="Add. hours"
+                        value={fmtNum2(card.additionalHours)}
+                        status={addHoursStatus}
+                        hint="Actual vs rota"
+                      />
+                      <MiniMetric
+                        label="Food variance"
+                        value={fmtPct2(card.cost.foodVarPct01)}
+                        status={foodVarStatus}
+                        hint={`Abs ≤ ${(card.targets.foodVarAbsMax01 * 100).toFixed(2)}%`}
+                      />
                     </div>
 
                     <div className="metricGrid metricGridSecondary">
-                      <MiniMetric label="Missed calls" value={fmtPct2(card.daily.missedCalls01)} status={missedStatus} hint="Target ≤ 6%" />
-                      <MiniMetric label="GPS tracked" value={fmtPct2(card.daily.gps01)} status={gpsStatus} hint="Target ≥ 95%" />
-                      <MiniMetric label="AOF" value={fmtPct2(card.daily.aof01)} status={aofStatus} hint="Target ≥ 62%" />
+                      <MiniMetric label="Missed calls" value={fmtPct2(card.daily.missedCalls01)} status={missedStatus} hint="≤ 6%" />
+                      <MiniMetric label="GPS tracked" value={fmtPct2(card.daily.gps01)} status={gpsStatus} hint="≥ 95%" />
+                      <MiniMetric label="AOF" value={fmtPct2(card.daily.aof01)} status={aofStatus} hint="≥ 62%" />
 
                       <div className="noteCard">
                         <div className="noteTop">
@@ -650,9 +742,7 @@ export default function DailyUpdateClient() {
           </section>
         ) : null}
 
-        <footer className="footer">
-          © {new Date().getFullYear()} Mourne-oids | Domino’s Pizza | Racz Group
-        </footer>
+        <footer className="footer">© {new Date().getFullYear()} Mourne-oids | Domino’s Pizza | Racz Group</footer>
       </div>
 
       <style jsx>{`
@@ -665,28 +755,11 @@ export default function DailyUpdateClient() {
           --border: rgba(15, 23, 42, 0.10);
           --shadow: 0 12px 28px rgba(2, 6, 23, 0.08);
           --radius: 18px;
-
-          --gBg: rgba(34, 197, 94, 0.16);
-          --gBd: rgba(34, 197, 94, 0.40);
-          --gTx: rgba(20, 83, 45, 0.98);
-
-          --aBg: rgba(245, 158, 11, 0.16);
-          --aBd: rgba(245, 158, 11, 0.42);
-          --aTx: rgba(120, 53, 15, 0.98);
-
-          --rBg: rgba(239, 68, 68, 0.14);
-          --rBd: rgba(239, 68, 68, 0.40);
-          --rTx: rgba(127, 29, 29, 0.98);
-
-          --nBg: rgba(148, 163, 184, 0.16);
-          --nBd: rgba(148, 163, 184, 0.45);
-          --nTx: rgba(30, 41, 59, 0.95);
         }
 
         .page {
           min-height: 100dvh;
-          background:
-            radial-gradient(900px 420px at 50% 0%, rgba(0, 100, 145, 0.10), transparent 60%),
+          background: radial-gradient(900px 420px at 50% 0%, rgba(0, 100, 145, 0.10), transparent 60%),
             linear-gradient(180deg, var(--bg1), var(--bg0));
           color: var(--ink);
           padding-bottom: 28px;
@@ -717,7 +790,9 @@ export default function DailyUpdateClient() {
           gap: 10px;
           align-items: center;
         }
-        .spacer { flex: 1; }
+        .spacer {
+          flex: 1;
+        }
 
         .btn {
           border-radius: 14px;
@@ -730,7 +805,9 @@ export default function DailyUpdateClient() {
           cursor: pointer;
           box-shadow: 0 10px 20px rgba(2, 6, 23, 0.06);
         }
-        .btn:hover { transform: translateY(-1px); }
+        .btn:hover {
+          transform: translateY(-1px);
+        }
         .btnSolid {
           border-color: rgba(0, 100, 145, 0.20);
           background: linear-gradient(180deg, rgba(0, 100, 145, 0.95), rgba(0, 100, 145, 0.85));
@@ -748,12 +825,31 @@ export default function DailyUpdateClient() {
           justify-content: space-between;
           gap: 12px;
         }
-        .titleRow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-        .header h1 { margin: 0; font-size: clamp(1.4rem, 2vw, 1.9rem); letter-spacing: 0.2px; }
-        .metaRow { margin-top: 6px; display: flex; gap: 10px; flex-wrap: wrap; }
-        .metaText { color: rgba(15, 23, 42, 0.72); font-weight: 800; font-size: 13px; }
-        .metaText strong { color: rgba(15, 23, 42, 0.92); }
-        .headerRight { display: flex; align-items: center; justify-content: flex-end; }
+        .titleRow {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .header h1 {
+          margin: 0;
+          font-size: clamp(1.4rem, 2vw, 1.9rem);
+          letter-spacing: 0.2px;
+        }
+        .metaRow {
+          margin-top: 6px;
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .metaText {
+          color: rgba(15, 23, 42, 0.72);
+          font-weight: 800;
+          font-size: 13px;
+        }
+        .metaText strong {
+          color: rgba(15, 23, 42, 0.92);
+        }
 
         .pill {
           display: inline-flex;
@@ -777,9 +873,21 @@ export default function DailyUpdateClient() {
           background: rgba(124, 58, 237, 0.10);
           color: rgba(76, 29, 149, 0.95);
         }
-        .pill-green { border-color: rgba(34, 197, 94, 0.22); background: rgba(34, 197, 94, 0.12); color: rgba(20, 83, 45, 0.95); }
-        .pill-amber { border-color: rgba(245, 158, 11, 0.25); background: rgba(245, 158, 11, 0.12); color: rgba(120, 53, 15, 0.95); }
-        .pill-red { border-color: rgba(239, 68, 68, 0.24); background: rgba(239, 68, 68, 0.12); color: rgba(127, 29, 29, 0.95); }
+        .pill-green {
+          border-color: rgba(34, 197, 94, 0.22);
+          background: rgba(34, 197, 94, 0.12);
+          color: rgba(20, 83, 45, 0.95);
+        }
+        .pill-amber {
+          border-color: rgba(245, 158, 11, 0.25);
+          background: rgba(245, 158, 11, 0.12);
+          color: rgba(120, 53, 15, 0.95);
+        }
+        .pill-red {
+          border-color: rgba(239, 68, 68, 0.24);
+          background: rgba(239, 68, 68, 0.12);
+          color: rgba(127, 29, 29, 0.95);
+        }
 
         .section {
           background: var(--card);
@@ -805,8 +913,51 @@ export default function DailyUpdateClient() {
           text-transform: uppercase;
           color: rgba(15, 23, 42, 0.78);
         }
-        .chipRow { display: flex; gap: 8px; flex-wrap: wrap; }
-        .mutedSmall { color: rgba(100, 116, 139, 0.98); font-weight: 800; font-size: 12px; }
+        .chipRow {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .mutedSmall {
+          color: rgba(100, 116, 139, 0.98);
+          font-weight: 800;
+          font-size: 12px;
+        }
+
+        /* Value bubbles (traffic light) */
+        .valuePill {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 7px 12px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 23, 42, 0.12);
+          font-weight: 900;
+          font-variant-numeric: tabular-nums;
+          letter-spacing: -0.1px;
+          line-height: 1;
+          white-space: nowrap;
+        }
+        .valuePill-good {
+          background: rgba(34, 197, 94, 0.14);
+          border-color: rgba(34, 197, 94, 0.32);
+          color: rgba(20, 83, 45, 0.98);
+        }
+        .valuePill-ok {
+          background: rgba(245, 158, 11, 0.14);
+          border-color: rgba(245, 158, 11, 0.32);
+          color: rgba(120, 53, 15, 0.98);
+        }
+        .valuePill-bad {
+          background: rgba(239, 68, 68, 0.14);
+          border-color: rgba(239, 68, 68, 0.32);
+          color: rgba(127, 29, 29, 0.98);
+        }
+        .valuePill-na {
+          background: rgba(148, 163, 184, 0.16);
+          border-color: rgba(148, 163, 184, 0.30);
+          color: rgba(51, 65, 85, 0.95);
+        }
 
         .kpiGrid {
           display: grid;
@@ -819,45 +970,43 @@ export default function DailyUpdateClient() {
           border-radius: 16px;
           padding: 12px;
         }
-        .kpiTop { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-        .kpiLabelRow { display: flex; align-items: center; gap: 8px; }
-        .kpiIcon { font-size: 14px; }
+        .kpiTop {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+        .kpiLabelRow {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .kpiIcon {
+          font-size: 14px;
+        }
+        /* ✅ Make metric name bold (not the figure) */
         .kpiLabel {
           font-size: 11px;
           font-weight: 1100;
           letter-spacing: 0.55px;
           text-transform: uppercase;
-          color: rgba(15, 23, 42, 0.56);
+          color: rgba(15, 23, 42, 0.70);
         }
-        .kpiValueRow { margin-top: 10px; }
+        .kpiValueRow {
+          margin-top: 10px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .kpiValueRow .valuePill {
+          font-size: 18px;
+        }
         .kpiSub {
           margin-top: 8px;
           font-size: 12px;
           font-weight: 800;
           color: rgba(100, 116, 139, 0.98);
-          line-height: 1.25;
         }
-
-        .valueBubble {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          padding: 8px 12px;
-          border-radius: 999px;
-          border: 1px solid var(--nBd);
-          background: var(--nBg);
-          color: var(--nTx);
-          font-weight: 1200;
-          font-size: 20px;
-          line-height: 1;
-          font-variant-numeric: tabular-nums;
-          letter-spacing: -0.2px;
-          white-space: nowrap;
-        }
-        .valueBubble-good { border-color: var(--gBd); background: var(--gBg); color: var(--gTx); }
-        .valueBubble-ok { border-color: var(--aBd); background: var(--aBg); color: var(--aTx); }
-        .valueBubble-bad { border-color: var(--rBd); background: var(--rBg); color: var(--rTx); }
-        .valueBubble-na { border-color: var(--nBd); background: var(--nBg); color: var(--nTx); }
 
         .osaBreakdown {
           margin-top: 12px;
@@ -872,7 +1021,11 @@ export default function DailyUpdateClient() {
           color: rgba(15, 23, 42, 0.62);
           margin-bottom: 8px;
         }
-        .osaChips { display: flex; flex-wrap: wrap; gap: 8px; }
+        .osaChips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
         .osaChip {
           display: inline-flex;
           align-items: center;
@@ -885,15 +1038,26 @@ export default function DailyUpdateClient() {
           font-weight: 950;
           color: rgba(15, 23, 42, 0.78);
         }
-        .osaChip-purple {
-          border-color: rgba(124, 58, 237, 0.18);
-          background: rgba(124, 58, 237, 0.10);
-          color: rgba(76, 29, 149, 0.95);
+        .osaChipName {
+          opacity: 0.92;
+          font-weight: 950;
         }
-        .osaChipVal { font-variant-numeric: tabular-nums; padding-left: 8px; border-left: 1px solid rgba(15, 23, 42, 0.10); }
+        .osaChip .valuePill {
+          padding: 5px 10px;
+          font-size: 12px;
+        }
 
-        .callout { background: rgba(248, 250, 252, 0.92); border-color: rgba(15, 23, 42, 0.10); }
-        .calloutText { margin: 0; white-space: pre-wrap; font-weight: 900; color: rgba(15, 23, 42, 0.82); line-height: 1.5; }
+        .callout {
+          background: rgba(248, 250, 252, 0.92);
+          border-color: rgba(15, 23, 42, 0.10);
+        }
+        .calloutText {
+          margin: 0;
+          white-space: pre-wrap;
+          font-weight: 850;
+          color: rgba(15, 23, 42, 0.78);
+          line-height: 1.45;
+        }
 
         .state {
           background: var(--card);
@@ -910,6 +1074,7 @@ export default function DailyUpdateClient() {
           color: rgba(127, 29, 29, 0.95);
         }
 
+        /* 2 stores per row */
         .storeGrid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -925,11 +1090,27 @@ export default function DailyUpdateClient() {
           padding: 14px;
         }
 
-        .storeHead { margin-bottom: 12px; }
-        .storeTitle h3 { margin: 0; font-size: 18px; font-weight: 1100; letter-spacing: -0.1px; }
-        .storeChips { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
-        .storeChips .pill { font-size: 11px; padding: 5px 9px; }
+        .storeHead {
+          margin-bottom: 12px;
+        }
+        .storeTitle h3 {
+          margin: 0;
+          font-size: 18px;
+          font-weight: 1000;
+          letter-spacing: -0.1px;
+        }
+        .storeChips {
+          margin-top: 8px;
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .storeChips .pill {
+          font-size: 11px;
+          padding: 5px 9px;
+        }
 
+        /* Metrics rebuilt: label bold + value bubble */
         .metricGrid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -945,24 +1126,41 @@ export default function DailyUpdateClient() {
           border: 1px solid rgba(15, 23, 42, 0.10);
           background: rgba(248, 250, 252, 0.70);
           padding: 12px;
-          min-height: 118px;
+          min-height: 98px;
         }
-        .miniTop { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-
+        .miniTop {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+        /* ✅ Metric NAME bold */
         .miniLabel {
           font-size: 11px;
-          font-weight: 1150;
+          font-weight: 1100;
           letter-spacing: 0.55px;
           text-transform: uppercase;
-          color: rgba(15, 23, 42, 0.56);
+          color: rgba(15, 23, 42, 0.70);
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
           max-width: 100%;
         }
-
-        .miniValueRow { margin-top: 10px; }
-        .miniHint { margin-top: 10px; font-size: 12px; font-weight: 850; color: rgba(100, 116, 139, 0.98); line-height: 1.25; }
+        .miniValueRow {
+          margin-top: 10px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .miniValueRow .valuePill {
+          font-size: 18px;
+        }
+        .miniHint {
+          margin-top: 8px;
+          font-size: 12px;
+          font-weight: 800;
+          color: rgba(100, 116, 139, 0.98);
+        }
 
         .noteCard {
           grid-column: 1 / -1;
@@ -971,27 +1169,66 @@ export default function DailyUpdateClient() {
           background: rgba(255, 255, 255, 0.92);
           padding: 12px;
         }
-        .noteTop { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+        .noteTop {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 10px;
+        }
         .noteLabel {
           font-size: 11px;
           font-weight: 1100;
           letter-spacing: 0.55px;
           text-transform: uppercase;
-          color: rgba(15, 23, 42, 0.56);
+          color: rgba(15, 23, 42, 0.70);
         }
-        .noteHint { font-size: 12px; font-weight: 850; color: rgba(100, 116, 139, 0.98); }
-        .noteText { margin-top: 10px; font-size: 13px; font-weight: 900; line-height: 1.35; white-space: pre-wrap; color: rgba(15, 23, 42, 0.82); }
+        .noteHint {
+          font-size: 12px;
+          font-weight: 850;
+          color: rgba(100, 116, 139, 0.98);
+        }
+        .noteText {
+          margin-top: 10px;
+          font-size: 13px;
+          font-weight: 850;
+          line-height: 1.35;
+          white-space: pre-wrap;
+          color: rgba(15, 23, 42, 0.80);
+        }
 
-        .panelStack { margin-top: 12px; display: grid; gap: 10px; }
+        .panelStack {
+          margin-top: 12px;
+          display: grid;
+          gap: 10px;
+        }
         .panel {
           border-radius: 16px;
           border: 1px solid rgba(15, 23, 42, 0.10);
           background: rgba(255, 255, 255, 0.92);
           padding: 12px;
         }
-        .panelHead { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
-        .panelTitle { font-size: 12px; font-weight: 1100; letter-spacing: 0.45px; text-transform: uppercase; color: rgba(15, 23, 42, 0.78); }
-        .panelHint { font-size: 12px; font-weight: 900; color: rgba(100, 116, 139, 0.98); }
+
+        /* ✅ Put "Service losing targets" and "Tasks" on their own lines (no bunched headings) */
+        .panelHead {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 4px;
+          margin-bottom: 10px;
+        }
+        .panelTitle {
+          font-size: 12px;
+          font-weight: 1100;
+          letter-spacing: 0.45px;
+          text-transform: uppercase;
+          color: rgba(15, 23, 42, 0.78);
+          line-height: 1.2;
+        }
+        .panelHint {
+          font-size: 12px;
+          font-weight: 850;
+          color: rgba(100, 116, 139, 0.98);
+        }
 
         .kvGrid {
           display: grid;
@@ -1008,37 +1245,124 @@ export default function DailyUpdateClient() {
           background: rgba(248, 250, 252, 0.85);
           padding: 9px 10px;
         }
-        .kvLabel { font-size: 11px; font-weight: 1100; letter-spacing: 0.5px; text-transform: uppercase; color: rgba(15, 23, 42, 0.56); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .kvValue { font-variant-numeric: tabular-nums; font-weight: 1100; color: rgba(15, 23, 42, 0.92); white-space: nowrap; }
+        .kvLabel {
+          font-size: 12px;
+          font-weight: 900;
+          color: rgba(15, 23, 42, 0.72);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .kvValue {
+          font-variant-numeric: tabular-nums;
+          font-weight: 1000;
+          color: rgba(15, 23, 42, 0.92);
+          white-space: nowrap;
+        }
 
-        .taskList { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
-        .task { border-radius: 14px; border: 1px solid rgba(15, 23, 42, 0.08); background: rgba(248, 250, 252, 0.85); padding: 8px 10px; }
-        .taskRow { display: flex; align-items: flex-start; gap: 10px; font-weight: 900; color: rgba(15, 23, 42, 0.82); line-height: 1.25; }
-        .taskRow input { margin-top: 2px; }
-        .taskDone { text-decoration: line-through; color: rgba(100, 116, 139, 0.95); }
+        .taskList {
+          margin: 0;
+          padding: 0;
+          list-style: none;
+          display: grid;
+          gap: 10px;
+        }
+        .task {
+          border-radius: 14px;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          background: rgba(248, 250, 252, 0.85);
+          padding: 8px 10px;
+        }
+        .taskRow {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          font-weight: 850;
+          color: rgba(15, 23, 42, 0.82);
+          line-height: 1.25;
+        }
+        .taskRow input {
+          margin-top: 2px;
+        }
+        .taskDone {
+          text-decoration: line-through;
+          color: rgba(100, 116, 139, 0.95);
+        }
 
-        .dot { width: 10px; height: 10px; border-radius: 999px; border: 1px solid rgba(15, 23, 42, 0.12); display: inline-block; flex-shrink: 0; }
-        .dot-good { background: rgba(34, 197, 94, 0.85); border-color: rgba(34, 197, 94, 0.40); }
-        .dot-ok { background: rgba(245, 158, 11, 0.85); border-color: rgba(245, 158, 11, 0.40); }
-        .dot-bad { background: rgba(239, 68, 68, 0.85); border-color: rgba(239, 68, 68, 0.40); }
-        .dot-na { background: rgba(148, 163, 184, 0.75); border-color: rgba(148, 163, 184, 0.40); }
+        .dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 23, 42, 0.12);
+          display: inline-block;
+          flex-shrink: 0;
+        }
+        .dot-good {
+          background: rgba(34, 197, 94, 0.85);
+          border-color: rgba(34, 197, 94, 0.40);
+        }
+        .dot-ok {
+          background: rgba(245, 158, 11, 0.85);
+          border-color: rgba(245, 158, 11, 0.40);
+        }
+        .dot-bad {
+          background: rgba(239, 68, 68, 0.85);
+          border-color: rgba(239, 68, 68, 0.40);
+        }
+        .dot-na {
+          background: rgba(148, 163, 184, 0.75);
+          border-color: rgba(148, 163, 184, 0.40);
+        }
 
-        .footer { text-align: center; color: rgba(100, 116, 139, 0.9); font-weight: 800; font-size: 12px; padding: 6px 0 2px; }
+        .footer {
+          text-align: center;
+          color: rgba(100, 116, 139, 0.9);
+          font-weight: 800;
+          font-size: 12px;
+          padding: 6px 0 2px;
+        }
 
         @media (max-width: 980px) {
-          .kpiGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-          .storeGrid { grid-template-columns: 1fr; }
-          .metricGridSecondary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-          .kvGrid { grid-template-columns: 1fr; }
-          .header { flex-direction: column; align-items: flex-start; }
-          .headerRight { justify-content: flex-start; }
+          .kpiGrid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .storeGrid {
+            grid-template-columns: 1fr;
+          }
+          .metricGridSecondary {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .kvGrid {
+            grid-template-columns: 1fr;
+          }
+          .header {
+            flex-direction: column;
+            align-items: flex-start;
+          }
         }
 
         @media print {
-          .print-hidden, .banner { display: none !important; }
-          .page { background: #fff; padding: 0; }
-          .container { width: 100%; margin: 0; }
-          .section, .storeCard, .kpiTile, .miniMetric, .panel, .noteCard { box-shadow: none !important; break-inside: avoid; }
+          .print-hidden,
+          .banner {
+            display: none !important;
+          }
+          .page {
+            background: #fff;
+            padding: 0;
+          }
+          .container {
+            width: 100%;
+            margin: 0;
+          }
+          .section,
+          .storeCard,
+          .kpiTile,
+          .miniMetric,
+          .panel,
+          .noteCard {
+            box-shadow: none !important;
+            break-inside: avoid;
+          }
         }
       `}</style>
     </main>
