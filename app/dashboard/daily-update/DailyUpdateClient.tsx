@@ -427,7 +427,7 @@ export default function DailyUpdateClient() {
     return "slate";
   };
 
-  const KpiTile = (props: { icon?: string; label: string; value: string; sub?: string; status: MetricStatus }) => {
+  const KpiTile = (props: { icon?: string; label: string; value: string; sub?: string; status?: MetricStatus }) => {
     return (
       <div className="kpiTile">
         <div className="kpiTop">
@@ -435,11 +435,11 @@ export default function DailyUpdateClient() {
             {props.icon ? <span className="kpiIcon" aria-hidden="true">{props.icon}</span> : null}
             <span className="kpiLabel">{props.label}</span>
           </div>
-          <StatusDot status={props.status} />
+          {props.status ? <StatusDot status={props.status} /> : null}
         </div>
 
         <div className="kpiValueRow">
-          <ValuePill status={props.status}>{props.value}</ValuePill>
+          {props.status ? <ValuePill status={props.status}>{props.value}</ValuePill> : <span className="kpiValuePlain">{props.value}</span>}
         </div>
 
         {props.sub ? <div className="kpiSub">{props.sub}</div> : null}
@@ -557,7 +557,13 @@ export default function DailyUpdateClient() {
               sub="Actual vs rota (WTD)"
               status={areaAddHoursStatus}
             />
-            
+            <KpiTile
+              icon="✅"
+              label="OSA items"
+              value={String(osaCounts.total)}
+              sub="Internal OSA logged (WTD)"
+              status={areaOsaStatus}
+            />
           </div>
 
           <div className="osaBreakdown">
@@ -628,7 +634,7 @@ export default function DailyUpdateClient() {
                       <div className="storeTitle">
                         <h3>{card.store}</h3>
                         <div className="storeChips">
-                          <Pill tone={toneFromStatus(osaStatus)}>OSA WTD: {card.osaWtdCount}</Pill>
+                          <Pill tone={card.osaWtdCount <= 0 ? "green" : card.osaWtdCount === 1 ? "amber" : "red"}>OSA WTD: {card.osaWtdCount}</Pill>
                         </div>
                       </div>
                     </div>
@@ -926,10 +932,10 @@ export default function DailyUpdateClient() {
           padding: 7px 12px;
           border-radius: 999px;
           border: 1px solid rgba(15, 23, 42, 0.12);
-          font-weight: 900;
+          font-weight: 1100;
           font-variant-numeric: tabular-nums;
-          letter-spacing: -0.1px;
-          line-height: 1;
+          letter-spacing: -0.15px;
+          line-height: 1.1;
           white-space: nowrap;
         }
         .valuePill-good {
@@ -984,13 +990,18 @@ export default function DailyUpdateClient() {
           font-weight: 1100;
           letter-spacing: 0.55px;
           text-transform: uppercase;
-          color: rgba(15, 23, 42, 0.70);
+          color: rgba(15, 23, 42, 0.78);
         }
         .kpiValueRow {
           margin-top: 10px;
           display: flex;
           align-items: center;
           gap: 10px;
+        }
+        .kpiValuePlain {
+          font-size: 26px;
+          font-weight: 950;
+          font-variant-numeric: tabular-nums;
         }
         .kpiValueRow .valuePill {
           font-size: 18px;
@@ -1134,7 +1145,7 @@ export default function DailyUpdateClient() {
           font-weight: 1100;
           letter-spacing: 0.55px;
           text-transform: uppercase;
-          color: rgba(15, 23, 42, 0.70);
+          color: rgba(15, 23, 42, 0.78);
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
