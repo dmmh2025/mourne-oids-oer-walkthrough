@@ -389,222 +389,257 @@ export default function DailyUpdateClient() {
     <span className={`dot dot-${status}`} aria-hidden="true" />
   );
 
-  const StatTile = (props: { label: string; valueText: string; status: MetricStatus }) => (
-    <div className={`tile tile-${props.status}`}>
-      <div className="tileHead">
-        <div className="tileLabel">{props.label}</div>
-        <StatusDot status={props.status} />
-      </div>
-      <div className="tileValue">{props.valueText}</div>
-    </div>
-  );
+  const Pill = (props: { children: React.ReactNode; tone?: "slate" | "blue" | "purple" | "red" | "amber" | "green" }) => {
+    const tone = props.tone || "slate";
+    return <span className={`pill pill-${tone}`}>{props.children}</span>;
+  };
 
-  const Card = (props: { title: string; icon?: string; tone?: "slate" | "blue" | "purple"; children: React.ReactNode }) => {
+  const KpiTile = (props: {
+    icon?: string;
+    label: string;
+    value: string;
+    sub?: string;
+    status?: MetricStatus;
+  }) => {
     return (
-      <section className={`card tone-${props.tone || "slate"}`}>
-        <header className="cardHead">
-          <div className="cardTitleRow">
-            {props.icon ? <span className="cardIcon" aria-hidden="true">{props.icon}</span> : null}
-            <h3 className="cardTitle">{props.title}</h3>
+      <div className="kpiTile">
+        <div className="kpiTop">
+          <div className="kpiLabelRow">
+            {props.icon ? <span className="kpiIcon" aria-hidden="true">{props.icon}</span> : null}
+            <span className="kpiLabel">{props.label}</span>
           </div>
-        </header>
-        <div className="cardBody">{props.children}</div>
-      </section>
+          {props.status ? <StatusDot status={props.status} /> : null}
+        </div>
+        <div className="kpiValue">{props.value}</div>
+        {props.sub ? <div className="kpiSub">{props.sub}</div> : null}
+      </div>
     );
   };
 
-  const AreaKpi = (props: { icon: string; label: string; value: string }) => (
-    <div className="areaKpi">
-      <div className="areaKpiTop">
-        <span className="areaKpiIcon" aria-hidden="true">{props.icon}</span>
-        <span className="areaKpiLabel">{props.label}</span>
+  const MiniMetric = (props: { label: string; value: string; status: MetricStatus; hint?: string }) => (
+    <div className="miniMetric">
+      <div className="miniTop">
+        <span className="miniLabel">{props.label}</span>
+        <StatusDot status={props.status} />
       </div>
-      <div className="areaKpiValue">{props.value}</div>
+      <div className="miniValue">{props.value}</div>
+      {props.hint ? <div className="miniHint">{props.hint}</div> : null}
     </div>
   );
 
   return (
     <main className="page">
-      <div className="banner">
+      <div className="banner print-hidden">
         <img src="/mourneoids_forms_header_1600x400.png" alt="Mourne-oids Header Banner" />
       </div>
 
       <div className="container">
-        {/* OSA-like top actions */}
-        <div className="actions print-hidden">
+        {/* Top actions */}
+        <div className="topBar print-hidden">
           <button className="btn" type="button" onClick={() => router.back()}>
             ← Back
           </button>
-          <div className="spacer" />
           <button className="btn" type="button" onClick={() => router.push("/")}>
             🏠 Home
           </button>
+          <div className="spacer" />
           <button className="btn btnSolid" type="button" onClick={() => window.print()}>
             📄 Export PDF
           </button>
         </div>
 
-        {/* Hub-style header block */}
-        <header className="hubHeader">
-          <h1>Mourne-oids Hub</h1>
-          <p className="hubTagline">“Climbing New Peaks, One Shift at a Time.” ⛰️</p>
-          <div className="hubMeta">
-            <span className="metaPill">Daily Update</span>
-            <span className="metaText">Previous business day: <strong>{targetDate || "Loading…"}</strong></span>
-            {weekStart ? <span className="metaText">WTD from <strong>{weekStart}</strong></span> : null}
+        {/* Director header */}
+        <header className="header">
+          <div className="headerLeft">
+            <div className="titleRow">
+              <h1>Daily Update</h1>
+              <Pill tone="blue">Mourne-oids Hub</Pill>
+            </div>
+            <div className="metaRow">
+              <span className="metaText">
+                Previous business day: <strong>{targetDate || "Loading…"}</strong>
+              </span>
+              {weekStart ? (
+                <span className="metaText">
+                  WTD from <strong>{weekStart}</strong>
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="headerRight">
+            <Pill tone="slate">“Climbing New Peaks, One Shift at a Time.” ⛰️</Pill>
           </div>
         </header>
 
-        {/* Area overview */}
-        <section className="area">
-          <div className="areaGrid">
-            <AreaKpi icon="🧑‍🤝‍🧑" label="Area Labour" value={fmtPct2(areaRollup.labourPct01)} />
-            <AreaKpi icon="🍕" label="Area Food" value={fmtPct2(areaRollup.foodVarPct01)} />
-            <AreaKpi icon="⏱️" label="Area Add. Hours" value={fmtNum2(areaRollup.additionalHours)} />
-            <AreaKpi icon="✅" label="Area OSA" value={String(osaCounts.total)} />
+        {/* Area snapshot */}
+        <section className="section">
+          <div className="sectionHead">
+            <h2>Area snapshot</h2>
+            <div className="chipRow">
+              <Pill tone="purple">OSA WTD: {String(osaCounts.total)}</Pill>
+            </div>
           </div>
 
-          <div className="osaRow">
-            <div className="osaLabel">OSA breakdown</div>
+          <div className="kpiGrid">
+            <KpiTile icon="🧑‍🤝‍🧑" label="Labour" value={fmtPct2(areaRollup.labourPct01)} sub="Area labour % (WTD)" />
+            <KpiTile icon="🍕" label="Food" value={fmtPct2(areaRollup.foodVarPct01)} sub="Variance vs ideal (WTD)" />
+            <KpiTile icon="⏱️" label="Additional hours" value={fmtNum2(areaRollup.additionalHours)} sub="Actual vs rota (WTD)" />
+            <KpiTile icon="✅" label="OSA items" value={String(osaCounts.total)} sub="Internal OSA logged (WTD)" />
+          </div>
+
+          <div className="osaBreakdown">
+            <div className="osaTitle">OSA breakdown</div>
             <div className="osaChips">
-              {stores.map((store) => (
-                <span key={store} className="chip">
-                  {store}: <strong>{String(osaCounts.byStore.get(store) || 0)}</strong>
-                </span>
-              ))}
-              {!stores.length && <span className="chip">No stores loaded</span>}
+              {stores.map((store) => {
+                const v = osaCounts.byStore.get(store) || 0;
+                const tone = v > 0 ? "purple" : "slate";
+                return (
+                  <span key={store} className={`osaChip osaChip-${tone}`}>
+                    <span className="osaChipName">{store}</span>
+                    <span className="osaChipVal">{v}</span>
+                  </span>
+                );
+              })}
+              {!stores.length && <span className="osaChip osaChip-slate">No stores loaded</span>}
             </div>
           </div>
         </section>
 
+        {/* Area message (less dominant) */}
         {areaMessage ? (
-          <section className="notice">
-            <div className="noticeHead">
-              <h2>Area Message</h2>
-              <span className="pill">Action focus</span>
+          <section className="section callout">
+            <div className="sectionHead">
+              <h2>Area message</h2>
+              <Pill tone="amber">Action focus</Pill>
             </div>
-            <p>{areaMessage}</p>
+            <p className="calloutText">{areaMessage}</p>
           </section>
         ) : null}
 
         {loading && <div className="state">Loading daily update…</div>}
         {error && <div className="state stateError">Error: {error}</div>}
 
+        {/* Stores */}
         {!loading && !error ? (
-          <section className="stores">
-            {storeCards.map((card) => {
-              const dotStatus = statusHigherBetter(card.service.dotPct01, card.targets.dotMin01);
-              const labourStatus = statusLowerBetter(card.cost.labourPct01, card.targets.labourMax01);
-              const rnlStatus = statusLowerBetter(card.service.rnlMinutes, card.targets.rnlMaxMins, 0.1);
-              const extremesStatus = statusLowerBetter(card.service.extremesPct01, card.targets.extremesMax01);
-              const foodVarStatus = statusAbsLowerBetter(card.cost.foodVarPct01, card.targets.foodVarAbsMax01);
+          <section className="section">
+            <div className="sectionHead">
+              <h2>Stores</h2>
+              <span className="mutedSmall">Single-card layout for faster scanning (director view).</span>
+            </div>
 
-              const missedStatus = statusLowerBetter(card.daily.missedCalls01, INPUT_TARGETS.missedCallsMax01);
-              const gpsStatus = statusHigherBetter(card.daily.gps01, INPUT_TARGETS.gpsMin01);
-              const aofStatus = statusHigherBetter(card.daily.aof01, INPUT_TARGETS.aofMin01);
+            <div className="storeGrid">
+              {storeCards.map((card) => {
+                const dotStatus = statusHigherBetter(card.service.dotPct01, card.targets.dotMin01);
+                const labourStatus = statusLowerBetter(card.cost.labourPct01, card.targets.labourMax01);
+                const rnlStatus = statusLowerBetter(card.service.rnlMinutes, card.targets.rnlMaxMins, 0.1);
+                const extremesStatus = statusLowerBetter(card.service.extremesPct01, card.targets.extremesMax01);
+                const foodVarStatus = statusAbsLowerBetter(card.cost.foodVarPct01, card.targets.foodVarAbsMax01);
 
-              const addHoursStatus: MetricStatus =
-                card.additionalHours == null
-                  ? "na"
-                  : !Number.isFinite(card.additionalHours)
-                  ? "na"
-                  : card.additionalHours <= 0
-                  ? "good"
-                  : card.additionalHours <= 1
-                  ? "ok"
-                  : "bad";
+                const missedStatus = statusLowerBetter(card.daily.missedCalls01, INPUT_TARGETS.missedCallsMax01);
+                const gpsStatus = statusHigherBetter(card.daily.gps01, INPUT_TARGETS.gpsMin01);
+                const aofStatus = statusHigherBetter(card.daily.aof01, INPUT_TARGETS.aofMin01);
 
-              return (
-                <article key={card.store} className="store">
-                  <div className="storeTop">
-                    <div className="storeTitle">
-                      <h2>{card.store}</h2>
-                      <div className="storeBadges">
-                        <span className="badge badgePurple">OSA WTD: {card.osaWtdCount}</span>
-                      </div>
-                    </div>
-                  </div>
+                const addHoursStatus: MetricStatus =
+                  card.additionalHours == null
+                    ? "na"
+                    : !Number.isFinite(card.additionalHours)
+                      ? "na"
+                      : card.additionalHours <= 0
+                        ? "good"
+                        : card.additionalHours <= 1
+                          ? "ok"
+                          : "bad";
 
-                  <div className="modules">
-                    <div className="moduleSpan2">
-                      <Card title="Service" icon="🚗" tone="slate">
-                        <div className="tiles2x2">
-                          <StatTile label="DOT" valueText={fmtPct2(card.service.dotPct01)} status={dotStatus} />
-                          <StatTile label="R&L" valueText={fmtMins2(card.service.rnlMinutes)} status={rnlStatus} />
-                          <StatTile label="Extremes >40" valueText={fmtPct2(card.service.extremesPct01)} status={extremesStatus} />
-                          <StatTile label="Add. Hours" valueText={fmtNum2(card.additionalHours)} status={addHoursStatus} />
+                // top chips (quick scan)
+                const chipToneFromStatus = (s: MetricStatus): any => {
+                  if (s === "good") return "green";
+                  if (s === "ok") return "amber";
+                  if (s === "bad") return "red";
+                  return "slate";
+                };
+
+                return (
+                  <article key={card.store} className="storeCard">
+                    <div className="storeHead">
+                      <div className="storeTitle">
+                        <h3>{card.store}</h3>
+                        <div className="storeChips">
+                          <Pill tone="purple">OSA WTD: {card.osaWtdCount}</Pill>
+                          <Pill tone={chipToneFromStatus(dotStatus)}>DOT {fmtPct2(card.service.dotPct01)}</Pill>
+                          <Pill tone={chipToneFromStatus(labourStatus)}>Lab {fmtPct2(card.cost.labourPct01)}</Pill>
+                          <Pill tone={chipToneFromStatus(foodVarStatus)}>Food {fmtPct2(card.cost.foodVarPct01)}</Pill>
                         </div>
-                      </Card>
-                    </div>
-
-                    <Card title="Cost Controls" icon="💷" tone="blue">
-                      <div className="tiles1col">
-                        <StatTile label="Labour" valueText={fmtPct2(card.cost.labourPct01)} status={labourStatus} />
-                        <StatTile label="Food" valueText={fmtPct2(card.cost.foodVarPct01)} status={foodVarStatus} />
-                      </div>
-                    </Card>
-
-                    <Card title="Others WTD" icon="🧾" tone="purple">
-                      <div className="tiles1col">
-                        <StatTile label="Missed Calls" valueText={fmtPct2(card.daily.missedCalls01)} status={missedStatus} />
-                        <StatTile label="GPS Tracked" valueText={fmtPct2(card.daily.gps01)} status={gpsStatus} />
-                        <StatTile label="AOF" valueText={fmtPct2(card.daily.aof01)} status={aofStatus} />
-                      </div>
-                    </Card>
-                  </div>
-
-                  <section className="subCard">
-                    <div className="subHead">
-                      <h3>Notes</h3>
-                      <span className="pill pillSlate">From store</span>
-                    </div>
-                    <p className="subText">{card.inputs?.notes?.trim() || "—"}</p>
-                  </section>
-
-                  <section className="subCard">
-                    <div className="subHead">
-                      <h3>Service Losing Targets</h3>
-                      <span className="pill pillSlate">Input</span>
-                    </div>
-                    <div className="targets">
-                      <div className="kv"><span>Load (mins)</span><strong>{fmtNum2(card.inputs?.target_load_time_mins ?? null)}</strong></div>
-                      <div className="kv"><span>Rack (mins)</span><strong>{fmtNum2(card.inputs?.target_rack_time_mins ?? null)}</strong></div>
-                      <div className="kv"><span>ADT (mins)</span><strong>{fmtNum2(card.inputs?.target_adt_mins ?? null)}</strong></div>
-                      <div className="kv">
-                        <span>Extremes %</span>
-                        <strong>
-                          {card.inputs?.target_extremes_over40_pct == null
-                            ? "—"
-                            : `${Number(card.inputs.target_extremes_over40_pct).toFixed(2)}%`}
-                        </strong>
                       </div>
                     </div>
-                  </section>
 
-                  <section className="subCard">
-                    <div className="subHead">
-                      <h3>Tasks</h3>
-                      <span className="pill pillPurple">To action</span>
+                    <div className="metricGrid">
+                      <MiniMetric label="DOT" value={fmtPct2(card.service.dotPct01)} status={dotStatus} hint={`Target ≥ ${(card.targets.dotMin01 * 100).toFixed(0)}%`} />
+                      <MiniMetric label="Labour" value={fmtPct2(card.cost.labourPct01)} status={labourStatus} hint={`Target ≤ ${(card.targets.labourMax01 * 100).toFixed(0)}%`} />
+                      <MiniMetric label="R&L" value={fmtMins2(card.service.rnlMinutes)} status={rnlStatus} hint={`Target ≤ ${card.targets.rnlMaxMins.toFixed(0)}m`} />
+                      <MiniMetric label="Extremes >40" value={fmtPct2(card.service.extremesPct01)} status={extremesStatus} hint={`Target ≤ ${(card.targets.extremesMax01 * 100).toFixed(0)}%`} />
+                      <MiniMetric label="Add. hours" value={fmtNum2(card.additionalHours)} status={addHoursStatus} hint="Actual vs rota" />
+                      <MiniMetric label="Food variance" value={fmtPct2(card.cost.foodVarPct01)} status={foodVarStatus} hint={`Abs ≤ ${(card.targets.foodVarAbsMax01 * 100).toFixed(2)}%`} />
                     </div>
 
-                    {card.tasks.length === 0 ? (
-                      <p className="muted">No tasks for this store on {targetDate}.</p>
-                    ) : (
-                      <ul className="taskList">
-                        {card.tasks.map((task) => (
-                          <li key={task.id} className="task">
-                            <label className="taskRow">
-                              <input type="checkbox" checked={task.is_complete} onChange={() => toggleTask(task)} />
-                              <span className={task.is_complete ? "taskDone" : ""}>{task.task}</span>
-                            </label>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </section>
-                </article>
-              );
-            })}
+                    <div className="metricGrid metricGridSecondary">
+                      <MiniMetric label="Missed calls" value={fmtPct2(card.daily.missedCalls01)} status={missedStatus} hint="≤ 6%" />
+                      <MiniMetric label="GPS tracked" value={fmtPct2(card.daily.gps01)} status={gpsStatus} hint="≥ 95%" />
+                      <MiniMetric label="AOF" value={fmtPct2(card.daily.aof01)} status={aofStatus} hint="≥ 62%" />
+                      <div className="miniMetric miniMetricGhost">
+                        <div className="miniTop">
+                          <span className="miniLabel">Quick note</span>
+                          <span className="miniHint">From store</span>
+                        </div>
+                        <div className="miniValue miniValueNote">{card.inputs?.notes?.trim() || "—"}</div>
+                      </div>
+                    </div>
+
+                    {/* Details: keep the executive view clean */}
+                    <div className="detailsRow">
+                      <details className="details">
+                        <summary className="detailsSummary">Service losing targets</summary>
+                        <div className="detailsBody">
+                          <div className="kvGrid">
+                            <div className="kv"><span>Load (mins)</span><strong>{fmtNum2(card.inputs?.target_load_time_mins ?? null)}</strong></div>
+                            <div className="kv"><span>Rack (mins)</span><strong>{fmtNum2(card.inputs?.target_rack_time_mins ?? null)}</strong></div>
+                            <div className="kv"><span>ADT (mins)</span><strong>{fmtNum2(card.inputs?.target_adt_mins ?? null)}</strong></div>
+                            <div className="kv">
+                              <span>Extremes %</span>
+                              <strong>
+                                {card.inputs?.target_extremes_over40_pct == null
+                                  ? "—"
+                                  : `${Number(card.inputs.target_extremes_over40_pct).toFixed(2)}%`}
+                              </strong>
+                            </div>
+                          </div>
+                        </div>
+                      </details>
+
+                      <details className="details">
+                        <summary className="detailsSummary">Tasks ({card.tasks.length})</summary>
+                        <div className="detailsBody">
+                          {card.tasks.length === 0 ? (
+                            <p className="mutedSmall">No tasks for this store on {targetDate}.</p>
+                          ) : (
+                            <ul className="taskList">
+                              {card.tasks.map((task) => (
+                                <li key={task.id} className="task">
+                                  <label className="taskRow">
+                                    <input type="checkbox" checked={task.is_complete} onChange={() => toggleTask(task)} />
+                                    <span className={task.is_complete ? "taskDone" : ""}>{task.task}</span>
+                                  </label>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      </details>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
           </section>
         ) : null}
 
@@ -650,14 +685,16 @@ export default function DailyUpdateClient() {
 
         .container {
           width: min(1180px, 94vw);
-          margin: 16px auto 0;
+          margin: 14px auto 0;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
         }
 
-        .actions {
+        .topBar {
           display: flex;
           gap: 10px;
           align-items: center;
-          margin: 10px 0 12px;
         }
         .spacer { flex: 1; }
 
@@ -679,39 +716,33 @@ export default function DailyUpdateClient() {
           color: #fff;
         }
 
-        .hubHeader {
+        .header {
           background: var(--card);
           border: 1px solid var(--border);
           border-radius: var(--radius);
           box-shadow: var(--shadow);
           padding: 14px 16px;
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
         }
-        .hubHeader h1 {
+        .titleRow {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .header h1 {
           margin: 0;
-          font-size: clamp(1.6rem, 2.2vw, 2rem);
+          font-size: clamp(1.4rem, 2vw, 1.9rem);
           letter-spacing: 0.2px;
         }
-        .hubTagline {
-          margin: 6px 0 10px;
-          color: rgba(15, 23, 42, 0.78);
-          font-weight: 800;
-        }
-        .hubMeta {
+        .metaRow {
+          margin-top: 6px;
           display: flex;
-          flex-wrap: wrap;
           gap: 10px;
-          align-items: center;
-        }
-        .metaPill {
-          display: inline-flex;
-          align-items: center;
-          padding: 6px 10px;
-          border-radius: 999px;
-          border: 1px solid rgba(0, 100, 145, 0.18);
-          background: rgba(0, 100, 145, 0.08);
-          color: rgba(15, 23, 42, 0.92);
-          font-weight: 950;
-          font-size: 12px;
+          flex-wrap: wrap;
         }
         .metaText {
           color: rgba(15, 23, 42, 0.72);
@@ -719,59 +750,134 @@ export default function DailyUpdateClient() {
           font-size: 13px;
         }
         .metaText strong { color: rgba(15, 23, 42, 0.92); }
+        .headerRight {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+        }
 
-        .area {
-          margin-top: 12px;
+        .pill {
+          display: inline-flex;
+          align-items: center;
+          padding: 6px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          background: rgba(15, 23, 42, 0.05);
+          color: rgba(15, 23, 42, 0.82);
+          font-weight: 950;
+          font-size: 12px;
+          white-space: nowrap;
+        }
+        .pill-blue {
+          border-color: rgba(0, 100, 145, 0.18);
+          background: rgba(0, 100, 145, 0.10);
+          color: rgba(11, 79, 112, 0.95);
+        }
+        .pill-purple {
+          border-color: rgba(124, 58, 237, 0.18);
+          background: rgba(124, 58, 237, 0.10);
+          color: rgba(76, 29, 149, 0.95);
+        }
+        .pill-green {
+          border-color: rgba(34, 197, 94, 0.22);
+          background: rgba(34, 197, 94, 0.12);
+          color: rgba(20, 83, 45, 0.95);
+        }
+        .pill-amber {
+          border-color: rgba(245, 158, 11, 0.25);
+          background: rgba(245, 158, 11, 0.12);
+          color: rgba(120, 53, 15, 0.95);
+        }
+        .pill-red {
+          border-color: rgba(239, 68, 68, 0.24);
+          background: rgba(239, 68, 68, 0.12);
+          color: rgba(127, 29, 29, 0.95);
+        }
+        .pill-slate { /* default already */ }
+
+        .section {
           background: var(--card);
           border: 1px solid var(--border);
           border-radius: var(--radius);
           box-shadow: var(--shadow);
-          padding: 12px;
+          padding: 14px;
         }
-        .areaGrid {
+
+        .sectionHead {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 12px;
+          flex-wrap: wrap;
+        }
+        .sectionHead h2 {
+          margin: 0;
+          font-size: 14px;
+          font-weight: 1000;
+          letter-spacing: 0.35px;
+          text-transform: uppercase;
+          color: rgba(15, 23, 42, 0.78);
+        }
+        .chipRow { display: flex; gap: 8px; flex-wrap: wrap; }
+        .mutedSmall {
+          color: rgba(100, 116, 139, 0.98);
+          font-weight: 800;
+          font-size: 12px;
+        }
+
+        .kpiGrid {
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 10px;
         }
-        .areaKpi {
-          background: rgba(255, 255, 255, 0.95);
+        .kpiTile {
+          background: rgba(255, 255, 255, 0.96);
           border: 1px solid rgba(15, 23, 42, 0.10);
           border-radius: 16px;
-          padding: 10px 12px;
+          padding: 12px;
         }
-        .areaKpiTop {
+        .kpiTop {
           display: flex;
           align-items: center;
-          gap: 8px;
-          color: rgba(15, 23, 42, 0.72);
+          justify-content: space-between;
+          gap: 10px;
         }
-        .areaKpiIcon { font-size: 14px; }
-        .areaKpiLabel {
-          font-size: 12px;
-          font-weight: 950;
+        .kpiLabelRow { display: flex; align-items: center; gap: 8px; }
+        .kpiIcon { font-size: 14px; }
+        .kpiLabel {
+          font-size: 11px;
+          font-weight: 1000;
           letter-spacing: 0.35px;
           text-transform: uppercase;
+          color: rgba(15, 23, 42, 0.62);
         }
-        .areaKpiValue {
+        .kpiValue {
           margin-top: 8px;
-          font-size: 22px;
-          font-weight: 900;
-          letter-spacing: 0.2px;
-          color: rgba(11, 79, 112, 0.95);
+          font-size: 24px;
+          font-weight: 1000;
+          letter-spacing: -0.2px;
+          color: rgba(11, 79, 112, 0.96);
           font-variant-numeric: tabular-nums;
         }
-
-        .osaRow {
-          margin-top: 10px;
-          border-top: 1px solid rgba(15, 23, 42, 0.07);
-          padding-top: 10px;
-        }
-        .osaLabel {
+        .kpiSub {
+          margin-top: 6px;
           font-size: 12px;
-          font-weight: 950;
+          font-weight: 800;
+          color: rgba(100, 116, 139, 0.98);
+        }
+
+        .osaBreakdown {
+          margin-top: 12px;
+          padding-top: 12px;
+          border-top: 1px solid rgba(15, 23, 42, 0.07);
+        }
+        .osaTitle {
+          font-size: 11px;
+          font-weight: 1000;
           letter-spacing: 0.35px;
           text-transform: uppercase;
-          color: rgba(15, 23, 42, 0.60);
+          color: rgba(15, 23, 42, 0.62);
           margin-bottom: 8px;
         }
         .osaChips {
@@ -779,52 +885,44 @@ export default function DailyUpdateClient() {
           flex-wrap: wrap;
           gap: 8px;
         }
-        .chip {
-          border-radius: 999px;
-          padding: 6px 10px;
-          background: rgba(15, 23, 42, 0.05);
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          font-size: 12px;
-          font-weight: 850;
-          color: rgba(15, 23, 42, 0.75);
-        }
-
-        .notice {
-          margin-top: 12px;
-          background: rgba(0, 100, 145, 0.08);
-          border: 1px solid rgba(0, 100, 145, 0.16);
-          border-radius: var(--radius);
-          box-shadow: var(--shadow);
-          padding: 12px 14px;
-        }
-        .noticeHead {
-          display: flex;
+        .osaChip {
+          display: inline-flex;
           align-items: center;
-          justify-content: space-between;
           gap: 10px;
-          margin-bottom: 8px;
-        }
-        .notice h2 { margin: 0; font-size: 15px; }
-        .pill {
+          padding: 7px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          background: rgba(15, 23, 42, 0.05);
           font-size: 12px;
           font-weight: 950;
-          padding: 6px 10px;
-          border-radius: 999px;
-          border: 1px solid rgba(0, 100, 145, 0.18);
-          background: rgba(255, 255, 255, 0.55);
-          color: rgba(15, 23, 42, 0.86);
-          white-space: nowrap;
+          color: rgba(15, 23, 42, 0.78);
         }
-        .notice p {
+        .osaChip-purple {
+          border-color: rgba(124, 58, 237, 0.18);
+          background: rgba(124, 58, 237, 0.10);
+          color: rgba(76, 29, 149, 0.95);
+        }
+        .osaChip-slate { /* default */ }
+        .osaChipName { opacity: 0.92; }
+        .osaChipVal {
+          font-variant-numeric: tabular-nums;
+          padding-left: 8px;
+          border-left: 1px solid rgba(15, 23, 42, 0.10);
+        }
+
+        .callout {
+          background: rgba(248, 250, 252, 0.92);
+          border-color: rgba(15, 23, 42, 0.10);
+        }
+        .calloutText {
           margin: 0;
           white-space: pre-wrap;
           font-weight: 850;
-          color: rgba(15, 23, 42, 0.76);
-          line-height: 1.35;
+          color: rgba(15, 23, 42, 0.78);
+          line-height: 1.45;
         }
 
         .state {
-          margin-top: 12px;
           background: var(--card);
           border: 1px solid var(--border);
           border-radius: 16px;
@@ -839,193 +937,125 @@ export default function DailyUpdateClient() {
           color: rgba(127, 29, 29, 0.95);
         }
 
-        .stores {
-          margin-top: 12px;
+        .storeGrid {
           display: grid;
-          gap: 12px;
           grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
         }
-
-        .store {
-          background: var(--card);
-          border: 1px solid var(--border);
+        .storeCard {
+          background: rgba(255, 255, 255, 0.94);
+          border: 1px solid rgba(15, 23, 42, 0.10);
           border-radius: var(--radius);
-          box-shadow: var(--shadow);
-          padding: 12px;
+          box-shadow: 0 10px 22px rgba(2, 6, 23, 0.06);
+          padding: 14px;
+        }
+        .storeHead {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+        .storeTitle h3 {
+          margin: 0;
+          font-size: 18px;
+          font-weight: 1000;
+          letter-spacing: -0.1px;
+        }
+        .storeChips {
+          margin-top: 8px;
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
         }
 
-        .storeTop { margin-bottom: 10px; }
-        .storeTitle {
+        .metricGrid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .metricGridSecondary {
+          margin-top: 10px;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .miniMetric {
+          border-radius: 16px;
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          background: rgba(248, 250, 252, 0.70);
+          padding: 10px 10px;
+        }
+        .miniMetricGhost {
+          grid-column: span 1;
+          background: rgba(255, 255, 255, 0.88);
+        }
+        .miniTop {
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 10px;
         }
-        .storeTitle h2 {
-          margin: 0;
-          font-size: 18px;
-          letter-spacing: 0.2px;
-        }
-        .storeBadges { display: flex; gap: 8px; flex-wrap: wrap; }
-
-        .badge {
-          border-radius: 999px;
-          padding: 6px 10px;
-          font-size: 12px;
-          font-weight: 950;
-          white-space: nowrap;
-          border: 1px solid rgba(15, 23, 42, 0.10);
-          background: rgba(15, 23, 42, 0.05);
-          color: rgba(15, 23, 42, 0.78);
-        }
-        .badgePurple {
-          border-color: rgba(124, 58, 237, 0.18);
-          background: rgba(124, 58, 237, 0.10);
-          color: rgba(76, 29, 149, 0.95);
-        }
-
-        .modules {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 10px;
-          align-items: start;
-        }
-        .moduleSpan2 { grid-column: span 2; }
-
-        .card {
-          border-radius: 16px;
-          background: rgba(255, 255, 255, 0.95);
-          border: 1px solid rgba(15, 23, 42, 0.10);
-          overflow: hidden;
-        }
-        .cardHead {
-          padding: 9px 10px;
-          border-bottom: 1px solid rgba(15, 23, 42, 0.06);
-        }
-        .tone-blue .cardHead {
-          background: linear-gradient(90deg, rgba(0, 100, 145, 0.12), rgba(0, 100, 145, 0.02));
-        }
-        .tone-purple .cardHead {
-          background: linear-gradient(90deg, rgba(124, 58, 237, 0.12), rgba(124, 58, 237, 0.02));
-        }
-        .tone-slate .cardHead {
-          background: linear-gradient(90deg, rgba(15, 23, 42, 0.10), rgba(15, 23, 42, 0.02));
-        }
-
-        .cardTitleRow {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        .cardIcon { font-size: 14px; }
-        .cardTitle {
-          margin: 0;
-          font-size: 12px;
+        .miniLabel {
+          font-size: 11px;
           font-weight: 1000;
           letter-spacing: 0.35px;
           text-transform: uppercase;
-          color: rgba(15, 23, 42, 0.86);
+          color: rgba(15, 23, 42, 0.60);
         }
-        .cardBody { padding: 10px; }
-
-        .tiles2x2 {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 10px;
-        }
-        .tiles1col {
-          display: grid;
-          grid-template-columns: 1fr;
-          gap: 10px;
-        }
-
-        .tile {
-          border-radius: 14px;
-          border: 1px solid rgba(15, 23, 42, 0.10);
-          background: rgba(255, 255, 255, 0.98);
-          padding: 10px 10px;
-        }
-        .tileHead {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-        }
-        .tileLabel {
-          font-size: 11px;
-          font-weight: 950;
-          letter-spacing: 0.35px;
-          text-transform: uppercase;
-          color: rgba(15, 23, 42, 0.65);
-        }
-        .tileValue {
-          margin-top: 8px;
-          font-size: 20px;
-          font-weight: 950;
-          letter-spacing: 0.2px;
+        .miniValue {
+          margin-top: 7px;
+          font-size: 18px;
+          font-weight: 1000;
           color: rgba(15, 23, 42, 0.92);
           font-variant-numeric: tabular-nums;
         }
-        .moduleSpan2 .tileValue { font-size: 22px; }
-
-        .dot {
-          width: 10px;
-          height: 10px;
-          border-radius: 999px;
-          border: 1px solid rgba(15, 23, 42, 0.12);
-          display: inline-block;
-          flex-shrink: 0;
+        .miniValueNote {
+          font-size: 13px;
+          font-weight: 850;
+          line-height: 1.35;
+          white-space: pre-wrap;
+          color: rgba(15, 23, 42, 0.78);
         }
-        .dot-good { background: rgba(34, 197, 94, 0.85); border-color: rgba(34, 197, 94, 0.40); }
-        .dot-ok { background: rgba(245, 158, 11, 0.85); border-color: rgba(245, 158, 11, 0.40); }
-        .dot-bad { background: rgba(239, 68, 68, 0.85); border-color: rgba(239, 68, 68, 0.40); }
-        .dot-na { background: rgba(148, 163, 184, 0.75); border-color: rgba(148, 163, 184, 0.40); }
+        .miniHint {
+          margin-top: 6px;
+          font-size: 12px;
+          font-weight: 800;
+          color: rgba(100, 116, 139, 0.98);
+        }
 
-        /* subtle status wash (OSA-like: minimal) */
-        .tile-good { background: linear-gradient(180deg, rgba(220, 252, 231, 0.25), rgba(255, 255, 255, 0.92)); }
-        .tile-ok { background: linear-gradient(180deg, rgba(255, 237, 213, 0.22), rgba(255, 255, 255, 0.92)); }
-        .tile-bad { background: linear-gradient(180deg, rgba(254, 226, 226, 0.22), rgba(255, 255, 255, 0.92)); }
-        .tile-na { background: rgba(255, 255, 255, 0.95); }
-
-        .subCard {
+        .detailsRow {
           margin-top: 10px;
-          background: rgba(255, 255, 255, 0.95);
-          border: 1px solid rgba(15, 23, 42, 0.10);
-          border-radius: 16px;
-          padding: 10px 12px;
-        }
-        .subHead {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
           gap: 10px;
-          margin-bottom: 8px;
         }
-        .subHead h3 {
-          margin: 0;
+        .details {
+          border-radius: 16px;
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          background: rgba(255, 255, 255, 0.90);
+          overflow: hidden;
+        }
+        .detailsSummary {
+          cursor: pointer;
+          padding: 10px 12px;
           font-size: 12px;
           font-weight: 1000;
           letter-spacing: 0.35px;
           text-transform: uppercase;
-          color: rgba(15, 23, 42, 0.70);
+          color: rgba(15, 23, 42, 0.74);
+          background: linear-gradient(90deg, rgba(15, 23, 42, 0.08), rgba(15, 23, 42, 0.02));
+          list-style: none;
         }
-        .pillSlate {
-          border-color: rgba(15, 23, 42, 0.12);
-          background: rgba(15, 23, 42, 0.05);
+        .detailsSummary::-webkit-details-marker { display: none; }
+        .detailsSummary:after {
+          content: "▾";
+          float: right;
+          opacity: 0.65;
         }
-        .pillPurple {
-          border-color: rgba(124, 58, 237, 0.18);
-          background: rgba(124, 58, 237, 0.10);
-        }
-        .subText {
-          margin: 0;
-          white-space: pre-wrap;
-          color: rgba(15, 23, 42, 0.78);
-          font-weight: 800;
-          line-height: 1.35;
-        }
+        details[open] .detailsSummary:after { content: "▴"; }
+        .detailsBody { padding: 10px 12px; }
 
-        .targets {
+        .kvGrid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px;
@@ -1044,15 +1074,9 @@ export default function DailyUpdateClient() {
         }
         .kv strong {
           font-variant-numeric: tabular-nums;
-          font-weight: 950;
+          font-weight: 1000;
           color: rgba(15, 23, 42, 0.90);
           white-space: nowrap;
-        }
-
-        .muted {
-          margin: 0;
-          color: rgba(100, 116, 139, 0.95);
-          font-weight: 850;
         }
 
         .taskList {
@@ -1080,21 +1104,36 @@ export default function DailyUpdateClient() {
           color: rgba(100, 116, 139, 0.95);
         }
 
+        .dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 23, 42, 0.12);
+          display: inline-block;
+          flex-shrink: 0;
+        }
+        .dot-good { background: rgba(34, 197, 94, 0.85); border-color: rgba(34, 197, 94, 0.40); }
+        .dot-ok { background: rgba(245, 158, 11, 0.85); border-color: rgba(245, 158, 11, 0.40); }
+        .dot-bad { background: rgba(239, 68, 68, 0.85); border-color: rgba(239, 68, 68, 0.40); }
+        .dot-na { background: rgba(148, 163, 184, 0.75); border-color: rgba(148, 163, 184, 0.40); }
+
         .footer {
-          margin-top: 14px;
           text-align: center;
           color: rgba(100, 116, 139, 0.9);
           font-weight: 800;
           font-size: 12px;
+          padding: 6px 0 2px;
         }
 
         @media (max-width: 980px) {
-          .stores { grid-template-columns: 1fr; }
-          .areaGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-          .modules { grid-template-columns: 1fr; }
-          .moduleSpan2 { grid-column: span 1; }
-          .tiles2x2 { grid-template-columns: 1fr; }
-          .targets { grid-template-columns: 1fr; }
+          .kpiGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .storeGrid { grid-template-columns: 1fr; }
+          .metricGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .metricGridSecondary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .detailsRow { grid-template-columns: 1fr; }
+          .kvGrid { grid-template-columns: 1fr; }
+          .header { flex-direction: column; align-items: flex-start; }
+          .headerRight { justify-content: flex-start; }
         }
 
         @media print {
@@ -1102,10 +1141,11 @@ export default function DailyUpdateClient() {
           .banner { display: none !important; }
           .page { background: #fff; padding: 0; }
           .container { width: 100%; margin: 0; }
-          .hubHeader, .area, .notice, .store, .card, .subCard {
+          .section, .storeCard, .details, .kpiTile, .miniMetric {
             box-shadow: none !important;
             break-inside: avoid;
           }
+          .detailsSummary:after { content: ""; }
         }
       `}</style>
     </main>
