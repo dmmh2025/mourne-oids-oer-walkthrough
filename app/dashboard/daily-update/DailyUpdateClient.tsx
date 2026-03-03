@@ -513,7 +513,7 @@ export default function DailyUpdateClient() {
           </div>
         </section>
 
-        {/* Area message (less dominant) */}
+        {/* Area message */}
         {areaMessage ? (
           <section className="section callout">
             <div className="sectionHead">
@@ -532,7 +532,7 @@ export default function DailyUpdateClient() {
           <section className="section">
             <div className="sectionHead">
               <h2>Stores</h2>
-              <span className="mutedSmall">No dropdowns — optimised for quick screenshots into Slack.</span>
+              <span className="mutedSmall">2-up desktop layout (screenshot friendly). No dropdowns.</span>
             </div>
 
             <div className="storeGrid">
@@ -940,12 +940,10 @@ export default function DailyUpdateClient() {
           color: rgba(127, 29, 29, 0.95);
         }
 
-        /* ✅ BIG READABILITY FIX:
-           Auto-fit with a sensible minimum width.
-           This prevents "crushed" store cards and makes screenshots readable. */
+        /* ✅ 2 stores per row on desktop */
         .storeGrid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(640px, 1fr));
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 16px;
           align-items: start;
         }
@@ -955,8 +953,9 @@ export default function DailyUpdateClient() {
           border: 1px solid rgba(15, 23, 42, 0.10);
           border-radius: var(--radius);
           box-shadow: 0 10px 22px rgba(2, 6, 23, 0.06);
-          padding: 16px;
+          padding: 14px;
         }
+
         .storeHead { margin-bottom: 12px; }
         .storeTitle h3 {
           margin: 0;
@@ -974,10 +973,10 @@ export default function DailyUpdateClient() {
         .metricGrid {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 12px;
+          gap: 10px;
         }
         .metricGridSecondary {
-          margin-top: 12px;
+          margin-top: 10px;
           grid-template-columns: repeat(4, minmax(0, 1fr));
         }
 
@@ -1018,10 +1017,8 @@ export default function DailyUpdateClient() {
           color: rgba(100, 116, 139, 0.98);
         }
 
-        .miniMetricNote {
-          background: rgba(255, 255, 255, 0.92);
-          min-height: 92px;
-        }
+        /* ✅ Make notes wider so it reads well in 2-up */
+        .miniMetricNote { grid-column: span 2; background: rgba(255, 255, 255, 0.92); }
         .noteText {
           margin-top: 10px;
           font-size: 13px;
@@ -1035,7 +1032,7 @@ export default function DailyUpdateClient() {
           margin-top: 12px;
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 12px;
+          gap: 10px;
           align-items: start;
         }
 
@@ -1135,11 +1132,17 @@ export default function DailyUpdateClient() {
           padding: 6px 0 2px;
         }
 
+        /* ✅ Collapse to 1 column before it gets cramped */
+        @media (max-width: 1200px) {
+          .storeGrid { grid-template-columns: 1fr; }
+        }
+
         @media (max-width: 980px) {
           .kpiGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .storeGrid { grid-template-columns: 1fr; }
           .metricGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .metricGridSecondary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .miniMetricNote { grid-column: span 2; }
           .lowerGrid { grid-template-columns: 1fr; }
           .kvGrid { grid-template-columns: 1fr; }
           .header { flex-direction: column; align-items: flex-start; }
