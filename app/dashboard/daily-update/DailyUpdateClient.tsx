@@ -385,108 +385,91 @@ export default function DailyUpdateClient() {
     }
   };
 
-  const StatusDot = (props: { status: MetricStatus }) => {
-    const cls =
-      props.status === "good"
-        ? "dot good"
-        : props.status === "ok"
-        ? "dot ok"
-        : props.status === "bad"
-        ? "dot bad"
-        : "dot na";
-    return <span className={cls} aria-hidden="true" />;
-  };
+  const StatusDot = ({ status }: { status: MetricStatus }) => (
+    <span className={`dot dot-${status}`} aria-hidden="true" />
+  );
 
-  // LABEL bold + divider + VALUE regular (clear separation)
   const StatTile = (props: { label: string; valueText: string; status: MetricStatus }) => (
-    <div className={`statTile status-${props.status}`}>
-      <div className="tileTopRow">
-        <span className="tileTitle">{props.label}</span>
+    <div className={`tile tile-${props.status}`}>
+      <div className="tileHead">
+        <div className="tileLabel">{props.label}</div>
         <StatusDot status={props.status} />
       </div>
-      <div className="tileDivider" />
       <div className="tileValue">{props.valueText}</div>
     </div>
   );
 
-  const MetricCard = (props: { title: string; icon?: string; tone?: "blue" | "purple" | "slate"; children: React.ReactNode }) => {
-    const toneClass = props.tone ? `tone-${props.tone}` : "tone-slate";
+  const Card = (props: { title: string; icon?: string; tone?: "slate" | "blue" | "purple"; children: React.ReactNode }) => {
     return (
-      <div className={`metricCard ${toneClass}`}>
-        <div className="metricCardHead">
-          <div className="metricHeadLeft">
-            {props.icon ? (
-              <span className="metricIcon" aria-hidden="true">
-                {props.icon}
-              </span>
-            ) : null}
-            <h3>{props.title}</h3>
+      <section className={`card tone-${props.tone || "slate"}`}>
+        <header className="cardHead">
+          <div className="cardTitleRow">
+            {props.icon ? <span className="cardIcon" aria-hidden="true">{props.icon}</span> : null}
+            <h3 className="cardTitle">{props.title}</h3>
           </div>
-        </div>
-        <div className="metricCardBody">{props.children}</div>
-      </div>
+        </header>
+        <div className="cardBody">{props.children}</div>
+      </section>
     );
   };
 
-  // Area tiles: title bold + divider + value regular (clear separation)
-  const AreaTile = (props: { icon: string; label: string; value: string }) => (
-    <div className="areaTile">
-      <div className="tileTopRow">
-        <div className="areaTopLeft">
-          <span className="areaTileIcon" aria-hidden="true">
-            {props.icon}
-          </span>
-          <span className="areaTileLabel">{props.label}</span>
-        </div>
+  const AreaKpi = (props: { icon: string; label: string; value: string }) => (
+    <div className="areaKpi">
+      <div className="areaKpiTop">
+        <span className="areaKpiIcon" aria-hidden="true">{props.icon}</span>
+        <span className="areaKpiLabel">{props.label}</span>
       </div>
-      <div className="tileDivider" />
-      <div className="areaTileValue">{props.value}</div>
+      <div className="areaKpiValue">{props.value}</div>
     </div>
   );
 
   return (
-    <main className="wrap">
+    <main className="page">
       <div className="banner">
         <img src="/mourneoids_forms_header_1600x400.png" alt="Mourne-oids Header Banner" />
       </div>
 
-      <div className="shell">
-        <div className="topbar print-hidden">
-          <button className="navbtn" type="button" onClick={() => router.back()}>
+      <div className="container">
+        {/* OSA-like top actions */}
+        <div className="actions print-hidden">
+          <button className="btn" type="button" onClick={() => router.back()}>
             ← Back
           </button>
-          <div className="topbar-spacer" />
-          <button className="navbtn" type="button" onClick={() => router.push("/")}>
+          <div className="spacer" />
+          <button className="btn" type="button" onClick={() => router.push("/")}>
             🏠 Home
           </button>
-          <button className="navbtn solid" type="button" onClick={() => window.print()}>
+          <button className="btn btnSolid" type="button" onClick={() => window.print()}>
             📄 Export PDF
           </button>
         </div>
 
-        <header className="header">
-          <h1>Mourne-oids Daily Update</h1>
-          <p className="subtitle">
-            Previous business day: {targetDate || "Loading…"}
-            {weekStart ? ` · WTD from ${weekStart}` : ""}
-          </p>
+        {/* Hub-style header block */}
+        <header className="hubHeader">
+          <h1>Mourne-oids Hub</h1>
+          <p className="hubTagline">“Climbing New Peaks, One Shift at a Time.” ⛰️</p>
+          <div className="hubMeta">
+            <span className="metaPill">Daily Update</span>
+            <span className="metaText">Previous business day: <strong>{targetDate || "Loading…"}</strong></span>
+            {weekStart ? <span className="metaText">WTD from <strong>{weekStart}</strong></span> : null}
+          </div>
         </header>
 
-        {/* ✅ Area overview: each metric is its own outlined tile */}
-        <section className="areaOverview">
-          <div className="areaTiles">
-            <AreaTile icon="🧑‍🤝‍🧑" label="Area Labour" value={fmtPct2(areaRollup.labourPct01)} />
-            <AreaTile icon="🍕" label="Area Food" value={fmtPct2(areaRollup.foodVarPct01)} />
-            <AreaTile icon="⏱️" label="Area Add. Hours" value={fmtNum2(areaRollup.additionalHours)} />
-            <AreaTile icon="✅" label="Area OSA" value={String(osaCounts.total)} />
+        {/* Area overview */}
+        <section className="area">
+          <div className="areaGrid">
+            <AreaKpi icon="🧑‍🤝‍🧑" label="Area Labour" value={fmtPct2(areaRollup.labourPct01)} />
+            <AreaKpi icon="🍕" label="Area Food" value={fmtPct2(areaRollup.foodVarPct01)} />
+            <AreaKpi icon="⏱️" label="Area Add. Hours" value={fmtNum2(areaRollup.additionalHours)} />
+            <AreaKpi icon="✅" label="Area OSA" value={String(osaCounts.total)} />
           </div>
 
-          <div className="osaBreakdown">
-            <div className="osaTitle">OSA Breakdown</div>
+          <div className="osaRow">
+            <div className="osaLabel">OSA breakdown</div>
             <div className="osaChips">
               {stores.map((store) => (
                 <span key={store} className="chip">
-                  {store}: {String(osaCounts.byStore.get(store) || 0)}
+                  {store}: <strong>{String(osaCounts.byStore.get(store) || 0)}</strong>
                 </span>
               ))}
               {!stores.length && <span className="chip">No stores loaded</span>}
@@ -494,21 +477,21 @@ export default function DailyUpdateClient() {
           </div>
         </section>
 
-        {areaMessage && (
-          <section className="message">
-            <div className="messageHead">
+        {areaMessage ? (
+          <section className="notice">
+            <div className="noticeHead">
               <h2>Area Message</h2>
-              <span className="messagePill">Action focus</span>
+              <span className="pill">Action focus</span>
             </div>
             <p>{areaMessage}</p>
           </section>
-        )}
+        ) : null}
 
-        {loading && <div className="alert">Loading daily update…</div>}
-        {error && <div className="alert error">Error: {error}</div>}
+        {loading && <div className="state">Loading daily update…</div>}
+        {error && <div className="state stateError">Error: {error}</div>}
 
-        {!loading && !error && (
-          <section className="storesGrid">
+        {!loading && !error ? (
+          <section className="stores">
             {storeCards.map((card) => {
               const dotStatus = statusHigherBetter(card.service.dotPct01, card.targets.dotMin01);
               const labourStatus = statusLowerBetter(card.cost.labourPct01, card.targets.labourMax01);
@@ -532,68 +515,62 @@ export default function DailyUpdateClient() {
                   : "bad";
 
               return (
-                <article key={card.store} className="storeCard">
-                  <div className="storeHead">
-                    <h2 className="storeName">{card.store}</h2>
-                    <span className="osaChip">OSA WTD: {card.osaWtdCount}</span>
+                <article key={card.store} className="store">
+                  <div className="storeTop">
+                    <div className="storeTitle">
+                      <h2>{card.store}</h2>
+                      <div className="storeBadges">
+                        <span className="badge badgePurple">OSA WTD: {card.osaWtdCount}</span>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* ✅ Service bigger than the other 2 + each section is its own outlined tile */}
-                  <div className="metricCards">
-                    <div className="metricSpan2">
-                      <MetricCard title="Service" icon="🚗" tone="slate">
-                        <div className="tilesGrid">
+                  <div className="modules">
+                    <div className="moduleSpan2">
+                      <Card title="Service" icon="🚗" tone="slate">
+                        <div className="tiles2x2">
                           <StatTile label="DOT" valueText={fmtPct2(card.service.dotPct01)} status={dotStatus} />
                           <StatTile label="R&L" valueText={fmtMins2(card.service.rnlMinutes)} status={rnlStatus} />
                           <StatTile label="Extremes >40" valueText={fmtPct2(card.service.extremesPct01)} status={extremesStatus} />
-                          <StatTile label="Add. hours" valueText={fmtNum2(card.additionalHours)} status={addHoursStatus} />
+                          <StatTile label="Add. Hours" valueText={fmtNum2(card.additionalHours)} status={addHoursStatus} />
                         </div>
-                      </MetricCard>
+                      </Card>
                     </div>
 
-                    <MetricCard title="Cost Controls" icon="💷" tone="blue">
-                      <div className="tilesGrid oneCol">
+                    <Card title="Cost Controls" icon="💷" tone="blue">
+                      <div className="tiles1col">
                         <StatTile label="Labour" valueText={fmtPct2(card.cost.labourPct01)} status={labourStatus} />
                         <StatTile label="Food" valueText={fmtPct2(card.cost.foodVarPct01)} status={foodVarStatus} />
                       </div>
-                    </MetricCard>
+                    </Card>
 
-                    <MetricCard title="Others WTD" icon="🧾" tone="purple">
-                      <div className="tilesGrid oneCol">
+                    <Card title="Others WTD" icon="🧾" tone="purple">
+                      <div className="tiles1col">
                         <StatTile label="Missed Calls" valueText={fmtPct2(card.daily.missedCalls01)} status={missedStatus} />
                         <StatTile label="GPS Tracked" valueText={fmtPct2(card.daily.gps01)} status={gpsStatus} />
                         <StatTile label="AOF" valueText={fmtPct2(card.daily.aof01)} status={aofStatus} />
                       </div>
-                    </MetricCard>
+                    </Card>
                   </div>
 
-                  <section className="notes">
-                    <div className="sectionHead">
+                  <section className="subCard">
+                    <div className="subHead">
                       <h3>Notes</h3>
-                      <span className="sectionPill">From store</span>
+                      <span className="pill pillSlate">From store</span>
                     </div>
-                    <p>{card.inputs?.notes?.trim() || "—"}</p>
+                    <p className="subText">{card.inputs?.notes?.trim() || "—"}</p>
                   </section>
 
-                  <section className="targets">
-                    <div className="sectionHead">
+                  <section className="subCard">
+                    <div className="subHead">
                       <h3>Service Losing Targets</h3>
-                      <span className="sectionPill">Input</span>
+                      <span className="pill pillSlate">Input</span>
                     </div>
-                    <div className="targetsGrid">
-                      <div className="lineItem">
-                        <span>Load (mins)</span>
-                        <strong>{fmtNum2(card.inputs?.target_load_time_mins ?? null)}</strong>
-                      </div>
-                      <div className="lineItem">
-                        <span>Rack (mins)</span>
-                        <strong>{fmtNum2(card.inputs?.target_rack_time_mins ?? null)}</strong>
-                      </div>
-                      <div className="lineItem">
-                        <span>ADT (mins)</span>
-                        <strong>{fmtNum2(card.inputs?.target_adt_mins ?? null)}</strong>
-                      </div>
-                      <div className="lineItem">
+                    <div className="targets">
+                      <div className="kv"><span>Load (mins)</span><strong>{fmtNum2(card.inputs?.target_load_time_mins ?? null)}</strong></div>
+                      <div className="kv"><span>Rack (mins)</span><strong>{fmtNum2(card.inputs?.target_rack_time_mins ?? null)}</strong></div>
+                      <div className="kv"><span>ADT (mins)</span><strong>{fmtNum2(card.inputs?.target_adt_mins ?? null)}</strong></div>
+                      <div className="kv">
                         <span>Extremes %</span>
                         <strong>
                           {card.inputs?.target_extremes_over40_pct == null
@@ -604,20 +581,21 @@ export default function DailyUpdateClient() {
                     </div>
                   </section>
 
-                  <section className="tasks">
-                    <div className="sectionHead">
+                  <section className="subCard">
+                    <div className="subHead">
                       <h3>Tasks</h3>
-                      <span className="sectionPill">To action</span>
+                      <span className="pill pillPurple">To action</span>
                     </div>
+
                     {card.tasks.length === 0 ? (
-                      <p className="placeholder">No tasks for this store on {targetDate}.</p>
+                      <p className="muted">No tasks for this store on {targetDate}.</p>
                     ) : (
-                      <ul>
+                      <ul className="taskList">
                         {card.tasks.map((task) => (
-                          <li key={task.id}>
-                            <label>
+                          <li key={task.id} className="task">
+                            <label className="taskRow">
                               <input type="checkbox" checked={task.is_complete} onChange={() => toggleTask(task)} />
-                              <span className={task.is_complete ? "done" : ""}>{task.task}</span>
+                              <span className={task.is_complete ? "taskDone" : ""}>{task.task}</span>
                             </label>
                           </li>
                         ))}
@@ -628,23 +606,41 @@ export default function DailyUpdateClient() {
               );
             })}
           </section>
-        )}
+        ) : null}
+
+        <footer className="footer">
+          © {new Date().getFullYear()} Mourne-oids | Domino’s Pizza | Racz Group
+        </footer>
       </div>
 
       <style jsx>{`
-        .wrap {
+        :root {
+          --bg0: #f6f8fb;
+          --bg1: #eef3f8;
+          --ink: #0f172a;
+          --muted: #64748b;
+          --card: rgba(255, 255, 255, 0.92);
+          --border: rgba(15, 23, 42, 0.10);
+          --shadow: 0 12px 28px rgba(2, 6, 23, 0.08);
+          --blue: #006491;
+          --purple: #7c3aed;
+          --radius: 18px;
+        }
+
+        .page {
           min-height: 100dvh;
-          background: radial-gradient(circle at top, rgba(0, 100, 145, 0.08), transparent 45%),
-            linear-gradient(180deg, #e3edf4 0%, #f2f5f9 30%, #f2f5f9 100%);
-          color: #0f172a;
-          padding-bottom: 32px;
+          background:
+            radial-gradient(900px 420px at 50% 0%, rgba(0, 100, 145, 0.10), transparent 60%),
+            linear-gradient(180deg, var(--bg1), var(--bg0));
+          color: var(--ink);
+          padding-bottom: 28px;
         }
 
         .banner {
           display: flex;
           justify-content: center;
           background: #fff;
-          border-bottom: 3px solid #006491;
+          border-bottom: 1px solid rgba(15, 23, 42, 0.08);
         }
         .banner img {
           max-width: min(1160px, 92%);
@@ -652,142 +648,131 @@ export default function DailyUpdateClient() {
           display: block;
         }
 
-        .shell {
-          width: min(1180px, 95vw);
-          margin: 20px auto;
-          background: rgba(255, 255, 255, 0.65);
-          backdrop-filter: saturate(160%) blur(6px);
-          border: 1px solid rgba(255, 255, 255, 0.22);
-          border-radius: 1.5rem;
-          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.05);
-          padding: 18px;
+        .container {
+          width: min(1180px, 94vw);
+          margin: 16px auto 0;
         }
 
-        .topbar {
+        .actions {
           display: flex;
           gap: 10px;
-          margin-bottom: 10px;
+          align-items: center;
+          margin: 10px 0 12px;
         }
-        .topbar-spacer {
-          flex: 1;
-        }
-        .navbtn {
+        .spacer { flex: 1; }
+
+        .btn {
           border-radius: 14px;
-          border: 2px solid #006491;
-          background: #fff;
-          color: #006491;
+          border: 1px solid rgba(15, 23, 42, 0.14);
+          background: rgba(255, 255, 255, 0.9);
+          color: var(--ink);
           font-weight: 900;
-          font-size: 14px;
+          font-size: 13px;
           padding: 8px 12px;
           cursor: pointer;
+          box-shadow: 0 10px 20px rgba(2, 6, 23, 0.06);
         }
-        .navbtn.solid {
-          background: #006491;
+        .btn:hover { transform: translateY(-1px); }
+        .btnSolid {
+          border-color: rgba(0, 100, 145, 0.20);
+          background: linear-gradient(180deg, rgba(0, 100, 145, 0.95), rgba(0, 100, 145, 0.85));
           color: #fff;
         }
 
-        .header {
-          text-align: center;
-          margin-bottom: 12px;
+        .hubHeader {
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          box-shadow: var(--shadow);
+          padding: 14px 16px;
         }
-        .header h1 {
-          font-size: clamp(2rem, 3vw, 2.3rem);
+        .hubHeader h1 {
           margin: 0;
-        }
-        .subtitle {
-          color: #64748b;
-          font-weight: 800;
-          margin: 4px 0 0;
-        }
-
-        /* Shared: strong separation between title + value */
-        .tileTopRow {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-        }
-        .tileDivider {
-          height: 1px;
-          background: rgba(15, 23, 42, 0.10);
-          margin-top: 10px;
-        }
-        .tileTitle {
-          font-weight: 900;
+          font-size: clamp(1.6rem, 2.2vw, 2rem);
           letter-spacing: 0.2px;
-          color: #0f172a;
         }
-        .tileValue {
-          margin-top: 12px; /* bigger gap = better separation */
-          font-size: 22px;
-          font-weight: 500; /* value NOT bold */
-          color: #0f172a;
-          font-variant-numeric: tabular-nums;
+        .hubTagline {
+          margin: 6px 0 10px;
+          color: rgba(15, 23, 42, 0.78);
+          font-weight: 800;
         }
-
-        /* === Area Overview === */
-        .areaOverview {
-          background: rgba(255, 255, 255, 0.92);
-          border: 1px solid rgba(0, 100, 145, 0.16);
-          border-radius: 18px;
-          padding: 12px;
-          display: grid;
+        .hubMeta {
+          display: flex;
+          flex-wrap: wrap;
           gap: 10px;
+          align-items: center;
         }
-        .areaTiles {
+        .metaPill {
+          display: inline-flex;
+          align-items: center;
+          padding: 6px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(0, 100, 145, 0.18);
+          background: rgba(0, 100, 145, 0.08);
+          color: rgba(15, 23, 42, 0.92);
+          font-weight: 950;
+          font-size: 12px;
+        }
+        .metaText {
+          color: rgba(15, 23, 42, 0.72);
+          font-weight: 800;
+          font-size: 13px;
+        }
+        .metaText strong { color: rgba(15, 23, 42, 0.92); }
+
+        .area {
+          margin-top: 12px;
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          box-shadow: var(--shadow);
+          padding: 12px;
+        }
+        .areaGrid {
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 10px;
         }
-        .areaTile {
-          border-radius: 18px;
-          background: rgba(255, 255, 255, 0.98);
-          border: 2px solid rgba(0, 100, 145, 0.35); /* stronger outline */
-          box-shadow: 0 10px 22px rgba(0, 0, 0, 0.04);
-          padding: 12px 14px;
+        .areaKpi {
+          background: rgba(255, 255, 255, 0.95);
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          border-radius: 16px;
+          padding: 10px 12px;
         }
-        .areaTopLeft {
-          display: inline-flex;
+        .areaKpiTop {
+          display: flex;
           align-items: center;
           gap: 8px;
-          min-width: 0;
+          color: rgba(15, 23, 42, 0.72);
         }
-        .areaTileIcon {
-          font-size: 16px;
-          line-height: 1;
-          flex-shrink: 0;
-        }
-        .areaTileLabel {
-          font-size: 13px;
-          font-weight: 900; /* bold title */
-          text-transform: uppercase;
+        .areaKpiIcon { font-size: 14px; }
+        .areaKpiLabel {
+          font-size: 12px;
+          font-weight: 950;
           letter-spacing: 0.35px;
-          color: #0f172a;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
+          text-transform: uppercase;
         }
-        .areaTileValue {
-          margin-top: 12px;
-          font-size: 26px;
-          font-weight: 500; /* value regular */
-          color: #0b4f70;
+        .areaKpiValue {
+          margin-top: 8px;
+          font-size: 22px;
+          font-weight: 900;
+          letter-spacing: 0.2px;
+          color: rgba(11, 79, 112, 0.95);
           font-variant-numeric: tabular-nums;
         }
 
-        .osaBreakdown {
-          border-radius: 16px;
-          padding: 10px;
-          background: rgba(15, 23, 42, 0.03);
-          border: 1px solid rgba(15, 23, 42, 0.06);
+        .osaRow {
+          margin-top: 10px;
+          border-top: 1px solid rgba(15, 23, 42, 0.07);
+          padding-top: 10px;
         }
-        .osaTitle {
+        .osaLabel {
           font-size: 12px;
           font-weight: 950;
-          text-transform: uppercase;
-          color: #334155;
-          margin-bottom: 8px;
           letter-spacing: 0.35px;
+          text-transform: uppercase;
+          color: rgba(15, 23, 42, 0.60);
+          margin-bottom: 8px;
         }
         .osaChips {
           display: flex;
@@ -795,362 +780,331 @@ export default function DailyUpdateClient() {
           gap: 8px;
         }
         .chip {
-          border: 1px solid rgba(0, 100, 145, 0.16);
           border-radius: 999px;
           padding: 6px 10px;
-          background: rgba(0, 100, 145, 0.08);
+          background: rgba(15, 23, 42, 0.05);
+          border: 1px solid rgba(15, 23, 42, 0.08);
           font-size: 12px;
-          font-weight: 900;
+          font-weight: 850;
+          color: rgba(15, 23, 42, 0.75);
         }
 
-        /* Area Message */
-        .message {
+        .notice {
           margin-top: 12px;
-          border: 2px solid rgba(0, 100, 145, 0.22);
-          border-radius: 18px;
-          background: rgba(0, 100, 145, 0.06);
-          padding: 14px;
-          box-shadow: 0 10px 24px rgba(0, 0, 0, 0.05);
+          background: rgba(0, 100, 145, 0.08);
+          border: 1px solid rgba(0, 100, 145, 0.16);
+          border-radius: var(--radius);
+          box-shadow: var(--shadow);
+          padding: 12px 14px;
         }
-        .messageHead {
+        .noticeHead {
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 10px;
           margin-bottom: 8px;
         }
-        .message h2 {
-          margin: 0;
-          font-size: 16px;
-        }
-        .messagePill {
+        .notice h2 { margin: 0; font-size: 15px; }
+        .pill {
           font-size: 12px;
           font-weight: 950;
           padding: 6px 10px;
           border-radius: 999px;
-          background: rgba(0, 100, 145, 0.10);
           border: 1px solid rgba(0, 100, 145, 0.18);
-          color: #0f172a;
+          background: rgba(255, 255, 255, 0.55);
+          color: rgba(15, 23, 42, 0.86);
           white-space: nowrap;
         }
-        .message p {
+        .notice p {
           margin: 0;
           white-space: pre-wrap;
           font-weight: 850;
-          color: #334155;
+          color: rgba(15, 23, 42, 0.76);
           line-height: 1.35;
         }
 
-        .alert {
+        .state {
           margin-top: 12px;
-          border-radius: 14px;
-          padding: 12px;
-          font-weight: 800;
-          background: rgba(255, 255, 255, 0.85);
-          border: 1px solid rgba(15, 23, 42, 0.1);
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: 16px;
+          box-shadow: 0 10px 20px rgba(2, 6, 23, 0.06);
+          padding: 12px 14px;
+          font-weight: 850;
+          color: rgba(15, 23, 42, 0.78);
         }
-        .alert.error {
-          background: rgba(254, 242, 242, 0.9);
-          border-color: rgba(239, 68, 68, 0.25);
-          color: #7f1d1d;
+        .stateError {
+          background: rgba(254, 242, 242, 0.92);
+          border-color: rgba(239, 68, 68, 0.20);
+          color: rgba(127, 29, 29, 0.95);
         }
 
-        /* Store cards */
-        .storesGrid {
+        .stores {
           margin-top: 12px;
           display: grid;
           gap: 12px;
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
-        .storeCard {
-          background: rgba(255, 255, 255, 0.92);
-          border: 1px solid rgba(0, 100, 145, 0.14);
-          border-radius: 18px;
-          padding: 14px;
+
+        .store {
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          box-shadow: var(--shadow);
+          padding: 12px;
         }
-        .storeHead {
+
+        .storeTop { margin-bottom: 10px; }
+        .storeTitle {
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 10px;
-          margin-bottom: 12px;
         }
-        .storeName {
+        .storeTitle h2 {
           margin: 0;
-          font-size: 22px;
+          font-size: 18px;
           letter-spacing: 0.2px;
         }
-        .osaChip {
+        .storeBadges { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        .badge {
           border-radius: 999px;
-          padding: 7px 12px;
-          background: rgba(124, 58, 237, 0.08);
-          border: 1px solid rgba(124, 58, 237, 0.18);
-          color: #4c1d95;
-          font-weight: 950;
+          padding: 6px 10px;
           font-size: 12px;
+          font-weight: 950;
           white-space: nowrap;
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          background: rgba(15, 23, 42, 0.05);
+          color: rgba(15, 23, 42, 0.78);
+        }
+        .badgePurple {
+          border-color: rgba(124, 58, 237, 0.18);
+          background: rgba(124, 58, 237, 0.10);
+          color: rgba(76, 29, 149, 0.95);
         }
 
-        /* KPI modules */
-        .metricCards {
+        .modules {
           display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr)); /* Service spans 2 */
+          grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: 10px;
           align-items: start;
         }
-        .metricSpan2 {
-          grid-column: span 2;
-        }
+        .moduleSpan2 { grid-column: span 2; }
 
-        .metricCard {
-          border-radius: 18px;
-          background: #fff;
-          border: 2px solid rgba(15, 23, 42, 0.14); /* stronger outline */
-          box-shadow: 0 10px 22px rgba(0, 0, 0, 0.05);
+        .card {
+          border-radius: 16px;
+          background: rgba(255, 255, 255, 0.95);
+          border: 1px solid rgba(15, 23, 42, 0.10);
           overflow: hidden;
         }
-        .metricCardHead {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-          padding: 10px 12px;
+        .cardHead {
+          padding: 9px 10px;
           border-bottom: 1px solid rgba(15, 23, 42, 0.06);
         }
-        .metricHeadLeft {
+        .tone-blue .cardHead {
+          background: linear-gradient(90deg, rgba(0, 100, 145, 0.12), rgba(0, 100, 145, 0.02));
+        }
+        .tone-purple .cardHead {
+          background: linear-gradient(90deg, rgba(124, 58, 237, 0.12), rgba(124, 58, 237, 0.02));
+        }
+        .tone-slate .cardHead {
+          background: linear-gradient(90deg, rgba(15, 23, 42, 0.10), rgba(15, 23, 42, 0.02));
+        }
+
+        .cardTitleRow {
           display: flex;
           align-items: center;
           gap: 8px;
         }
-        .metricIcon {
-          font-size: 15px;
-          line-height: 1;
-        }
-        .metricCardHead h3 {
+        .cardIcon { font-size: 14px; }
+        .cardTitle {
           margin: 0;
-          font-size: 13px;
+          font-size: 12px;
+          font-weight: 1000;
           letter-spacing: 0.35px;
           text-transform: uppercase;
-          font-weight: 1000;
-          color: #0f172a;
+          color: rgba(15, 23, 42, 0.86);
         }
-        .metricCardBody {
-          padding: 12px;
-        }
-        .tone-blue .metricCardHead {
-          background: linear-gradient(90deg, rgba(0, 100, 145, 0.16), rgba(0, 100, 145, 0.03));
-        }
-        .tone-purple .metricCardHead {
-          background: linear-gradient(90deg, rgba(124, 58, 237, 0.14), rgba(124, 58, 237, 0.03));
-        }
-        .tone-slate .metricCardHead {
-          background: linear-gradient(90deg, rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.02));
-        }
+        .cardBody { padding: 10px; }
 
-        /* Tiles inside cards */
-        .tilesGrid {
+        .tiles2x2 {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px;
         }
-        .tilesGrid.oneCol {
+        .tiles1col {
+          display: grid;
           grid-template-columns: 1fr;
+          gap: 10px;
         }
 
-        .statTile {
-          border-radius: 16px;
-          padding: 12px 14px;
-          border: 2px solid rgba(15, 23, 42, 0.18); /* stronger outline */
+        .tile {
+          border-radius: 14px;
+          border: 1px solid rgba(15, 23, 42, 0.10);
           background: rgba(255, 255, 255, 0.98);
+          padding: 10px 10px;
         }
-
-        /* Bigger value text for service tiles (readability) */
-        .metricSpan2 .tileValue {
-          font-size: 24px;
+        .tileHead {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
         }
-
-        /* Subtle status tint */
-        .status-good {
-          background: rgba(220, 252, 231, 0.35);
+        .tileLabel {
+          font-size: 11px;
+          font-weight: 950;
+          letter-spacing: 0.35px;
+          text-transform: uppercase;
+          color: rgba(15, 23, 42, 0.65);
         }
-        .status-ok {
-          background: rgba(255, 237, 213, 0.35);
+        .tileValue {
+          margin-top: 8px;
+          font-size: 20px;
+          font-weight: 950;
+          letter-spacing: 0.2px;
+          color: rgba(15, 23, 42, 0.92);
+          font-variant-numeric: tabular-nums;
         }
-        .status-bad {
-          background: rgba(254, 226, 226, 0.35);
-        }
-        .status-na {
-          background: rgba(248, 250, 252, 0.95);
-        }
+        .moduleSpan2 .tileValue { font-size: 22px; }
 
         .dot {
           width: 10px;
           height: 10px;
           border-radius: 999px;
-          border: 1px solid rgba(15, 23, 42, 0.15);
+          border: 1px solid rgba(15, 23, 42, 0.12);
           display: inline-block;
           flex-shrink: 0;
         }
-        .dot.good {
-          background: rgba(34, 197, 94, 0.85);
-          border-color: rgba(34, 197, 94, 0.45);
-        }
-        .dot.ok {
-          background: rgba(245, 158, 11, 0.85);
-          border-color: rgba(245, 158, 11, 0.45);
-        }
-        .dot.bad {
-          background: rgba(239, 68, 68, 0.85);
-          border-color: rgba(239, 68, 68, 0.45);
-        }
-        .dot.na {
-          background: rgba(148, 163, 184, 0.70);
-          border-color: rgba(148, 163, 184, 0.45);
-        }
+        .dot-good { background: rgba(34, 197, 94, 0.85); border-color: rgba(34, 197, 94, 0.40); }
+        .dot-ok { background: rgba(245, 158, 11, 0.85); border-color: rgba(245, 158, 11, 0.40); }
+        .dot-bad { background: rgba(239, 68, 68, 0.85); border-color: rgba(239, 68, 68, 0.40); }
+        .dot-na { background: rgba(148, 163, 184, 0.75); border-color: rgba(148, 163, 184, 0.40); }
 
-        /* Notes/Targets/Tasks */
-        .notes,
-        .targets,
-        .tasks {
-          margin-top: 12px;
+        /* subtle status wash (OSA-like: minimal) */
+        .tile-good { background: linear-gradient(180deg, rgba(220, 252, 231, 0.25), rgba(255, 255, 255, 0.92)); }
+        .tile-ok { background: linear-gradient(180deg, rgba(255, 237, 213, 0.22), rgba(255, 255, 255, 0.92)); }
+        .tile-bad { background: linear-gradient(180deg, rgba(254, 226, 226, 0.22), rgba(255, 255, 255, 0.92)); }
+        .tile-na { background: rgba(255, 255, 255, 0.95); }
+
+        .subCard {
+          margin-top: 10px;
+          background: rgba(255, 255, 255, 0.95);
+          border: 1px solid rgba(15, 23, 42, 0.10);
           border-radius: 16px;
-          background: rgba(255, 255, 255, 0.98);
-          padding: 12px;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          box-shadow: 0 10px 22px rgba(0, 0, 0, 0.04);
+          padding: 10px 12px;
         }
-        .sectionHead {
+        .subHead {
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 10px;
-          margin-bottom: 10px;
+          margin-bottom: 8px;
         }
-        .sectionHead h3 {
+        .subHead h3 {
           margin: 0;
-          font-size: 13px;
-          text-transform: uppercase;
-          letter-spacing: 0.3px;
-          color: #334155;
-          font-weight: 1000;
-        }
-        .sectionPill {
           font-size: 12px;
-          font-weight: 950;
-          padding: 6px 10px;
-          border-radius: 999px;
-          border: 1px solid rgba(15, 23, 42, 0.10);
+          font-weight: 1000;
+          letter-spacing: 0.35px;
+          text-transform: uppercase;
+          color: rgba(15, 23, 42, 0.70);
+        }
+        .pillSlate {
+          border-color: rgba(15, 23, 42, 0.12);
           background: rgba(15, 23, 42, 0.05);
-          color: #334155;
-          white-space: nowrap;
         }
-
-        .notes {
-          border-left: 6px solid rgba(0, 100, 145, 0.7);
+        .pillPurple {
+          border-color: rgba(124, 58, 237, 0.18);
+          background: rgba(124, 58, 237, 0.10);
         }
-        .notes p {
+        .subText {
           margin: 0;
           white-space: pre-wrap;
-          font-weight: 850;
-          color: #334155;
+          color: rgba(15, 23, 42, 0.78);
+          font-weight: 800;
           line-height: 1.35;
         }
 
-        .tasks {
-          border-left: 6px solid rgba(124, 58, 237, 0.55);
-        }
-        .tasks ul {
-          margin: 0;
-          padding-left: 0;
-          list-style: none;
-          display: grid;
-          gap: 10px;
-        }
-        .tasks label {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          font-weight: 850;
-        }
-        .done {
-          text-decoration: line-through;
-          color: #64748b;
-        }
-
-        .targetsGrid {
+        .targets {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px;
         }
-        .lineItem {
+        .kv {
           display: flex;
           justify-content: space-between;
           gap: 10px;
-          border: 1px solid rgba(15, 23, 42, 0.06);
           border-radius: 14px;
-          padding: 10px 12px;
-          background: rgba(248, 250, 252, 0.8);
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          background: rgba(248, 250, 252, 0.85);
+          padding: 9px 10px;
           font-size: 13px;
+          color: rgba(15, 23, 42, 0.72);
+          font-weight: 800;
         }
-        .lineItem strong {
-          white-space: nowrap;
-          font-weight: 1000;
+        .kv strong {
           font-variant-numeric: tabular-nums;
+          font-weight: 950;
+          color: rgba(15, 23, 42, 0.90);
+          white-space: nowrap;
         }
 
-        .placeholder {
+        .muted {
           margin: 0;
-          color: #64748b;
+          color: rgba(100, 116, 139, 0.95);
+          font-weight: 850;
+        }
+
+        .taskList {
+          margin: 0;
+          padding: 0;
+          list-style: none;
+          display: grid;
+          gap: 10px;
+        }
+        .task {
+          border-radius: 14px;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          background: rgba(248, 250, 252, 0.85);
+          padding: 8px 10px;
+        }
+        .taskRow {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-weight: 850;
+          color: rgba(15, 23, 42, 0.80);
+        }
+        .taskDone {
+          text-decoration: line-through;
+          color: rgba(100, 116, 139, 0.95);
+        }
+
+        .footer {
+          margin-top: 14px;
+          text-align: center;
+          color: rgba(100, 116, 139, 0.9);
           font-weight: 800;
+          font-size: 12px;
         }
 
         @media (max-width: 980px) {
-          .storesGrid {
-            grid-template-columns: 1fr;
-          }
-          .areaTiles {
-            grid-template-columns: 1fr;
-          }
-          .metricCards {
-            grid-template-columns: 1fr;
-          }
-          .metricSpan2 {
-            grid-column: span 1;
-          }
-          .tilesGrid {
-            grid-template-columns: 1fr;
-          }
+          .stores { grid-template-columns: 1fr; }
+          .areaGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .modules { grid-template-columns: 1fr; }
+          .moduleSpan2 { grid-column: span 1; }
+          .tiles2x2 { grid-template-columns: 1fr; }
+          .targets { grid-template-columns: 1fr; }
         }
 
         @media print {
           .print-hidden,
-          .banner {
-            display: none !important;
-          }
-          .wrap {
-            background: #fff;
-            padding: 0;
-          }
-          .shell {
-            width: 100%;
-            margin: 0;
-            border: none;
-            box-shadow: none;
-            background: #fff;
-            padding: 0;
-          }
-          .storesGrid {
-            grid-template-columns: 1fr;
-          }
-          .storeCard,
-          .metricCard,
-          .notes,
-          .targets,
-          .tasks,
-          .areaOverview,
-          .message {
+          .banner { display: none !important; }
+          .page { background: #fff; padding: 0; }
+          .container { width: 100%; margin: 0; }
+          .hubHeader, .area, .notice, .store, .card, .subCard {
+            box-shadow: none !important;
             break-inside: avoid;
-            box-shadow: none;
           }
         }
       `}</style>
