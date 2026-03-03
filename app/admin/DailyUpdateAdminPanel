@@ -9,16 +9,12 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-type AreaMessageRow = {
-  date: string;
-  message: string | null;
-};
+type AreaMessageRow = { date: string; message: string | null };
 
 type StoreInputRow = {
   date: string;
   store: string;
 
-  // Stored as 0–100 values (we display as % and compare against targets)
   missed_calls_wtd: number | null;
   gps_tracked_wtd: number | null;
   aof_wtd: number | null;
@@ -26,7 +22,7 @@ type StoreInputRow = {
   target_load_time_mins: number | null;
   target_rack_time_mins: number | null;
   target_adt_mins: number | null;
-  target_extremes_over40_pct: number | null; // 0–100
+  target_extremes_over40_pct: number | null;
   notes: string | null;
 };
 
@@ -43,9 +39,9 @@ type TaskRow = {
 type ServiceShiftRow = {
   shift_date: string;
   store: string;
-  dot_pct: number | null; // 0–1 or 0–100
-  labour_pct: number | null; // 0–1 or 0–100
-  extreme_over_40: number | null; // 0–1 or 0–100
+  dot_pct: number | null;
+  labour_pct: number | null;
+  extreme_over_40: number | null;
   rnl_minutes: number | null;
   additional_hours?: number | null;
 };
@@ -59,19 +55,14 @@ type CostControlRow = {
   actual_food_cost_gbp: number | null;
 };
 
-type OsaInternalRow = {
-  shift_date: string;
-  store: string | null;
-};
+type OsaInternalRow = { shift_date: string; store: string | null };
 
-/** ===== Daily Input targets (global) ===== */
 const INPUT_TARGETS = {
-  missedCallsMax01: 0.06, // < 6%
-  aofMin01: 0.62, // > 62%
-  gpsMin01: 0.95, // > 95%
+  missedCallsMax01: 0.06,
+  aofMin01: 0.62,
+  gpsMin01: 0.95,
 };
 
-/* ---------- UK date (Europe/London) ---------- */
 const toISODateUK = (date: Date) => {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/London",
@@ -116,18 +107,11 @@ const to01From100 = (v0to100: number | null) => {
   return v0to100 / 100;
 };
 
-const fmtPct2 = (v01: number | null) =>
-  v01 == null ? "—" : `${(v01 * 100).toFixed(2)}%`;
+const fmtPct2 = (v01: number | null) => (v01 == null ? "—" : `${(v01 * 100).toFixed(2)}%`);
+const fmtNum2 = (v: number | null) => (v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}`);
+const fmtMins2 = (v: number | null) => (v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}m`);
 
-const fmtNum2 = (v: number | null) =>
-  v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}`;
-
-const fmtMins2 = (v: number | null) =>
-  v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}m`;
-
-const avg = (arr: number[]) =>
-  arr.length ? arr.reduce((acc, val) => acc + val, 0) / arr.length : null;
-
+const avg = (arr: number[]) => (arr.length ? arr.reduce((acc, val) => acc + val, 0) / arr.length : null);
 const sum = (arr: number[]) => arr.reduce((acc, val) => acc + val, 0);
 
 type Targets = {
@@ -139,34 +123,10 @@ type Targets = {
 };
 
 const DEFAULT_TARGETS: Record<string, Targets> = {
-  Downpatrick: {
-    dotMin01: 0.82,
-    labourMax01: 0.25,
-    rnlMaxMins: 9,
-    extremesMax01: 0.03,
-    foodVarAbsMax01: 0.003,
-  },
-  Kilkeel: {
-    dotMin01: 0.78,
-    labourMax01: 0.28,
-    rnlMaxMins: 8,
-    extremesMax01: 0.04,
-    foodVarAbsMax01: 0.003,
-  },
-  Newcastle: {
-    dotMin01: 0.78,
-    labourMax01: 0.25,
-    rnlMaxMins: 9,
-    extremesMax01: 0.04,
-    foodVarAbsMax01: 0.003,
-  },
-  Ballynahinch: {
-    dotMin01: 0.78,
-    labourMax01: 0.28,
-    rnlMaxMins: 9,
-    extremesMax01: 0.04,
-    foodVarAbsMax01: 0.003,
-  },
+  Downpatrick: { dotMin01: 0.82, labourMax01: 0.25, rnlMaxMins: 9, extremesMax01: 0.03, foodVarAbsMax01: 0.003 },
+  Kilkeel: { dotMin01: 0.78, labourMax01: 0.28, rnlMaxMins: 8, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
+  Newcastle: { dotMin01: 0.78, labourMax01: 0.25, rnlMaxMins: 9, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
+  Ballynahinch: { dotMin01: 0.78, labourMax01: 0.28, rnlMaxMins: 9, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
 };
 
 const getTargetsForStore = (store: string, inputs: StoreInputRow | null): Targets => {
@@ -180,15 +140,12 @@ const getTargetsForStore = (store: string, inputs: StoreInputRow | null): Target
     };
 
   const extFromInputs01 =
-    inputs?.target_extremes_over40_pct != null
-      ? to01From100(inputs.target_extremes_over40_pct)
-      : null;
+    inputs?.target_extremes_over40_pct != null ? to01From100(inputs.target_extremes_over40_pct) : null;
 
   return { ...base, extremesMax01: extFromInputs01 ?? base.extremesMax01 };
 };
 
 type MetricStatus = "good" | "ok" | "bad" | "na";
-
 const within = (a: number, b: number, tol: number) => Math.abs(a - b) <= tol;
 
 const statusHigherBetter = (value: number | null, targetMin: number, tol = 0.002): MetricStatus => {
@@ -211,28 +168,6 @@ const statusAbsLowerBetter = (value: number | null, targetAbsMax: number, tol = 
   if (absVal <= targetAbsMax - tol) return "good";
   if (within(absVal, targetAbsMax, tol)) return "ok";
   return "bad";
-};
-
-const arrowHigherBetter = (value: number | null, targetMin: number, tol = 0.002) => {
-  if (value == null) return "—";
-  if (value >= targetMin + tol) return "⬆️";
-  if (within(value, targetMin, tol)) return "➡️";
-  return "⬇️";
-};
-
-const arrowLowerBetter = (value: number | null, targetMax: number, tol = 0.002) => {
-  if (value == null) return "—";
-  if (value <= targetMax - tol) return "⬇️";
-  if (within(value, targetMax, tol)) return "➡️";
-  return "⬆️";
-};
-
-const arrowAbsLowerBetter = (value: number | null, targetAbsMax: number, tol = 0.002) => {
-  if (value == null) return "—";
-  const absVal = Math.abs(value);
-  if (absVal <= targetAbsMax - tol) return "⬇️";
-  if (within(absVal, targetAbsMax, tol)) return "➡️";
-  return "⬆️";
 };
 
 export default function DailyUpdateClient() {
@@ -275,11 +210,7 @@ export default function DailyUpdateClient() {
           costStoresRes,
           inputStoresRes,
         ] = await Promise.all([
-          supabase
-            .from("daily_update_area_message")
-            .select("date,message")
-            .eq("date", previousBusinessDay)
-            .maybeSingle(),
+          supabase.from("daily_update_area_message").select("date,message").eq("date", previousBusinessDay).maybeSingle(),
           supabase
             .from("daily_update_store_inputs")
             .select(
@@ -304,21 +235,13 @@ export default function DailyUpdateClient() {
             .select("shift_date,store")
             .gte("shift_date", wkStart)
             .lte("shift_date", previousBusinessDay),
-          supabase
-            .from("service_shifts")
-            .select("store,shift_date")
-            .order("shift_date", { ascending: false })
-            .limit(500),
+          supabase.from("service_shifts").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
           supabase
             .from("cost_control_entries")
             .select("store,shift_date")
             .order("shift_date", { ascending: false })
             .limit(500),
-          supabase
-            .from("daily_update_store_inputs")
-            .select("store,date")
-            .order("date", { ascending: false })
-            .limit(500),
+          supabase.from("daily_update_store_inputs").select("store,date").order("date", { ascending: false }).limit(500),
         ]);
 
         const firstError = [
@@ -400,26 +323,21 @@ export default function DailyUpdateClient() {
       const labourPct01 = sales > 0 ? labourCost / sales : null;
       const foodVarPct01 = sales > 0 ? (actualFoodCost - idealFoodCost) / sales : null;
 
-      const dotPct01 = avg(
-        service.map((row) => normalisePct01(row.dot_pct)).filter((v): v is number => v != null)
-      );
+      const dotPct01 = avg(service.map((row) => normalisePct01(row.dot_pct)).filter((v): v is number => v != null));
       const extremesPct01 = avg(
         service.map((row) => normalisePct01(row.extreme_over_40)).filter((v): v is number => v != null)
       );
       const rnlMinutes = avg(service.map((row) => row.rnl_minutes).filter((v): v is number => v != null));
-
       const additionalHours = sum(service.map((row) => Number(row.additional_hours || 0)));
 
       const targets = getTargetsForStore(store, inputs);
 
-      // ✅ daily input values converted to 0–1 for comparisons + formatting
       const missedCalls01 = to01From100(inputs?.missed_calls_wtd ?? null);
       const gps01 = to01From100(inputs?.gps_tracked_wtd ?? null);
       const aof01 = to01From100(inputs?.aof_wtd ?? null);
 
       return {
         store,
-        sales,
         additionalHours,
         cost: { labourPct01, foodVarPct01 },
         service: { dotPct01, extremesPct01, rnlMinutes },
@@ -443,7 +361,7 @@ export default function DailyUpdateClient() {
 
     const additionalHours = sum(serviceRows.map((r) => Number(r.additional_hours || 0)));
 
-    return { sales, labourPct01, foodVarPct01, additionalHours };
+    return { labourPct01, foodVarPct01, additionalHours };
   }, [costRows, serviceRows]);
 
   const toggleTask = async (task: TaskRow) => {
@@ -467,608 +385,645 @@ export default function DailyUpdateClient() {
     }
   };
 
-  const MetricLine = (props: {
-    label: string;
-    valueText: string;
-    targetText?: string;
-    status: MetricStatus;
-    arrow?: string;
-  }) => {
-    const cls =
-      props.status === "good"
-        ? "metric good"
-        : props.status === "ok"
-        ? "metric ok"
-        : props.status === "bad"
-        ? "metric bad"
-        : "metric na";
+  const StatusDot = ({ status }: { status: MetricStatus }) => (
+    <span className={`dot dot-${status}`} aria-hidden="true" />
+  );
 
+  const Pill = (props: { children: React.ReactNode; tone?: "slate" | "blue" | "purple" | "red" | "amber" | "green" }) => {
+    const tone = props.tone || "slate";
+    return <span className={`pill pill-${tone}`}>{props.children}</span>;
+  };
+
+  const KpiTile = (props: { icon?: string; label: string; value: string; sub?: string }) => {
     return (
-      <div className={cls}>
-        <span className="mLabel">{props.label}</span>
-        <span className="mRight">
-          {props.arrow ? <span className="mArrow">{props.arrow}</span> : null}
-          <strong className="mValue">{props.valueText}</strong>
-          {props.targetText ? <span className="mTarget"> · tgt {props.targetText}</span> : null}
-        </span>
+      <div className="kpiTile">
+        <div className="kpiTop">
+          <div className="kpiLabelRow">
+            {props.icon ? <span className="kpiIcon" aria-hidden="true">{props.icon}</span> : null}
+            <span className="kpiLabel">{props.label}</span>
+          </div>
+        </div>
+        <div className="kpiValue">{props.value}</div>
+        {props.sub ? <div className="kpiSub">{props.sub}</div> : null}
       </div>
     );
   };
 
+  const MiniMetric = (props: { label: string; value: string; status: MetricStatus; hint?: string }) => (
+    <div className="miniMetric">
+      <div className="miniTop">
+        <span className="miniLabel" title={props.label}>{props.label}</span>
+        <StatusDot status={props.status} />
+      </div>
+      <div className="miniValue">{props.value}</div>
+      {props.hint ? <div className="miniHint">{props.hint}</div> : null}
+    </div>
+  );
+
+  const KV = (props: { label: string; value: string }) => (
+    <div className="kv">
+      <span className="kvLabel">{props.label}</span>
+      <strong className="kvValue">{props.value}</strong>
+    </div>
+  );
+
   return (
-    <main className="wrap">
-      <div className="banner">
+    <main className="page">
+      <div className="banner print-hidden">
         <img src="/mourneoids_forms_header_1600x400.png" alt="Mourne-oids Header Banner" />
       </div>
 
-      <div className="shell">
-        <div className="topbar print-hidden">
-          <button className="navbtn" type="button" onClick={() => router.back()}>
+      <div className="container">
+        <div className="topBar print-hidden">
+          <button className="btn" type="button" onClick={() => router.back()}>
             ← Back
           </button>
-          <div className="topbar-spacer" />
-          <button className="navbtn" type="button" onClick={() => router.push("/")}>
+          <button className="btn" type="button" onClick={() => router.push("/")}>
             🏠 Home
           </button>
-          <button className="navbtn solid" type="button" onClick={() => window.print()}>
+          <div className="spacer" />
+          <button className="btn btnSolid" type="button" onClick={() => window.print()}>
             📄 Export PDF
           </button>
         </div>
 
         <header className="header">
-          <h1>Mourne-oids Daily Update</h1>
-          <p className="subtitle">
-            Previous business day: {targetDate || "Loading…"}
-            {weekStart ? ` · WTD from ${weekStart}` : ""}
-          </p>
+          <div className="headerLeft">
+            <div className="titleRow">
+              <h1>Daily Update</h1>
+              <Pill tone="blue">Mourne-oids Hub</Pill>
+            </div>
+            <div className="metaRow">
+              <span className="metaText">
+                Previous business day: <strong>{targetDate || "Loading…"}</strong>
+              </span>
+              {weekStart ? (
+                <span className="metaText">
+                  WTD from <strong>{weekStart}</strong>
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <div className="headerRight">
+            <Pill tone="slate">“Climbing New Peaks, One Shift at a Time.” ⛰️</Pill>
+          </div>
         </header>
 
-        <section className="areaStrip">
-          <div className="areaKpi">
-            <span className="kLabel">Area Labour</span>
-            <span className="kValue">{fmtPct2(areaRollup.labourPct01)}</span>
-          </div>
-          <div className="areaKpi">
-            <span className="kLabel">Area Food Var</span>
-            <span className="kValue">{fmtPct2(areaRollup.foodVarPct01)}</span>
-          </div>
-          <div className="areaKpi">
-            <span className="kLabel">Area Additional Hours</span>
-            <span className="kValue">{fmtNum2(areaRollup.additionalHours)}</span>
-          </div>
-          <div className="areaKpi">
-            <span className="kLabel">OSA WTD count</span>
-            <span className="kValue">{String(osaCounts.total)}</span>
+        <section className="section">
+          <div className="sectionHead">
+            <h2>Area snapshot</h2>
+            <div className="chipRow">
+              <Pill tone="purple">OSA WTD: {String(osaCounts.total)}</Pill>
+            </div>
           </div>
 
-          <div className="storeOsaRow">
-            {stores.map((store) => (
-              <span key={store} className="chip">
-                {store}: {String(osaCounts.byStore.get(store) || 0)}
-              </span>
-            ))}
-            {!stores.length && <span className="chip">No stores loaded</span>}
+          <div className="kpiGrid">
+            <KpiTile icon="🧑‍🤝‍🧑" label="Labour" value={fmtPct2(areaRollup.labourPct01)} sub="Area labour % (WTD)" />
+            <KpiTile icon="🍕" label="Food" value={fmtPct2(areaRollup.foodVarPct01)} sub="Variance vs ideal (WTD)" />
+            <KpiTile icon="⏱️" label="Additional hours" value={fmtNum2(areaRollup.additionalHours)} sub="Actual vs rota (WTD)" />
+            <KpiTile icon="✅" label="OSA items" value={String(osaCounts.total)} sub="Internal OSA logged (WTD)" />
+          </div>
+
+          <div className="osaBreakdown">
+            <div className="osaTitle">OSA breakdown</div>
+            <div className="osaChips">
+              {stores.map((store) => {
+                const v = osaCounts.byStore.get(store) || 0;
+                const tone = v > 0 ? "purple" : "slate";
+                return (
+                  <span key={store} className={`osaChip osaChip-${tone}`}>
+                    <span className="osaChipName">{store}</span>
+                    <span className="osaChipVal">{v}</span>
+                  </span>
+                );
+              })}
+              {!stores.length && <span className="osaChip osaChip-slate">No stores loaded</span>}
+            </div>
           </div>
         </section>
 
-        {areaMessage && (
-          <section className="message">
-            <h2>Area Message</h2>
-            <p>{areaMessage}</p>
+        {areaMessage ? (
+          <section className="section callout">
+            <div className="sectionHead">
+              <h2>Area message</h2>
+              <Pill tone="amber">Action focus</Pill>
+            </div>
+            <p className="calloutText">{areaMessage}</p>
           </section>
-        )}
+        ) : null}
 
-        {loading && <div className="alert">Loading daily update…</div>}
-        {error && <div className="alert error">Error: {error}</div>}
+        {loading && <div className="state">Loading daily update…</div>}
+        {error && <div className="state stateError">Error: {error}</div>}
 
-        {!loading && !error && (
-          <section className="storesGrid">
-            {storeCards.map((card) => {
-              const dotStatus = statusHigherBetter(card.service.dotPct01, card.targets.dotMin01);
-              const labourStatus = statusLowerBetter(card.cost.labourPct01, card.targets.labourMax01);
-              const rnlStatus = statusLowerBetter(card.service.rnlMinutes, card.targets.rnlMaxMins, 0.1);
-              const extremesStatus = statusLowerBetter(card.service.extremesPct01, card.targets.extremesMax01);
-              const foodVarStatus = statusAbsLowerBetter(card.cost.foodVarPct01, card.targets.foodVarAbsMax01);
+        {!loading && !error ? (
+          <section className="section">
+            <div className="sectionHead">
+              <h2>Stores</h2>
+              <span className="mutedSmall">2 stores per row. Internals rebuilt for readability.</span>
+            </div>
 
-              // ✅ Daily input KPI statuses + arrows (YOUR targets)
-              const missedStatus = statusLowerBetter(card.daily.missedCalls01, INPUT_TARGETS.missedCallsMax01);
-              const gpsStatus = statusHigherBetter(card.daily.gps01, INPUT_TARGETS.gpsMin01);
-              const aofStatus = statusHigherBetter(card.daily.aof01, INPUT_TARGETS.aofMin01);
+            <div className="storeGrid">
+              {storeCards.map((card) => {
+                const dotStatus = statusHigherBetter(card.service.dotPct01, card.targets.dotMin01);
+                const labourStatus = statusLowerBetter(card.cost.labourPct01, card.targets.labourMax01);
+                const rnlStatus = statusLowerBetter(card.service.rnlMinutes, card.targets.rnlMaxMins, 0.1);
+                const extremesStatus = statusLowerBetter(card.service.extremesPct01, card.targets.extremesMax01);
+                const foodVarStatus = statusAbsLowerBetter(card.cost.foodVarPct01, card.targets.foodVarAbsMax01);
 
-              return (
-                <article key={card.store} className="storeCard">
-                  <div className="storeHead">
-                    <h2 className="storeName">{card.store}</h2>
-                    <span className="osaChip">OSA WTD: {card.osaWtdCount}</span>
-                  </div>
+                const missedStatus = statusLowerBetter(card.daily.missedCalls01, INPUT_TARGETS.missedCallsMax01);
+                const gpsStatus = statusHigherBetter(card.daily.gps01, INPUT_TARGETS.gpsMin01);
+                const aofStatus = statusHigherBetter(card.daily.aof01, INPUT_TARGETS.aofMin01);
 
-                  <div className="metricGrid">
-                    <div className="metricBlock">
-                      <h3>Cost Controls</h3>
-                      {MetricLine({
-                        label: "Labour %",
-                        valueText: fmtPct2(card.cost.labourPct01),
-                        targetText: fmtPct2(card.targets.labourMax01),
-                        status: labourStatus,
-                        arrow: arrowLowerBetter(card.cost.labourPct01, card.targets.labourMax01),
-                      })}
-                      {MetricLine({
-                        label: "Food var % of sales",
-                        valueText: fmtPct2(card.cost.foodVarPct01),
-                        targetText: `±${fmtPct2(card.targets.foodVarAbsMax01)}`,
-                        status: foodVarStatus,
-                        arrow: arrowAbsLowerBetter(card.cost.foodVarPct01, card.targets.foodVarAbsMax01),
-                      })}
-                    </div>
+                const addHoursStatus: MetricStatus =
+                  card.additionalHours == null
+                    ? "na"
+                    : !Number.isFinite(card.additionalHours)
+                      ? "na"
+                      : card.additionalHours <= 0
+                        ? "good"
+                        : card.additionalHours <= 1
+                          ? "ok"
+                          : "bad";
 
-                    <div className="metricBlock">
-                      <h3>Service</h3>
-                      {MetricLine({
-                        label: "DOT %",
-                        valueText: fmtPct2(card.service.dotPct01),
-                        targetText: fmtPct2(card.targets.dotMin01),
-                        status: dotStatus,
-                        arrow: arrowHigherBetter(card.service.dotPct01, card.targets.dotMin01),
-                      })}
-                      {MetricLine({
-                        label: "R&L mins",
-                        valueText: fmtMins2(card.service.rnlMinutes),
-                        targetText: fmtMins2(card.targets.rnlMaxMins),
-                        status: rnlStatus,
-                        arrow: arrowLowerBetter(card.service.rnlMinutes, card.targets.rnlMaxMins, 0.1),
-                      })}
-                      {MetricLine({
-                        label: "Extremes >40",
-                        valueText: fmtPct2(card.service.extremesPct01),
-                        targetText: fmtPct2(card.targets.extremesMax01),
-                        status: extremesStatus,
-                        arrow: arrowLowerBetter(card.service.extremesPct01, card.targets.extremesMax01),
-                      })}
-                    </div>
+                const chipToneFromStatus = (s: MetricStatus): any => {
+                  if (s === "good") return "green";
+                  if (s === "ok") return "amber";
+                  if (s === "bad") return "red";
+                  return "slate";
+                };
 
-                    <div className="metricBlock">
-                      <h3>Daily Inputs</h3>
-                      {MetricLine({
-                        label: "Missed Calls (WTD %)",
-                        valueText: fmtPct2(card.daily.missedCalls01),
-                        targetText: "< 6.00%",
-                        status: missedStatus,
-                        arrow: arrowLowerBetter(card.daily.missedCalls01, INPUT_TARGETS.missedCallsMax01),
-                      })}
-                      {MetricLine({
-                        label: "GPS Tracked (WTD %)",
-                        valueText: fmtPct2(card.daily.gps01),
-                        targetText: "> 95.00%",
-                        status: gpsStatus,
-                        arrow: arrowHigherBetter(card.daily.gps01, INPUT_TARGETS.gpsMin01),
-                      })}
-                      {MetricLine({
-                        label: "AOF (WTD %)",
-                        valueText: fmtPct2(card.daily.aof01),
-                        targetText: "> 62.00%",
-                        status: aofStatus,
-                        arrow: arrowHigherBetter(card.daily.aof01, INPUT_TARGETS.aofMin01),
-                      })}
-                    </div>
-                  </div>
-
-                  <section className="notes">
-                    <h3>Notes</h3>
-                    <p>{card.inputs?.notes?.trim() || "—"}</p>
-                  </section>
-
-                  <section className="targets">
-                    <h3>Service Losing Targets</h3>
-                    <div className="metricGrid compact">
-                      <div className="lineItem">
-                        <span>Load target (mins)</span>
-                        <strong>{fmtNum2(card.inputs?.target_load_time_mins ?? null)}</strong>
-                      </div>
-                      <div className="lineItem">
-                        <span>Rack target (mins)</span>
-                        <strong>{fmtNum2(card.inputs?.target_rack_time_mins ?? null)}</strong>
-                      </div>
-                      <div className="lineItem">
-                        <span>ADT target (mins)</span>
-                        <strong>{fmtNum2(card.inputs?.target_adt_mins ?? null)}</strong>
-                      </div>
-                      <div className="lineItem">
-                        <span>Extremes target %</span>
-                        <strong>
-                          {card.inputs?.target_extremes_over40_pct == null
-                            ? "—"
-                            : `${Number(card.inputs.target_extremes_over40_pct).toFixed(2)}%`}
-                        </strong>
-                      </div>
-                      <div className="lineItem">
-                        <span>Additional hours (actual)</span>
-                        <strong>{fmtNum2(card.additionalHours)}</strong>
+                return (
+                  <article key={card.store} className="storeCard">
+                    <div className="storeHead">
+                      <div className="storeTitle">
+                        <h3>{card.store}</h3>
+                        <div className="storeChips">
+                          <Pill tone="purple">OSA WTD: {card.osaWtdCount}</Pill>
+                          <Pill tone={chipToneFromStatus(dotStatus)}>DOT {fmtPct2(card.service.dotPct01)}</Pill>
+                          <Pill tone={chipToneFromStatus(labourStatus)}>Lab {fmtPct2(card.cost.labourPct01)}</Pill>
+                          <Pill tone={chipToneFromStatus(foodVarStatus)}>Food {fmtPct2(card.cost.foodVarPct01)}</Pill>
+                        </div>
                       </div>
                     </div>
 
-                    <p className="mutedSmall">
-                      Note: Load/Rack/ADT actuals are not available from current tables on this page.
-                      If you want those compared with arrows too, we need to add those fields to{" "}
-                      <code>service_shifts</code> (or a separate table) and query them here.
-                    </p>
-                  </section>
+                    {/* ✅ Core metrics: 2-column for readability */}
+                    <div className="metricGrid">
+                      <MiniMetric label="DOT" value={fmtPct2(card.service.dotPct01)} status={dotStatus} hint={`≥ ${(card.targets.dotMin01 * 100).toFixed(0)}%`} />
+                      <MiniMetric label="Labour" value={fmtPct2(card.cost.labourPct01)} status={labourStatus} hint={`≤ ${(card.targets.labourMax01 * 100).toFixed(0)}%`} />
+                      <MiniMetric label="R&L" value={fmtMins2(card.service.rnlMinutes)} status={rnlStatus} hint={`≤ ${card.targets.rnlMaxMins.toFixed(0)}m`} />
+                      <MiniMetric label="Extremes >40" value={fmtPct2(card.service.extremesPct01)} status={extremesStatus} hint={`≤ ${(card.targets.extremesMax01 * 100).toFixed(0)}%`} />
+                      <MiniMetric label="Add. hours" value={fmtNum2(card.additionalHours)} status={addHoursStatus} hint="Actual vs rota" />
+                      <MiniMetric label="Food variance" value={fmtPct2(card.cost.foodVarPct01)} status={foodVarStatus} hint={`Abs ≤ ${(card.targets.foodVarAbsMax01 * 100).toFixed(2)}%`} />
+                    </div>
 
-                  <section className="tasks">
-                    <h3>Tasks</h3>
-                    {card.tasks.length === 0 ? (
-                      <p className="placeholder">No tasks for this store on {targetDate}.</p>
-                    ) : (
-                      <ul>
-                        {card.tasks.map((task) => (
-                          <li key={task.id}>
-                            <label>
-                              <input type="checkbox" checked={task.is_complete} onChange={() => toggleTask(task)} />
-                              <span className={task.is_complete ? "done" : ""}>{task.task}</span>
-                            </label>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </section>
-                </article>
-              );
-            })}
+                    {/* ✅ Secondary metrics: 3-column + Notes full width */}
+                    <div className="metricGrid metricGridSecondary">
+                      <MiniMetric label="Missed calls" value={fmtPct2(card.daily.missedCalls01)} status={missedStatus} hint="≤ 6%" />
+                      <MiniMetric label="GPS tracked" value={fmtPct2(card.daily.gps01)} status={gpsStatus} hint="≥ 95%" />
+                      <MiniMetric label="AOF" value={fmtPct2(card.daily.aof01)} status={aofStatus} hint="≥ 62%" />
+
+                      <div className="noteCard">
+                        <div className="noteTop">
+                          <span className="noteLabel">Notes</span>
+                          <span className="noteHint">From store</span>
+                        </div>
+                        <div className="noteText">{card.inputs?.notes?.trim() || "—"}</div>
+                      </div>
+                    </div>
+
+                    {/* ✅ Bottom panels stacked (prevents crushed targets/tasks) */}
+                    <div className="panelStack">
+                      <div className="panel">
+                        <div className="panelHead">
+                          <span className="panelTitle">Service losing targets</span>
+                          <span className="panelHint">Input</span>
+                        </div>
+                        <div className="kvGrid">
+                          <KV label="Load (mins)" value={fmtNum2(card.inputs?.target_load_time_mins ?? null)} />
+                          <KV label="Rack (mins)" value={fmtNum2(card.inputs?.target_rack_time_mins ?? null)} />
+                          <KV label="ADT (mins)" value={fmtNum2(card.inputs?.target_adt_mins ?? null)} />
+                          <KV
+                            label="Extremes %"
+                            value={
+                              card.inputs?.target_extremes_over40_pct == null
+                                ? "—"
+                                : `${Number(card.inputs.target_extremes_over40_pct).toFixed(2)}%`
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="panel">
+                        <div className="panelHead">
+                          <span className="panelTitle">Tasks</span>
+                          <span className="panelHint">{card.tasks.length} item(s)</span>
+                        </div>
+
+                        {card.tasks.length === 0 ? (
+                          <p className="mutedSmall">No tasks for this store on {targetDate}.</p>
+                        ) : (
+                          <ul className="taskList">
+                            {card.tasks.map((task) => (
+                              <li key={task.id} className="task">
+                                <label className="taskRow">
+                                  <input type="checkbox" checked={task.is_complete} onChange={() => toggleTask(task)} />
+                                  <span className={task.is_complete ? "taskDone" : ""}>{task.task}</span>
+                                </label>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
           </section>
-        )}
+        ) : null}
+
+        <footer className="footer">
+          © {new Date().getFullYear()} Mourne-oids | Domino’s Pizza | Racz Group
+        </footer>
       </div>
 
       <style jsx>{`
-        .wrap {
-          min-height: 100dvh;
-          background: radial-gradient(circle at top, rgba(0, 100, 145, 0.08), transparent 45%),
-            linear-gradient(180deg, #e3edf4 0%, #f2f5f9 30%, #f2f5f9 100%);
-          color: #0f172a;
-          padding-bottom: 32px;
+        :root {
+          --bg0: #f6f8fb;
+          --bg1: #eef3f8;
+          --ink: #0f172a;
+          --muted: #64748b;
+          --card: rgba(255, 255, 255, 0.92);
+          --border: rgba(15, 23, 42, 0.10);
+          --shadow: 0 12px 28px rgba(2, 6, 23, 0.08);
+          --radius: 18px;
         }
+
+        .page {
+          min-height: 100dvh;
+          background:
+            radial-gradient(900px 420px at 50% 0%, rgba(0, 100, 145, 0.10), transparent 60%),
+            linear-gradient(180deg, var(--bg1), var(--bg0));
+          color: var(--ink);
+          padding-bottom: 28px;
+        }
+
         .banner {
           display: flex;
           justify-content: center;
           background: #fff;
-          border-bottom: 3px solid #006491;
+          border-bottom: 1px solid rgba(15, 23, 42, 0.08);
         }
         .banner img {
           max-width: min(1160px, 92%);
           height: auto;
           display: block;
         }
-        .shell {
-          width: min(1180px, 95vw);
-          margin: 20px auto;
-          background: rgba(255, 255, 255, 0.65);
-          backdrop-filter: saturate(160%) blur(6px);
-          border: 1px solid rgba(255, 255, 255, 0.22);
-          border-radius: 1.5rem;
-          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.05);
-          padding: 18px;
+
+        .container {
+          width: min(1180px, 94vw);
+          margin: 14px auto 0;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
         }
-        .topbar {
+
+        .topBar {
           display: flex;
           gap: 10px;
-          margin-bottom: 10px;
+          align-items: center;
         }
-        .topbar-spacer {
-          flex: 1;
-        }
-        .navbtn {
+        .spacer { flex: 1; }
+
+        .btn {
           border-radius: 14px;
-          border: 2px solid #006491;
-          background: #fff;
-          color: #006491;
+          border: 1px solid rgba(15, 23, 42, 0.14);
+          background: rgba(255, 255, 255, 0.9);
+          color: var(--ink);
           font-weight: 900;
-          font-size: 14px;
+          font-size: 13px;
           padding: 8px 12px;
           cursor: pointer;
+          box-shadow: 0 10px 20px rgba(2, 6, 23, 0.06);
         }
-        .navbtn.solid {
-          background: #006491;
+        .btn:hover { transform: translateY(-1px); }
+        .btnSolid {
+          border-color: rgba(0, 100, 145, 0.20);
+          background: linear-gradient(180deg, rgba(0, 100, 145, 0.95), rgba(0, 100, 145, 0.85));
           color: #fff;
         }
+
         .header {
-          text-align: center;
-          margin-bottom: 12px;
-        }
-        .header h1 {
-          font-size: clamp(2rem, 3vw, 2.3rem);
-          margin: 0;
-        }
-        .subtitle {
-          color: #64748b;
-          font-weight: 700;
-          margin: 4px 0 0;
-        }
-
-        .areaStrip {
-          display: grid;
-          gap: 10px;
-          background: rgba(255, 255, 255, 0.92);
-          border: 1px solid rgba(0, 100, 145, 0.14);
-          border-radius: 16px;
-          padding: 12px;
-        }
-        .areaKpi {
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          box-shadow: var(--shadow);
+          padding: 14px 16px;
           display: flex;
+          align-items: flex-start;
           justify-content: space-between;
-          align-items: center;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          border-radius: 12px;
-          padding: 8px 10px;
-          background: rgba(255, 255, 255, 0.9);
-        }
-        .kLabel {
-          font-size: 12px;
-          font-weight: 900;
-          text-transform: uppercase;
-        }
-        .kValue {
-          font-weight: 950;
-          color: #006491;
-        }
-        .storeOsaRow {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-        }
-        .chip {
-          border: 1px solid rgba(0, 100, 145, 0.16);
-          border-radius: 999px;
-          padding: 4px 10px;
-          background: rgba(0, 100, 145, 0.08);
-          font-size: 12px;
-          font-weight: 900;
-        }
-
-        .message {
-          margin-top: 12px;
-          border: 1px solid rgba(0, 100, 145, 0.14);
-          border-radius: 16px;
-          background: rgba(255, 255, 255, 0.92);
-          padding: 12px;
-        }
-        .message h2 {
-          margin: 0 0 6px;
-          font-size: 16px;
-        }
-        .message p {
-          margin: 0;
-          white-space: pre-wrap;
-          font-weight: 800;
-          color: #334155;
-        }
-
-        .alert {
-          margin-top: 12px;
-          border-radius: 14px;
-          padding: 12px;
-          font-weight: 800;
-          background: rgba(255, 255, 255, 0.85);
-          border: 1px solid rgba(15, 23, 42, 0.1);
-        }
-        .alert.error {
-          background: rgba(254, 242, 242, 0.9);
-          border-color: rgba(239, 68, 68, 0.25);
-          color: #7f1d1d;
-        }
-
-        .storesGrid {
-          margin-top: 12px;
-          display: grid;
           gap: 12px;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
         }
-        .storeCard {
-          background: rgba(255, 255, 255, 0.92);
-          border: 1px solid rgba(0, 100, 145, 0.14);
-          border-radius: 18px;
-          padding: 14px;
-        }
-        .storeHead {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-          margin-bottom: 10px;
-        }
-        .storeName {
-          margin: 0;
-          font-size: 20px;
-        }
-        .osaChip {
-          border-radius: 999px;
-          padding: 6px 10px;
-          background: rgba(124, 58, 237, 0.08);
-          border: 1px solid rgba(124, 58, 237, 0.18);
-          color: #4c1d95;
-          font-weight: 950;
-          font-size: 12px;
-          white-space: nowrap;
-        }
+        .titleRow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .header h1 { margin: 0; font-size: clamp(1.4rem, 2vw, 1.9rem); letter-spacing: 0.2px; }
+        .metaRow { margin-top: 6px; display: flex; gap: 10px; flex-wrap: wrap; }
+        .metaText { color: rgba(15, 23, 42, 0.72); font-weight: 800; font-size: 13px; }
+        .metaText strong { color: rgba(15, 23, 42, 0.92); }
+        .headerRight { display: flex; align-items: center; justify-content: flex-end; }
 
-        .metricGrid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 10px;
-        }
-        .metricGrid.compact {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          margin-top: 10px;
-        }
-
-        .metricBlock {
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          border-radius: 12px;
-          background: #fff;
-          padding: 10px;
-        }
-        .metricBlock h3,
-        .notes h3,
-        .targets h3,
-        .tasks h3 {
-          margin: 0 0 8px;
-          font-size: 13px;
-          text-transform: uppercase;
-          color: #334155;
-        }
-
-        .metric {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 10px;
-          border-radius: 12px;
-          padding: 7px 10px;
-          margin-top: 8px;
-          font-size: 13px;
-          border: 1px solid rgba(15, 23, 42, 0.06);
-          background: rgba(248, 250, 252, 0.85);
-        }
-        .metric.good {
-          background: rgba(220, 252, 231, 0.75);
-          border-color: rgba(34, 197, 94, 0.25);
-        }
-        .metric.ok {
-          background: rgba(255, 237, 213, 0.7);
-          border-color: rgba(245, 158, 11, 0.25);
-        }
-        .metric.bad {
-          background: rgba(254, 226, 226, 0.75);
-          border-color: rgba(239, 68, 68, 0.25);
-        }
-        .metric.na {
-          opacity: 0.8;
-        }
-
-        .mLabel {
-          font-weight: 900;
-          color: #0f172a;
-        }
-        .mRight {
+        .pill {
           display: inline-flex;
           align-items: center;
-          gap: 6px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          background: rgba(15, 23, 42, 0.05);
+          color: rgba(15, 23, 42, 0.82);
+          font-weight: 950;
+          font-size: 12px;
           white-space: nowrap;
         }
-        .mArrow {
-          font-size: 14px;
+        .pill-blue {
+          border-color: rgba(0, 100, 145, 0.18);
+          background: rgba(0, 100, 145, 0.10);
+          color: rgba(11, 79, 112, 0.95);
         }
-        .mValue {
-          font-weight: 950;
-          color: #0f172a;
+        .pill-purple {
+          border-color: rgba(124, 58, 237, 0.18);
+          background: rgba(124, 58, 237, 0.10);
+          color: rgba(76, 29, 149, 0.95);
         }
-        .mTarget {
-          color: #475569;
-          font-weight: 900;
-          font-size: 12px;
+        .pill-green {
+          border-color: rgba(34, 197, 94, 0.22);
+          background: rgba(34, 197, 94, 0.12);
+          color: rgba(20, 83, 45, 0.95);
+        }
+        .pill-amber {
+          border-color: rgba(245, 158, 11, 0.25);
+          background: rgba(245, 158, 11, 0.12);
+          color: rgba(120, 53, 15, 0.95);
+        }
+        .pill-red {
+          border-color: rgba(239, 68, 68, 0.24);
+          background: rgba(239, 68, 68, 0.12);
+          color: rgba(127, 29, 29, 0.95);
         }
 
-        .lineItem {
+        .section {
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          box-shadow: var(--shadow);
+          padding: 14px;
+        }
+
+        .sectionHead {
           display: flex;
+          align-items: baseline;
           justify-content: space-between;
-          gap: 8px;
-          border: 1px solid rgba(15, 23, 42, 0.06);
-          border-radius: 10px;
-          padding: 6px 8px;
-          background: rgba(248, 250, 252, 0.8);
-          font-size: 13px;
-          margin-top: 6px;
+          gap: 10px;
+          margin-bottom: 12px;
+          flex-wrap: wrap;
         }
-        .lineItem strong {
-          white-space: nowrap;
-        }
-
-        .placeholder {
+        .sectionHead h2 {
           margin: 0;
-          color: #64748b;
-          font-weight: 700;
+          font-size: 14px;
+          font-weight: 1000;
+          letter-spacing: 0.35px;
+          text-transform: uppercase;
+          color: rgba(15, 23, 42, 0.78);
         }
+        .chipRow { display: flex; gap: 8px; flex-wrap: wrap; }
+        .mutedSmall { color: rgba(100, 116, 139, 0.98); font-weight: 800; font-size: 12px; }
 
-        .notes,
-        .targets,
-        .tasks {
-          margin-top: 10px;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          border-radius: 12px;
-          background: #fff;
-          padding: 10px;
-        }
-        .notes p {
-          margin: 0;
-          white-space: pre-wrap;
-          font-weight: 700;
-          color: #334155;
-        }
-
-        .mutedSmall {
-          margin: 10px 0 0;
-          color: #64748b;
-          font-weight: 800;
-          font-size: 12px;
-        }
-        .mutedSmall code {
-          font-weight: 950;
-          color: #0f172a;
-        }
-
-        .tasks ul {
-          margin: 0;
-          padding-left: 0;
-          list-style: none;
+        .kpiGrid {
           display: grid;
-          gap: 8px;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
         }
-        .tasks label {
+        .kpiTile {
+          background: rgba(255, 255, 255, 0.96);
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          border-radius: 16px;
+          padding: 12px;
+        }
+        .kpiTop { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .kpiLabelRow { display: flex; align-items: center; gap: 8px; }
+        .kpiIcon { font-size: 14px; }
+        .kpiLabel {
+          font-size: 11px;
+          font-weight: 1000;
+          letter-spacing: 0.45px;
+          text-transform: uppercase;
+          color: rgba(15, 23, 42, 0.62);
+        }
+        .kpiValue {
+          margin-top: 10px;
+          font-size: 26px;
+          font-weight: 1000;
+          letter-spacing: -0.25px;
+          line-height: 1.1;
+          color: rgba(11, 79, 112, 0.96);
+          font-variant-numeric: tabular-nums;
+        }
+        .kpiSub {
+          margin-top: 6px;
+          font-size: 12px;
+          font-weight: 800;
+          color: rgba(100, 116, 139, 0.98);
+        }
+
+        .osaBreakdown {
+          margin-top: 12px;
+          padding-top: 12px;
+          border-top: 1px solid rgba(15, 23, 42, 0.07);
+        }
+        .osaTitle {
+          font-size: 11px;
+          font-weight: 1000;
+          letter-spacing: 0.35px;
+          text-transform: uppercase;
+          color: rgba(15, 23, 42, 0.62);
+          margin-bottom: 8px;
+        }
+        .osaChips { display: flex; flex-wrap: wrap; gap: 8px; }
+        .osaChip {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          padding: 7px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          background: rgba(15, 23, 42, 0.05);
+          font-size: 12px;
+          font-weight: 950;
+          color: rgba(15, 23, 42, 0.78);
+        }
+        .osaChip-purple {
+          border-color: rgba(124, 58, 237, 0.18);
+          background: rgba(124, 58, 237, 0.10);
+          color: rgba(76, 29, 149, 0.95);
+        }
+        .osaChipVal { font-variant-numeric: tabular-nums; padding-left: 8px; border-left: 1px solid rgba(15, 23, 42, 0.10); }
+
+        .callout { background: rgba(248, 250, 252, 0.92); border-color: rgba(15, 23, 42, 0.10); }
+        .calloutText { margin: 0; white-space: pre-wrap; font-weight: 850; color: rgba(15, 23, 42, 0.78); line-height: 1.45; }
+
+        .state {
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: 16px;
+          box-shadow: 0 10px 20px rgba(2, 6, 23, 0.06);
+          padding: 12px 14px;
+          font-weight: 850;
+          color: rgba(15, 23, 42, 0.78);
+        }
+        .stateError {
+          background: rgba(254, 242, 242, 0.92);
+          border-color: rgba(239, 68, 68, 0.20);
+          color: rgba(127, 29, 29, 0.95);
+        }
+
+        /* ✅ 2 stores per row */
+        .storeGrid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 16px;
+          align-items: start;
+        }
+
+        .storeCard {
+          background: rgba(255, 255, 255, 0.94);
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          border-radius: var(--radius);
+          box-shadow: 0 10px 22px rgba(2, 6, 23, 0.06);
+          padding: 14px;
+        }
+
+        .storeHead { margin-bottom: 12px; }
+        .storeTitle h3 { margin: 0; font-size: 18px; font-weight: 1000; letter-spacing: -0.1px; }
+        .storeChips { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+        .storeChips .pill { font-size: 11px; padding: 5px 9px; }
+
+        /* ✅ Internals rebuilt */
+        .metricGrid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .metricGridSecondary {
+          margin-top: 10px;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .miniMetric {
+          border-radius: 16px;
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          background: rgba(248, 250, 252, 0.70);
+          padding: 12px;
+          min-height: 92px;
+        }
+        .miniTop { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .miniLabel {
+          font-size: 11px;
+          font-weight: 1000;
+          letter-spacing: 0.45px;
+          text-transform: uppercase;
+          color: rgba(15, 23, 42, 0.62);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 100%;
+        }
+        .miniValue {
+          margin-top: 10px;
+          font-size: 20px;
+          font-weight: 1000;
+          letter-spacing: -0.15px;
+          line-height: 1.1;
+          color: rgba(15, 23, 42, 0.94);
+          font-variant-numeric: tabular-nums;
+        }
+        .miniHint { margin-top: 6px; font-size: 12px; font-weight: 800; color: rgba(100, 116, 139, 0.98); }
+
+        /* Notes full width under secondary grid */
+        .noteCard {
+          grid-column: 1 / -1;
+          border-radius: 16px;
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          background: rgba(255, 255, 255, 0.92);
+          padding: 12px;
+        }
+        .noteTop { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+        .noteLabel {
+          font-size: 11px;
+          font-weight: 1000;
+          letter-spacing: 0.45px;
+          text-transform: uppercase;
+          color: rgba(15, 23, 42, 0.62);
+        }
+        .noteHint { font-size: 12px; font-weight: 850; color: rgba(100, 116, 139, 0.98); }
+        .noteText { margin-top: 10px; font-size: 13px; font-weight: 850; line-height: 1.35; white-space: pre-wrap; color: rgba(15, 23, 42, 0.80); }
+
+        /* ✅ Bottom panels stacked */
+        .panelStack { margin-top: 12px; display: grid; gap: 10px; }
+        .panel {
+          border-radius: 16px;
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          background: rgba(255, 255, 255, 0.92);
+          padding: 12px;
+        }
+        .panelHead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+        .panelTitle { font-size: 12px; font-weight: 1000; letter-spacing: 0.35px; text-transform: uppercase; color: rgba(15, 23, 42, 0.74); }
+        .panelHint { font-size: 12px; font-weight: 900; color: rgba(100, 116, 139, 0.98); }
+
+        .kvGrid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .kv {
           display: flex;
           align-items: center;
-          gap: 8px;
-          font-weight: 700;
+          justify-content: space-between;
+          gap: 10px;
+          border-radius: 14px;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          background: rgba(248, 250, 252, 0.85);
+          padding: 9px 10px;
         }
-        .done {
-          text-decoration: line-through;
-          color: #64748b;
-        }
+        .kvLabel { font-size: 12px; font-weight: 900; color: rgba(15, 23, 42, 0.72); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .kvValue { font-variant-numeric: tabular-nums; font-weight: 1000; color: rgba(15, 23, 42, 0.92); white-space: nowrap; }
+
+        .taskList { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+        .task { border-radius: 14px; border: 1px solid rgba(15, 23, 42, 0.08); background: rgba(248, 250, 252, 0.85); padding: 8px 10px; }
+        .taskRow { display: flex; align-items: flex-start; gap: 10px; font-weight: 850; color: rgba(15, 23, 42, 0.82); line-height: 1.25; }
+        .taskRow input { margin-top: 2px; }
+        .taskDone { text-decoration: line-through; color: rgba(100, 116, 139, 0.95); }
+
+        .dot { width: 10px; height: 10px; border-radius: 999px; border: 1px solid rgba(15, 23, 42, 0.12); display: inline-block; flex-shrink: 0; }
+        .dot-good { background: rgba(34, 197, 94, 0.85); border-color: rgba(34, 197, 94, 0.40); }
+        .dot-ok { background: rgba(245, 158, 11, 0.85); border-color: rgba(245, 158, 11, 0.40); }
+        .dot-bad { background: rgba(239, 68, 68, 0.85); border-color: rgba(239, 68, 68, 0.40); }
+        .dot-na { background: rgba(148, 163, 184, 0.75); border-color: rgba(148, 163, 184, 0.40); }
+
+        .footer { text-align: center; color: rgba(100, 116, 139, 0.9); font-weight: 800; font-size: 12px; padding: 6px 0 2px; }
 
         @media (max-width: 980px) {
-          .storesGrid,
-          .metricGrid,
-          .metricGrid.compact {
-            grid-template-columns: 1fr;
-          }
+          .kpiGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .storeGrid { grid-template-columns: 1fr; }
+          .metricGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .metricGridSecondary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .kvGrid { grid-template-columns: 1fr; }
+          .header { flex-direction: column; align-items: flex-start; }
+          .headerRight { justify-content: flex-start; }
         }
 
         @media print {
-          .print-hidden,
-          .banner {
-            display: none !important;
-          }
-          .wrap {
-            background: #fff;
-            padding: 0;
-          }
-          .shell {
-            width: 100%;
-            margin: 0;
-            border: none;
-            box-shadow: none;
-            background: #fff;
-            padding: 0;
-          }
-          .storesGrid {
-            grid-template-columns: 1fr;
-          }
-          .storeCard,
-          .metricBlock,
-          .notes,
-          .targets,
-          .tasks,
-          .areaStrip,
-          .message {
-            break-inside: avoid;
-            box-shadow: none;
-          }
+          .print-hidden, .banner { display: none !important; }
+          .page { background: #fff; padding: 0; }
+          .container { width: 100%; margin: 0; }
+          .section, .storeCard, .kpiTile, .miniMetric, .panel, .noteCard { box-shadow: none !important; break-inside: avoid; }
         }
       `}</style>
     </main>
