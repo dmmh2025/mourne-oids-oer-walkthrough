@@ -557,13 +557,7 @@ export default function DailyUpdateClient() {
               sub="Actual vs rota (WTD)"
               status={areaAddHoursStatus}
             />
-            <KpiTile
-              icon="✅"
-              label="OSA items"
-              value={String(osaCounts.total)}
-              sub="Internal OSA logged (WTD)"
-              status={areaOsaStatus}
-            />
+            
           </div>
 
           <div className="osaBreakdown">
@@ -601,7 +595,7 @@ export default function DailyUpdateClient() {
           <section className="section">
             <div className="sectionHead">
               <h2>Stores</h2>
-              <span className="mutedSmall">2-up layout. Screenshot friendly. Traffic-light value bubbles.</span>
+              <span className="mutedSmall"></span>
             </div>
 
             <div className="storeGrid">
