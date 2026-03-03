@@ -63,6 +63,14 @@ const INPUT_TARGETS = {
   gpsMin01: 0.95,
 };
 
+// Area targets = store targets (director view). Use consistent WTD targets.
+const AREA_TARGETS = {
+  labourMax01: 0.26,
+  foodVarAbsMax01: 0.003,
+  // "Additional hours" is contextual; treat <=0 as good, 0-1 ok, >1 bad (same logic as store)
+  addHoursOkMax: 1,
+};
+
 const toISODateUK = (date: Date) => {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/London",
@@ -107,11 +115,15 @@ const to01From100 = (v0to100: number | null) => {
   return v0to100 / 100;
 };
 
-const fmtPct2 = (v01: number | null) => (v01 == null ? "—" : `${(v01 * 100).toFixed(2)}%`);
-const fmtNum2 = (v: number | null) => (v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}`);
-const fmtMins2 = (v: number | null) => (v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}m`);
+const fmtPct2 = (v01: number | null) =>
+  v01 == null || !Number.isFinite(v01) ? "—" : `${(v01 * 100).toFixed(2)}%`;
+const fmtNum2 = (v: number | null) =>
+  v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}`;
+const fmtMins2 = (v: number | null) =>
+  v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}m`;
 
-const avg = (arr: number[]) => (arr.length ? arr.reduce((acc, val) => acc + val, 0) / arr.length : null);
+const avg = (arr: number[]) =>
+  arr.length ? arr.reduce((acc, val) => acc + val, 0) / arr.length : null;
 const sum = (arr: number[]) => arr.reduce((acc, val) => acc + val, 0);
 
 type Targets = {
@@ -123,10 +135,34 @@ type Targets = {
 };
 
 const DEFAULT_TARGETS: Record<string, Targets> = {
-  Downpatrick: { dotMin01: 0.82, labourMax01: 0.25, rnlMaxMins: 9, extremesMax01: 0.03, foodVarAbsMax01: 0.003 },
-  Kilkeel: { dotMin01: 0.78, labourMax01: 0.28, rnlMaxMins: 8, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
-  Newcastle: { dotMin01: 0.78, labourMax01: 0.25, rnlMaxMins: 9, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
-  Ballynahinch: { dotMin01: 0.78, labourMax01: 0.28, rnlMaxMins: 9, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
+  Downpatrick: {
+    dotMin01: 0.82,
+    labourMax01: 0.25,
+    rnlMaxMins: 9,
+    extremesMax01: 0.03,
+    foodVarAbsMax01: 0.003,
+  },
+  Kilkeel: {
+    dotMin01: 0.78,
+    labourMax01: 0.28,
+    rnlMaxMins: 8,
+    extremesMax01: 0.04,
+    foodVarAbsMax01: 0.003,
+  },
+  Newcastle: {
+    dotMin01: 0.78,
+    labourMax01: 0.25,
+    rnlMaxMins: 9,
+    extremesMax01: 0.04,
+    foodVarAbsMax01: 0.003,
+  },
+  Ballynahinch: {
+    dotMin01: 0.78,
+    labourMax01: 0.28,
+    rnlMaxMins: 9,
+    extremesMax01: 0.04,
+    foodVarAbsMax01: 0.003,
+  },
 };
 
 const getTargetsForStore = (store: string, inputs: StoreInputRow | null): Targets => {
@@ -236,11 +272,7 @@ export default function DailyUpdateClient() {
             .gte("shift_date", wkStart)
             .lte("shift_date", previousBusinessDay),
           supabase.from("service_shifts").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
-          supabase
-            .from("cost_control_entries")
-            .select("store,shift_date")
-            .order("shift_date", { ascending: false })
-            .limit(500),
+          supabase.from("cost_control_entries").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
           supabase.from("daily_update_store_inputs").select("store,date").order("date", { ascending: false }).limit(500),
         ]);
 
@@ -266,11 +298,7 @@ export default function DailyUpdateClient() {
         setOsaRows((osaRes.data || []) as OsaInternalRow[]);
 
         const storeSet = new Set<string>();
-        for (const row of [
-          ...(serviceStoresRes.data || []),
-          ...(costStoresRes.data || []),
-          ...(inputStoresRes.data || []),
-        ]) {
+        for (const row of [...(serviceStoresRes.data || []), ...(costStoresRes.data || []), ...(inputStoresRes.data || [])]) {
           const s = String((row as { store?: string }).store || "").trim();
           if (s) storeSet.add(s);
         }
@@ -324,9 +352,7 @@ export default function DailyUpdateClient() {
       const foodVarPct01 = sales > 0 ? (actualFoodCost - idealFoodCost) / sales : null;
 
       const dotPct01 = avg(service.map((row) => normalisePct01(row.dot_pct)).filter((v): v is number => v != null));
-      const extremesPct01 = avg(
-        service.map((row) => normalisePct01(row.extreme_over_40)).filter((v): v is number => v != null)
-      );
+      const extremesPct01 = avg(service.map((row) => normalisePct01(row.extreme_over_40)).filter((v): v is number => v != null));
       const rnlMinutes = avg(service.map((row) => row.rnl_minutes).filter((v): v is number => v != null));
       const additionalHours = sum(service.map((row) => Number(row.additional_hours || 0)));
 
@@ -368,11 +394,7 @@ export default function DailyUpdateClient() {
     const willComplete = !task.is_complete;
     const completedAt = willComplete ? new Date().toISOString() : null;
 
-    setTasks((prev) =>
-      prev.map((row) =>
-        row.id === task.id ? { ...row, is_complete: willComplete, completed_at: completedAt } : row
-      )
-    );
+    setTasks((prev) => prev.map((row) => (row.id === task.id ? { ...row, is_complete: willComplete, completed_at: completedAt } : row)));
 
     const { error: updateError } = await supabase
       .from("daily_update_store_tasks")
@@ -385,266 +407,369 @@ export default function DailyUpdateClient() {
     }
   };
 
-  const StatusDot = (props: { status: MetricStatus }) => {
-    const cls =
-      props.status === "good"
-        ? "dot good"
-        : props.status === "ok"
-        ? "dot ok"
-        : props.status === "bad"
-        ? "dot bad"
-        : "dot na";
-    return <span className={cls} aria-hidden="true" />;
-  };
-
-  // LABEL bold + divider + VALUE regular (clear separation)
-  const StatTile = (props: { label: string; valueText: string; status: MetricStatus }) => (
-    <div className={`statTile status-${props.status}`}>
-      <div className="tileTopRow">
-        <span className="tileTitle">{props.label}</span>
-        <StatusDot status={props.status} />
-      </div>
-      <div className="tileDivider" />
-      <div className="tileValue">{props.valueText}</div>
-    </div>
+  const StatusDot = ({ status }: { status: MetricStatus }) => (
+    <span className={`dot dot-${status}`} aria-hidden="true" title={status === "na" ? "No data" : status} />
   );
 
-  const MetricCard = (props: { title: string; icon?: string; tone?: "blue" | "purple" | "slate"; children: React.ReactNode }) => {
-    const toneClass = props.tone ? `tone-${props.tone}` : "tone-slate";
+  const ValuePill = (props: { status: MetricStatus; children: React.ReactNode }) => (
+    <span className={`valuePill valuePill-${props.status}`}>{props.children}</span>
+  );
+
+  const Pill = (props: { children: React.ReactNode; tone?: "slate" | "blue" | "purple" | "red" | "amber" | "green" }) => {
+    const tone = props.tone || "slate";
+    return <span className={`pill pill-${tone}`}>{props.children}</span>;
+  };
+
+  const toneFromStatus = (s: MetricStatus): "green" | "amber" | "red" | "slate" => {
+    if (s === "good") return "green";
+    if (s === "ok") return "amber";
+    if (s === "bad") return "red";
+    return "slate";
+  };
+
+  const KpiTile = (props: { icon?: string; label: string; value: string; sub?: string; status: MetricStatus }) => {
     return (
-      <div className={`metricCard ${toneClass}`}>
-        <div className="metricCardHead">
-          <div className="metricHeadLeft">
-            {props.icon ? (
-              <span className="metricIcon" aria-hidden="true">
-                {props.icon}
-              </span>
-            ) : null}
-            <h3>{props.title}</h3>
+      <div className="kpiTile">
+        <div className="kpiTop">
+          <div className="kpiLabelRow">
+            {props.icon ? <span className="kpiIcon" aria-hidden="true">{props.icon}</span> : null}
+            <span className="kpiLabel">{props.label}</span>
           </div>
+          <StatusDot status={props.status} />
         </div>
-        <div className="metricCardBody">{props.children}</div>
+
+        <div className="kpiValueRow">
+          <ValuePill status={props.status}>{props.value}</ValuePill>
+        </div>
+
+        {props.sub ? <div className="kpiSub">{props.sub}</div> : null}
       </div>
     );
   };
 
-  // Area tiles: title bold + divider + value regular (clear separation)
-  const AreaTile = (props: { icon: string; label: string; value: string }) => (
-    <div className="areaTile">
-      <div className="tileTopRow">
-        <div className="areaTopLeft">
-          <span className="areaTileIcon" aria-hidden="true">
-            {props.icon}
-          </span>
-          <span className="areaTileLabel">{props.label}</span>
-        </div>
+  const MiniMetric = (props: { label: string; value: string; status: MetricStatus; hint?: string }) => (
+    <div className="miniMetric">
+      <div className="miniTop">
+        <span className="miniLabel" title={props.label}>
+          {props.label}
+        </span>
+        <StatusDot status={props.status} />
       </div>
-      <div className="tileDivider" />
-      <div className="areaTileValue">{props.value}</div>
+
+      <div className="miniValueRow">
+        <ValuePill status={props.status}>{props.value}</ValuePill>
+      </div>
+
+      {props.hint ? <div className="miniHint">{props.hint}</div> : null}
     </div>
   );
 
+  const KV = (props: { label: string; value: string }) => (
+    <div className="kv">
+      <span className="kvLabel">{props.label}</span>
+      <strong className="kvValue">{props.value}</strong>
+    </div>
+  );
+
+  // Area statuses
+  const areaLabourStatus = statusLowerBetter(areaRollup.labourPct01, AREA_TARGETS.labourMax01);
+  const areaFoodStatus = statusAbsLowerBetter(areaRollup.foodVarPct01, AREA_TARGETS.foodVarAbsMax01);
+  const areaAddHoursStatus: MetricStatus =
+    areaRollup.additionalHours == null || !Number.isFinite(areaRollup.additionalHours)
+      ? "na"
+      : areaRollup.additionalHours <= 0
+        ? "good"
+        : areaRollup.additionalHours <= AREA_TARGETS.addHoursOkMax
+          ? "ok"
+          : "bad";
+  const areaOsaStatus: MetricStatus =
+    osaCounts.total <= 0 ? "good" : osaCounts.total <= 1 ? "ok" : "bad";
+
   return (
-    <main className="wrap">
-      <div className="banner">
+    <main className="page">
+      <div className="banner print-hidden">
         <img src="/mourneoids_forms_header_1600x400.png" alt="Mourne-oids Header Banner" />
       </div>
 
-      <div className="shell">
-        <div className="topbar print-hidden">
-          <button className="navbtn" type="button" onClick={() => router.back()}>
+      <div className="container">
+        <div className="topBar print-hidden">
+          <button className="btn" type="button" onClick={() => router.back()}>
             ← Back
           </button>
-          <div className="topbar-spacer" />
-          <button className="navbtn" type="button" onClick={() => router.push("/")}>
+          <button className="btn" type="button" onClick={() => router.push("/")}>
             🏠 Home
           </button>
-          <button className="navbtn solid" type="button" onClick={() => window.print()}>
+          <div className="spacer" />
+          <button className="btn btnSolid" type="button" onClick={() => window.print()}>
             📄 Export PDF
           </button>
         </div>
 
         <header className="header">
-          <h1>Mourne-oids Daily Update</h1>
-          <p className="subtitle">
-            Previous business day: {targetDate || "Loading…"}
-            {weekStart ? ` · WTD from ${weekStart}` : ""}
-          </p>
+          <div className="headerLeft">
+            <div className="titleRow">
+              <h1>Daily Update</h1>
+              <Pill tone="blue">Mourne-oids Hub</Pill>
+            </div>
+            <div className="metaRow">
+              <span className="metaText">
+                Previous business day: <strong>{targetDate || "Loading…"}</strong>
+              </span>
+              {weekStart ? (
+                <span className="metaText">
+                  WTD from <strong>{weekStart}</strong>
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <div className="headerRight">
+            <Pill tone="slate">“Climbing New Peaks, One Shift at a Time.” ⛰️</Pill>
+          </div>
         </header>
 
-        {/* ✅ Area overview: each metric is its own outlined tile */}
-        <section className="areaOverview">
-          <div className="areaTiles">
-            <AreaTile icon="🧑‍🤝‍🧑" label="Area Labour" value={fmtPct2(areaRollup.labourPct01)} />
-            <AreaTile icon="🍕" label="Area Food" value={fmtPct2(areaRollup.foodVarPct01)} />
-            <AreaTile icon="⏱️" label="Area Add. Hours" value={fmtNum2(areaRollup.additionalHours)} />
-            <AreaTile icon="✅" label="Area OSA" value={String(osaCounts.total)} />
+        <section className="section">
+          <div className="sectionHead">
+            <h2>Area snapshot</h2>
+            <div className="chipRow">
+              <Pill tone={toneFromStatus(areaOsaStatus)}>OSA WTD: {String(osaCounts.total)}</Pill>
+            </div>
+          </div>
+
+          <div className="kpiGrid">
+            <KpiTile
+              icon="🧑‍🤝‍🧑"
+              label="Labour"
+              value={fmtPct2(areaRollup.labourPct01)}
+              sub={`Target ≤ ${(AREA_TARGETS.labourMax01 * 100).toFixed(0)}%`}
+              status={areaLabourStatus}
+            />
+            <KpiTile
+              icon="🍕"
+              label="Food variance"
+              value={fmtPct2(areaRollup.foodVarPct01)}
+              sub={`Abs ≤ ${(AREA_TARGETS.foodVarAbsMax01 * 100).toFixed(2)}%`}
+              status={areaFoodStatus}
+            />
+            <KpiTile
+              icon="⏱️"
+              label="Additional hours"
+              value={fmtNum2(areaRollup.additionalHours)}
+              sub="Actual vs rota (WTD)"
+              status={areaAddHoursStatus}
+            />
+            <KpiTile
+              icon="✅"
+              label="OSA items"
+              value={String(osaCounts.total)}
+              sub="Internal OSA logged (WTD)"
+              status={areaOsaStatus}
+            />
           </div>
 
           <div className="osaBreakdown">
-            <div className="osaTitle">OSA Breakdown</div>
+            <div className="osaTitle">OSA breakdown</div>
             <div className="osaChips">
-              {stores.map((store) => (
-                <span key={store} className="chip">
-                  {store}: {String(osaCounts.byStore.get(store) || 0)}
-                </span>
-              ))}
-              {!stores.length && <span className="chip">No stores loaded</span>}
+              {stores.map((store) => {
+                const v = osaCounts.byStore.get(store) || 0;
+                const s: MetricStatus = v <= 0 ? "good" : v <= 1 ? "ok" : "bad";
+                return (
+                  <span key={store} className="osaChip">
+                    <span className="osaChipName">{store}</span>
+                    <ValuePill status={s}>{v}</ValuePill>
+                  </span>
+                );
+              })}
+              {!stores.length && <span className="osaChip">No stores loaded</span>}
             </div>
           </div>
         </section>
 
-        {areaMessage && (
-          <section className="message">
-            <div className="messageHead">
-              <h2>Area Message</h2>
-              <span className="messagePill">Action focus</span>
+        {areaMessage ? (
+          <section className="section callout">
+            <div className="sectionHead">
+              <h2>Area message</h2>
+              <Pill tone="amber">Action focus</Pill>
             </div>
-            <p>{areaMessage}</p>
+            <p className="calloutText">{areaMessage}</p>
           </section>
-        )}
+        ) : null}
 
-        {loading && <div className="alert">Loading daily update…</div>}
-        {error && <div className="alert error">Error: {error}</div>}
+        {loading && <div className="state">Loading daily update…</div>}
+        {error && <div className="state stateError">Error: {error}</div>}
 
-        {!loading && !error && (
-          <section className="storesGrid">
-            {storeCards.map((card) => {
-              const dotStatus = statusHigherBetter(card.service.dotPct01, card.targets.dotMin01);
-              const labourStatus = statusLowerBetter(card.cost.labourPct01, card.targets.labourMax01);
-              const rnlStatus = statusLowerBetter(card.service.rnlMinutes, card.targets.rnlMaxMins, 0.1);
-              const extremesStatus = statusLowerBetter(card.service.extremesPct01, card.targets.extremesMax01);
-              const foodVarStatus = statusAbsLowerBetter(card.cost.foodVarPct01, card.targets.foodVarAbsMax01);
+        {!loading && !error ? (
+          <section className="section">
+            <div className="sectionHead">
+              <h2>Stores</h2>
+              <span className="mutedSmall">2-up layout. Screenshot friendly. Traffic-light value bubbles.</span>
+            </div>
 
-              const missedStatus = statusLowerBetter(card.daily.missedCalls01, INPUT_TARGETS.missedCallsMax01);
-              const gpsStatus = statusHigherBetter(card.daily.gps01, INPUT_TARGETS.gpsMin01);
-              const aofStatus = statusHigherBetter(card.daily.aof01, INPUT_TARGETS.aofMin01);
+            <div className="storeGrid">
+              {storeCards.map((card) => {
+                const dotStatus = statusHigherBetter(card.service.dotPct01, card.targets.dotMin01);
+                const labourStatus = statusLowerBetter(card.cost.labourPct01, card.targets.labourMax01);
+                const rnlStatus = statusLowerBetter(card.service.rnlMinutes, card.targets.rnlMaxMins, 0.1);
+                const extremesStatus = statusLowerBetter(card.service.extremesPct01, card.targets.extremesMax01);
+                const foodVarStatus = statusAbsLowerBetter(card.cost.foodVarPct01, card.targets.foodVarAbsMax01);
 
-              const addHoursStatus: MetricStatus =
-                card.additionalHours == null
-                  ? "na"
-                  : !Number.isFinite(card.additionalHours)
-                  ? "na"
-                  : card.additionalHours <= 0
-                  ? "good"
-                  : card.additionalHours <= 1
-                  ? "ok"
-                  : "bad";
+                const missedStatus = statusLowerBetter(card.daily.missedCalls01, INPUT_TARGETS.missedCallsMax01);
+                const gpsStatus = statusHigherBetter(card.daily.gps01, INPUT_TARGETS.gpsMin01);
+                const aofStatus = statusHigherBetter(card.daily.aof01, INPUT_TARGETS.aofMin01);
 
-              return (
-                <article key={card.store} className="storeCard">
-                  <div className="storeHead">
-                    <h2 className="storeName">{card.store}</h2>
-                    <span className="osaChip">OSA WTD: {card.osaWtdCount}</span>
-                  </div>
+                const addHoursStatus: MetricStatus =
+                  card.additionalHours == null || !Number.isFinite(card.additionalHours)
+                    ? "na"
+                    : card.additionalHours <= 0
+                      ? "good"
+                      : card.additionalHours <= 1
+                        ? "ok"
+                        : "bad";
 
-                  {/* ✅ Service bigger than the other 2 + each section is its own outlined tile */}
-                  <div className="metricCards">
-                    <div className="metricSpan2">
-                      <MetricCard title="Service" icon="🚗" tone="slate">
-                        <div className="tilesGrid">
-                          <StatTile label="DOT" valueText={fmtPct2(card.service.dotPct01)} status={dotStatus} />
-                          <StatTile label="R&L" valueText={fmtMins2(card.service.rnlMinutes)} status={rnlStatus} />
-                          <StatTile label="Extremes >40" valueText={fmtPct2(card.service.extremesPct01)} status={extremesStatus} />
-                          <StatTile label="Add. hours" valueText={fmtNum2(card.additionalHours)} status={addHoursStatus} />
+                const osaStatus: MetricStatus =
+                  card.osaWtdCount <= 0 ? "good" : card.osaWtdCount <= 1 ? "ok" : "bad";
+
+                return (
+                  <article key={card.store} className="storeCard">
+                    <div className="storeHead">
+                      <div className="storeTitle">
+                        <h3>{card.store}</h3>
+                        <div className="storeChips">
+                          <Pill tone={toneFromStatus(osaStatus)}>OSA WTD: {card.osaWtdCount}</Pill>
                         </div>
-                      </MetricCard>
-                    </div>
-
-                    <MetricCard title="Cost Controls" icon="💷" tone="blue">
-                      <div className="tilesGrid oneCol">
-                        <StatTile label="Labour" valueText={fmtPct2(card.cost.labourPct01)} status={labourStatus} />
-                        <StatTile label="Food" valueText={fmtPct2(card.cost.foodVarPct01)} status={foodVarStatus} />
-                      </div>
-                    </MetricCard>
-
-                    <MetricCard title="Others WTD" icon="🧾" tone="purple">
-                      <div className="tilesGrid oneCol">
-                        <StatTile label="Missed Calls" valueText={fmtPct2(card.daily.missedCalls01)} status={missedStatus} />
-                        <StatTile label="GPS Tracked" valueText={fmtPct2(card.daily.gps01)} status={gpsStatus} />
-                        <StatTile label="AOF" valueText={fmtPct2(card.daily.aof01)} status={aofStatus} />
-                      </div>
-                    </MetricCard>
-                  </div>
-
-                  <section className="notes">
-                    <div className="sectionHead">
-                      <h3>Notes</h3>
-                      <span className="sectionPill">From store</span>
-                    </div>
-                    <p>{card.inputs?.notes?.trim() || "—"}</p>
-                  </section>
-
-                  <section className="targets">
-                    <div className="sectionHead">
-                      <h3>Service Losing Targets</h3>
-                      <span className="sectionPill">Input</span>
-                    </div>
-                    <div className="targetsGrid">
-                      <div className="lineItem">
-                        <span>Load (mins)</span>
-                        <strong>{fmtNum2(card.inputs?.target_load_time_mins ?? null)}</strong>
-                      </div>
-                      <div className="lineItem">
-                        <span>Rack (mins)</span>
-                        <strong>{fmtNum2(card.inputs?.target_rack_time_mins ?? null)}</strong>
-                      </div>
-                      <div className="lineItem">
-                        <span>ADT (mins)</span>
-                        <strong>{fmtNum2(card.inputs?.target_adt_mins ?? null)}</strong>
-                      </div>
-                      <div className="lineItem">
-                        <span>Extremes %</span>
-                        <strong>
-                          {card.inputs?.target_extremes_over40_pct == null
-                            ? "—"
-                            : `${Number(card.inputs.target_extremes_over40_pct).toFixed(2)}%`}
-                        </strong>
                       </div>
                     </div>
-                  </section>
 
-                  <section className="tasks">
-                    <div className="sectionHead">
-                      <h3>Tasks</h3>
-                      <span className="sectionPill">To action</span>
+                    <div className="metricGrid">
+                      <MiniMetric
+                        label="DOT"
+                        value={fmtPct2(card.service.dotPct01)}
+                        status={dotStatus}
+                        hint={`Target ≥ ${(card.targets.dotMin01 * 100).toFixed(0)}%`}
+                      />
+                      <MiniMetric
+                        label="Labour"
+                        value={fmtPct2(card.cost.labourPct01)}
+                        status={labourStatus}
+                        hint={`Target ≤ ${(card.targets.labourMax01 * 100).toFixed(0)}%`}
+                      />
+                      <MiniMetric
+                        label="R&L"
+                        value={fmtMins2(card.service.rnlMinutes)}
+                        status={rnlStatus}
+                        hint={`Target ≤ ${card.targets.rnlMaxMins.toFixed(0)}m`}
+                      />
+                      <MiniMetric
+                        label="Extremes >40"
+                        value={fmtPct2(card.service.extremesPct01)}
+                        status={extremesStatus}
+                        hint={`Target ≤ ${(card.targets.extremesMax01 * 100).toFixed(0)}%`}
+                      />
+                      <MiniMetric
+                        label="Add. hours"
+                        value={fmtNum2(card.additionalHours)}
+                        status={addHoursStatus}
+                        hint="Actual vs rota"
+                      />
+                      <MiniMetric
+                        label="Food variance"
+                        value={fmtPct2(card.cost.foodVarPct01)}
+                        status={foodVarStatus}
+                        hint={`Abs ≤ ${(card.targets.foodVarAbsMax01 * 100).toFixed(2)}%`}
+                      />
                     </div>
-                    {card.tasks.length === 0 ? (
-                      <p className="placeholder">No tasks for this store on {targetDate}.</p>
-                    ) : (
-                      <ul>
-                        {card.tasks.map((task) => (
-                          <li key={task.id}>
-                            <label>
-                              <input type="checkbox" checked={task.is_complete} onChange={() => toggleTask(task)} />
-                              <span className={task.is_complete ? "done" : ""}>{task.task}</span>
-                            </label>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </section>
-                </article>
-              );
-            })}
+
+                    <div className="metricGrid metricGridSecondary">
+                      <MiniMetric label="Missed calls" value={fmtPct2(card.daily.missedCalls01)} status={missedStatus} hint="≤ 6%" />
+                      <MiniMetric label="GPS tracked" value={fmtPct2(card.daily.gps01)} status={gpsStatus} hint="≥ 95%" />
+                      <MiniMetric label="AOF" value={fmtPct2(card.daily.aof01)} status={aofStatus} hint="≥ 62%" />
+
+                      <div className="noteCard">
+                        <div className="noteTop">
+                          <span className="noteLabel">Notes</span>
+                          <span className="noteHint">From store</span>
+                        </div>
+                        <div className="noteText">{card.inputs?.notes?.trim() || "—"}</div>
+                      </div>
+                    </div>
+
+                    <div className="panelStack">
+                      <div className="panel">
+                        <div className="panelHead">
+                          <span className="panelTitle">Service losing targets</span>
+                          <span className="panelHint">Input</span>
+                        </div>
+                        <div className="kvGrid">
+                          <KV label="Load (mins)" value={fmtNum2(card.inputs?.target_load_time_mins ?? null)} />
+                          <KV label="Rack (mins)" value={fmtNum2(card.inputs?.target_rack_time_mins ?? null)} />
+                          <KV label="ADT (mins)" value={fmtNum2(card.inputs?.target_adt_mins ?? null)} />
+                          <KV
+                            label="Extremes %"
+                            value={
+                              card.inputs?.target_extremes_over40_pct == null
+                                ? "—"
+                                : `${Number(card.inputs.target_extremes_over40_pct).toFixed(2)}%`
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="panel">
+                        <div className="panelHead">
+                          <span className="panelTitle">Tasks</span>
+                          <span className="panelHint">{card.tasks.length} item(s)</span>
+                        </div>
+
+                        {card.tasks.length === 0 ? (
+                          <p className="mutedSmall">No tasks for this store on {targetDate}.</p>
+                        ) : (
+                          <ul className="taskList">
+                            {card.tasks.map((task) => (
+                              <li key={task.id} className="task">
+                                <label className="taskRow">
+                                  <input type="checkbox" checked={task.is_complete} onChange={() => toggleTask(task)} />
+                                  <span className={task.is_complete ? "taskDone" : ""}>{task.task}</span>
+                                </label>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
           </section>
-        )}
+        ) : null}
+
+        <footer className="footer">© {new Date().getFullYear()} Mourne-oids | Domino’s Pizza | Racz Group</footer>
       </div>
 
       <style jsx>{`
-        .wrap {
+        :root {
+          --bg0: #f6f8fb;
+          --bg1: #eef3f8;
+          --ink: #0f172a;
+          --muted: #64748b;
+          --card: rgba(255, 255, 255, 0.92);
+          --border: rgba(15, 23, 42, 0.10);
+          --shadow: 0 12px 28px rgba(2, 6, 23, 0.08);
+          --radius: 18px;
+        }
+
+        .page {
           min-height: 100dvh;
-          background: radial-gradient(circle at top, rgba(0, 100, 145, 0.08), transparent 45%),
-            linear-gradient(180deg, #e3edf4 0%, #f2f5f9 30%, #f2f5f9 100%);
-          color: #0f172a;
-          padding-bottom: 32px;
+          background: radial-gradient(900px 420px at 50% 0%, rgba(0, 100, 145, 0.10), transparent 60%),
+            linear-gradient(180deg, var(--bg1), var(--bg0));
+          color: var(--ink);
+          padding-bottom: 28px;
         }
 
         .banner {
           display: flex;
           justify-content: center;
           background: #fff;
-          border-bottom: 3px solid #006491;
+          border-bottom: 1px solid rgba(15, 23, 42, 0.08);
         }
         .banner img {
           max-width: min(1160px, 92%);
@@ -652,473 +777,567 @@ export default function DailyUpdateClient() {
           display: block;
         }
 
-        .shell {
-          width: min(1180px, 95vw);
-          margin: 20px auto;
-          background: rgba(255, 255, 255, 0.65);
-          backdrop-filter: saturate(160%) blur(6px);
-          border: 1px solid rgba(255, 255, 255, 0.22);
-          border-radius: 1.5rem;
-          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.05);
-          padding: 18px;
+        .container {
+          width: min(1180px, 94vw);
+          margin: 14px auto 0;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
         }
 
-        .topbar {
+        .topBar {
           display: flex;
           gap: 10px;
-          margin-bottom: 10px;
+          align-items: center;
         }
-        .topbar-spacer {
+        .spacer {
           flex: 1;
         }
-        .navbtn {
+
+        .btn {
           border-radius: 14px;
-          border: 2px solid #006491;
-          background: #fff;
-          color: #006491;
+          border: 1px solid rgba(15, 23, 42, 0.14);
+          background: rgba(255, 255, 255, 0.9);
+          color: var(--ink);
           font-weight: 900;
-          font-size: 14px;
+          font-size: 13px;
           padding: 8px 12px;
           cursor: pointer;
+          box-shadow: 0 10px 20px rgba(2, 6, 23, 0.06);
         }
-        .navbtn.solid {
-          background: #006491;
+        .btn:hover {
+          transform: translateY(-1px);
+        }
+        .btnSolid {
+          border-color: rgba(0, 100, 145, 0.20);
+          background: linear-gradient(180deg, rgba(0, 100, 145, 0.95), rgba(0, 100, 145, 0.85));
           color: #fff;
         }
 
         .header {
-          text-align: center;
-          margin-bottom: 12px;
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          box-shadow: var(--shadow);
+          padding: 14px 16px;
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+        }
+        .titleRow {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
         }
         .header h1 {
-          font-size: clamp(2rem, 3vw, 2.3rem);
           margin: 0;
+          font-size: clamp(1.4rem, 2vw, 1.9rem);
+          letter-spacing: 0.2px;
         }
-        .subtitle {
-          color: #64748b;
+        .metaRow {
+          margin-top: 6px;
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .metaText {
+          color: rgba(15, 23, 42, 0.72);
           font-weight: 800;
-          margin: 4px 0 0;
+          font-size: 13px;
+        }
+        .metaText strong {
+          color: rgba(15, 23, 42, 0.92);
         }
 
-        /* Shared: strong separation between title + value */
-        .tileTopRow {
+        .pill {
+          display: inline-flex;
+          align-items: center;
+          padding: 6px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          background: rgba(15, 23, 42, 0.05);
+          color: rgba(15, 23, 42, 0.82);
+          font-weight: 950;
+          font-size: 12px;
+          white-space: nowrap;
+        }
+        .pill-blue {
+          border-color: rgba(0, 100, 145, 0.18);
+          background: rgba(0, 100, 145, 0.10);
+          color: rgba(11, 79, 112, 0.95);
+        }
+        .pill-purple {
+          border-color: rgba(124, 58, 237, 0.18);
+          background: rgba(124, 58, 237, 0.10);
+          color: rgba(76, 29, 149, 0.95);
+        }
+        .pill-green {
+          border-color: rgba(34, 197, 94, 0.22);
+          background: rgba(34, 197, 94, 0.12);
+          color: rgba(20, 83, 45, 0.95);
+        }
+        .pill-amber {
+          border-color: rgba(245, 158, 11, 0.25);
+          background: rgba(245, 158, 11, 0.12);
+          color: rgba(120, 53, 15, 0.95);
+        }
+        .pill-red {
+          border-color: rgba(239, 68, 68, 0.24);
+          background: rgba(239, 68, 68, 0.12);
+          color: rgba(127, 29, 29, 0.95);
+        }
+
+        .section {
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          box-shadow: var(--shadow);
+          padding: 14px;
+        }
+
+        .sectionHead {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 12px;
+          flex-wrap: wrap;
+        }
+        .sectionHead h2 {
+          margin: 0;
+          font-size: 14px;
+          font-weight: 1000;
+          letter-spacing: 0.35px;
+          text-transform: uppercase;
+          color: rgba(15, 23, 42, 0.78);
+        }
+        .chipRow {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .mutedSmall {
+          color: rgba(100, 116, 139, 0.98);
+          font-weight: 800;
+          font-size: 12px;
+        }
+
+        /* Value bubbles (traffic light) */
+        .valuePill {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 7px 12px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 23, 42, 0.12);
+          font-weight: 900;
+          font-variant-numeric: tabular-nums;
+          letter-spacing: -0.1px;
+          line-height: 1;
+          white-space: nowrap;
+        }
+        .valuePill-good {
+          background: rgba(34, 197, 94, 0.14);
+          border-color: rgba(34, 197, 94, 0.32);
+          color: rgba(20, 83, 45, 0.98);
+        }
+        .valuePill-ok {
+          background: rgba(245, 158, 11, 0.14);
+          border-color: rgba(245, 158, 11, 0.32);
+          color: rgba(120, 53, 15, 0.98);
+        }
+        .valuePill-bad {
+          background: rgba(239, 68, 68, 0.14);
+          border-color: rgba(239, 68, 68, 0.32);
+          color: rgba(127, 29, 29, 0.98);
+        }
+        .valuePill-na {
+          background: rgba(148, 163, 184, 0.16);
+          border-color: rgba(148, 163, 184, 0.30);
+          color: rgba(51, 65, 85, 0.95);
+        }
+
+        .kpiGrid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .kpiTile {
+          background: rgba(255, 255, 255, 0.96);
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          border-radius: 16px;
+          padding: 12px;
+        }
+        .kpiTop {
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 10px;
         }
-        .tileDivider {
-          height: 1px;
-          background: rgba(15, 23, 42, 0.10);
-          margin-top: 10px;
-        }
-        .tileTitle {
-          font-weight: 900;
-          letter-spacing: 0.2px;
-          color: #0f172a;
-        }
-        .tileValue {
-          margin-top: 12px; /* bigger gap = better separation */
-          font-size: 22px;
-          font-weight: 500; /* value NOT bold */
-          color: #0f172a;
-          font-variant-numeric: tabular-nums;
-        }
-
-        /* === Area Overview === */
-        .areaOverview {
-          background: rgba(255, 255, 255, 0.92);
-          border: 1px solid rgba(0, 100, 145, 0.16);
-          border-radius: 18px;
-          padding: 12px;
-          display: grid;
-          gap: 10px;
-        }
-        .areaTiles {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 10px;
-        }
-        .areaTile {
-          border-radius: 18px;
-          background: rgba(255, 255, 255, 0.98);
-          border: 2px solid rgba(0, 100, 145, 0.35); /* stronger outline */
-          box-shadow: 0 10px 22px rgba(0, 0, 0, 0.04);
-          padding: 12px 14px;
-        }
-        .areaTopLeft {
-          display: inline-flex;
+        .kpiLabelRow {
+          display: flex;
           align-items: center;
           gap: 8px;
-          min-width: 0;
         }
-        .areaTileIcon {
-          font-size: 16px;
-          line-height: 1;
-          flex-shrink: 0;
+        .kpiIcon {
+          font-size: 14px;
         }
-        .areaTileLabel {
-          font-size: 13px;
-          font-weight: 900; /* bold title */
+        /* ✅ Make metric name bold (not the figure) */
+        .kpiLabel {
+          font-size: 11px;
+          font-weight: 1100;
+          letter-spacing: 0.55px;
           text-transform: uppercase;
-          letter-spacing: 0.35px;
-          color: #0f172a;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
+          color: rgba(15, 23, 42, 0.70);
         }
-        .areaTileValue {
-          margin-top: 12px;
-          font-size: 26px;
-          font-weight: 500; /* value regular */
-          color: #0b4f70;
-          font-variant-numeric: tabular-nums;
+        .kpiValueRow {
+          margin-top: 10px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .kpiValueRow .valuePill {
+          font-size: 18px;
+        }
+        .kpiSub {
+          margin-top: 8px;
+          font-size: 12px;
+          font-weight: 800;
+          color: rgba(100, 116, 139, 0.98);
         }
 
         .osaBreakdown {
-          border-radius: 16px;
-          padding: 10px;
-          background: rgba(15, 23, 42, 0.03);
-          border: 1px solid rgba(15, 23, 42, 0.06);
+          margin-top: 12px;
+          padding-top: 12px;
+          border-top: 1px solid rgba(15, 23, 42, 0.07);
         }
         .osaTitle {
-          font-size: 12px;
-          font-weight: 950;
-          text-transform: uppercase;
-          color: #334155;
-          margin-bottom: 8px;
+          font-size: 11px;
+          font-weight: 1000;
           letter-spacing: 0.35px;
+          text-transform: uppercase;
+          color: rgba(15, 23, 42, 0.62);
+          margin-bottom: 8px;
         }
         .osaChips {
           display: flex;
           flex-wrap: wrap;
           gap: 8px;
         }
-        .chip {
-          border: 1px solid rgba(0, 100, 145, 0.16);
-          border-radius: 999px;
-          padding: 6px 10px;
-          background: rgba(0, 100, 145, 0.08);
-          font-size: 12px;
-          font-weight: 900;
-        }
-
-        /* Area Message */
-        .message {
-          margin-top: 12px;
-          border: 2px solid rgba(0, 100, 145, 0.22);
-          border-radius: 18px;
-          background: rgba(0, 100, 145, 0.06);
-          padding: 14px;
-          box-shadow: 0 10px 24px rgba(0, 0, 0, 0.05);
-        }
-        .messageHead {
-          display: flex;
+        .osaChip {
+          display: inline-flex;
           align-items: center;
-          justify-content: space-between;
           gap: 10px;
-          margin-bottom: 8px;
-        }
-        .message h2 {
-          margin: 0;
-          font-size: 16px;
-        }
-        .messagePill {
+          padding: 7px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          background: rgba(15, 23, 42, 0.05);
           font-size: 12px;
           font-weight: 950;
-          padding: 6px 10px;
-          border-radius: 999px;
-          background: rgba(0, 100, 145, 0.10);
-          border: 1px solid rgba(0, 100, 145, 0.18);
-          color: #0f172a;
-          white-space: nowrap;
+          color: rgba(15, 23, 42, 0.78);
         }
-        .message p {
+        .osaChipName {
+          opacity: 0.92;
+          font-weight: 950;
+        }
+        .osaChip .valuePill {
+          padding: 5px 10px;
+          font-size: 12px;
+        }
+
+        .callout {
+          background: rgba(248, 250, 252, 0.92);
+          border-color: rgba(15, 23, 42, 0.10);
+        }
+        .calloutText {
           margin: 0;
           white-space: pre-wrap;
           font-weight: 850;
-          color: #334155;
-          line-height: 1.35;
+          color: rgba(15, 23, 42, 0.78);
+          line-height: 1.45;
         }
 
-        .alert {
-          margin-top: 12px;
-          border-radius: 14px;
-          padding: 12px;
-          font-weight: 800;
-          background: rgba(255, 255, 255, 0.85);
-          border: 1px solid rgba(15, 23, 42, 0.1);
+        .state {
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: 16px;
+          box-shadow: 0 10px 20px rgba(2, 6, 23, 0.06);
+          padding: 12px 14px;
+          font-weight: 850;
+          color: rgba(15, 23, 42, 0.78);
         }
-        .alert.error {
-          background: rgba(254, 242, 242, 0.9);
-          border-color: rgba(239, 68, 68, 0.25);
-          color: #7f1d1d;
+        .stateError {
+          background: rgba(254, 242, 242, 0.92);
+          border-color: rgba(239, 68, 68, 0.20);
+          color: rgba(127, 29, 29, 0.95);
         }
 
-        /* Store cards */
-        .storesGrid {
-          margin-top: 12px;
+        /* 2 stores per row */
+        .storeGrid {
           display: grid;
-          gap: 12px;
           grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 16px;
+          align-items: start;
         }
+
         .storeCard {
-          background: rgba(255, 255, 255, 0.92);
-          border: 1px solid rgba(0, 100, 145, 0.14);
-          border-radius: 18px;
+          background: rgba(255, 255, 255, 0.94);
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          border-radius: var(--radius);
+          box-shadow: 0 10px 22px rgba(2, 6, 23, 0.06);
           padding: 14px;
         }
+
         .storeHead {
+          margin-bottom: 12px;
+        }
+        .storeTitle h3 {
+          margin: 0;
+          font-size: 18px;
+          font-weight: 1000;
+          letter-spacing: -0.1px;
+        }
+        .storeChips {
+          margin-top: 8px;
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .storeChips .pill {
+          font-size: 11px;
+          padding: 5px 9px;
+        }
+
+        /* Metrics rebuilt: label bold + value bubble */
+        .metricGrid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .metricGridSecondary {
+          margin-top: 10px;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .miniMetric {
+          border-radius: 16px;
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          background: rgba(248, 250, 252, 0.70);
+          padding: 12px;
+          min-height: 98px;
+        }
+        .miniTop {
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 10px;
-          margin-bottom: 12px;
         }
-        .storeName {
-          margin: 0;
-          font-size: 22px;
-          letter-spacing: 0.2px;
+        /* ✅ Metric NAME bold */
+        .miniLabel {
+          font-size: 11px;
+          font-weight: 1100;
+          letter-spacing: 0.55px;
+          text-transform: uppercase;
+          color: rgba(15, 23, 42, 0.70);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 100%;
         }
-        .osaChip {
-          border-radius: 999px;
-          padding: 7px 12px;
-          background: rgba(124, 58, 237, 0.08);
-          border: 1px solid rgba(124, 58, 237, 0.18);
-          color: #4c1d95;
-          font-weight: 950;
+        .miniValueRow {
+          margin-top: 10px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .miniValueRow .valuePill {
+          font-size: 18px;
+        }
+        .miniHint {
+          margin-top: 8px;
           font-size: 12px;
+          font-weight: 800;
+          color: rgba(100, 116, 139, 0.98);
+        }
+
+        .noteCard {
+          grid-column: 1 / -1;
+          border-radius: 16px;
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          background: rgba(255, 255, 255, 0.92);
+          padding: 12px;
+        }
+        .noteTop {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 10px;
+        }
+        .noteLabel {
+          font-size: 11px;
+          font-weight: 1100;
+          letter-spacing: 0.55px;
+          text-transform: uppercase;
+          color: rgba(15, 23, 42, 0.70);
+        }
+        .noteHint {
+          font-size: 12px;
+          font-weight: 850;
+          color: rgba(100, 116, 139, 0.98);
+        }
+        .noteText {
+          margin-top: 10px;
+          font-size: 13px;
+          font-weight: 850;
+          line-height: 1.35;
+          white-space: pre-wrap;
+          color: rgba(15, 23, 42, 0.80);
+        }
+
+        .panelStack {
+          margin-top: 12px;
+          display: grid;
+          gap: 10px;
+        }
+        .panel {
+          border-radius: 16px;
+          border: 1px solid rgba(15, 23, 42, 0.10);
+          background: rgba(255, 255, 255, 0.92);
+          padding: 12px;
+        }
+
+        /* ✅ Put "Service losing targets" and "Tasks" on their own lines (no bunched headings) */
+        .panelHead {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 4px;
+          margin-bottom: 10px;
+        }
+        .panelTitle {
+          font-size: 12px;
+          font-weight: 1100;
+          letter-spacing: 0.45px;
+          text-transform: uppercase;
+          color: rgba(15, 23, 42, 0.78);
+          line-height: 1.2;
+        }
+        .panelHint {
+          font-size: 12px;
+          font-weight: 850;
+          color: rgba(100, 116, 139, 0.98);
+        }
+
+        .kvGrid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+        .kv {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          border-radius: 14px;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          background: rgba(248, 250, 252, 0.85);
+          padding: 9px 10px;
+        }
+        .kvLabel {
+          font-size: 12px;
+          font-weight: 900;
+          color: rgba(15, 23, 42, 0.72);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .kvValue {
+          font-variant-numeric: tabular-nums;
+          font-weight: 1000;
+          color: rgba(15, 23, 42, 0.92);
           white-space: nowrap;
         }
 
-        /* KPI modules */
-        .metricCards {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr)); /* Service spans 2 */
-          gap: 10px;
-          align-items: start;
-        }
-        .metricSpan2 {
-          grid-column: span 2;
-        }
-
-        .metricCard {
-          border-radius: 18px;
-          background: #fff;
-          border: 2px solid rgba(15, 23, 42, 0.14); /* stronger outline */
-          box-shadow: 0 10px 22px rgba(0, 0, 0, 0.05);
-          overflow: hidden;
-        }
-        .metricCardHead {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-          padding: 10px 12px;
-          border-bottom: 1px solid rgba(15, 23, 42, 0.06);
-        }
-        .metricHeadLeft {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        .metricIcon {
-          font-size: 15px;
-          line-height: 1;
-        }
-        .metricCardHead h3 {
+        .taskList {
           margin: 0;
-          font-size: 13px;
-          letter-spacing: 0.35px;
-          text-transform: uppercase;
-          font-weight: 1000;
-          color: #0f172a;
-        }
-        .metricCardBody {
-          padding: 12px;
-        }
-        .tone-blue .metricCardHead {
-          background: linear-gradient(90deg, rgba(0, 100, 145, 0.16), rgba(0, 100, 145, 0.03));
-        }
-        .tone-purple .metricCardHead {
-          background: linear-gradient(90deg, rgba(124, 58, 237, 0.14), rgba(124, 58, 237, 0.03));
-        }
-        .tone-slate .metricCardHead {
-          background: linear-gradient(90deg, rgba(15, 23, 42, 0.12), rgba(15, 23, 42, 0.02));
-        }
-
-        /* Tiles inside cards */
-        .tilesGrid {
+          padding: 0;
+          list-style: none;
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px;
         }
-        .tilesGrid.oneCol {
-          grid-template-columns: 1fr;
+        .task {
+          border-radius: 14px;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          background: rgba(248, 250, 252, 0.85);
+          padding: 8px 10px;
         }
-
-        .statTile {
-          border-radius: 16px;
-          padding: 12px 14px;
-          border: 2px solid rgba(15, 23, 42, 0.18); /* stronger outline */
-          background: rgba(255, 255, 255, 0.98);
+        .taskRow {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          font-weight: 850;
+          color: rgba(15, 23, 42, 0.82);
+          line-height: 1.25;
         }
-
-        /* Bigger value text for service tiles (readability) */
-        .metricSpan2 .tileValue {
-          font-size: 24px;
+        .taskRow input {
+          margin-top: 2px;
         }
-
-        /* Subtle status tint */
-        .status-good {
-          background: rgba(220, 252, 231, 0.35);
-        }
-        .status-ok {
-          background: rgba(255, 237, 213, 0.35);
-        }
-        .status-bad {
-          background: rgba(254, 226, 226, 0.35);
-        }
-        .status-na {
-          background: rgba(248, 250, 252, 0.95);
+        .taskDone {
+          text-decoration: line-through;
+          color: rgba(100, 116, 139, 0.95);
         }
 
         .dot {
           width: 10px;
           height: 10px;
           border-radius: 999px;
-          border: 1px solid rgba(15, 23, 42, 0.15);
+          border: 1px solid rgba(15, 23, 42, 0.12);
           display: inline-block;
           flex-shrink: 0;
         }
-        .dot.good {
+        .dot-good {
           background: rgba(34, 197, 94, 0.85);
-          border-color: rgba(34, 197, 94, 0.45);
+          border-color: rgba(34, 197, 94, 0.40);
         }
-        .dot.ok {
+        .dot-ok {
           background: rgba(245, 158, 11, 0.85);
-          border-color: rgba(245, 158, 11, 0.45);
+          border-color: rgba(245, 158, 11, 0.40);
         }
-        .dot.bad {
+        .dot-bad {
           background: rgba(239, 68, 68, 0.85);
-          border-color: rgba(239, 68, 68, 0.45);
+          border-color: rgba(239, 68, 68, 0.40);
         }
-        .dot.na {
-          background: rgba(148, 163, 184, 0.70);
-          border-color: rgba(148, 163, 184, 0.45);
-        }
-
-        /* Notes/Targets/Tasks */
-        .notes,
-        .targets,
-        .tasks {
-          margin-top: 12px;
-          border-radius: 16px;
-          background: rgba(255, 255, 255, 0.98);
-          padding: 12px;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          box-shadow: 0 10px 22px rgba(0, 0, 0, 0.04);
-        }
-        .sectionHead {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-          margin-bottom: 10px;
-        }
-        .sectionHead h3 {
-          margin: 0;
-          font-size: 13px;
-          text-transform: uppercase;
-          letter-spacing: 0.3px;
-          color: #334155;
-          font-weight: 1000;
-        }
-        .sectionPill {
-          font-size: 12px;
-          font-weight: 950;
-          padding: 6px 10px;
-          border-radius: 999px;
-          border: 1px solid rgba(15, 23, 42, 0.10);
-          background: rgba(15, 23, 42, 0.05);
-          color: #334155;
-          white-space: nowrap;
+        .dot-na {
+          background: rgba(148, 163, 184, 0.75);
+          border-color: rgba(148, 163, 184, 0.40);
         }
 
-        .notes {
-          border-left: 6px solid rgba(0, 100, 145, 0.7);
-        }
-        .notes p {
-          margin: 0;
-          white-space: pre-wrap;
-          font-weight: 850;
-          color: #334155;
-          line-height: 1.35;
-        }
-
-        .tasks {
-          border-left: 6px solid rgba(124, 58, 237, 0.55);
-        }
-        .tasks ul {
-          margin: 0;
-          padding-left: 0;
-          list-style: none;
-          display: grid;
-          gap: 10px;
-        }
-        .tasks label {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          font-weight: 850;
-        }
-        .done {
-          text-decoration: line-through;
-          color: #64748b;
-        }
-
-        .targetsGrid {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 10px;
-        }
-        .lineItem {
-          display: flex;
-          justify-content: space-between;
-          gap: 10px;
-          border: 1px solid rgba(15, 23, 42, 0.06);
-          border-radius: 14px;
-          padding: 10px 12px;
-          background: rgba(248, 250, 252, 0.8);
-          font-size: 13px;
-        }
-        .lineItem strong {
-          white-space: nowrap;
-          font-weight: 1000;
-          font-variant-numeric: tabular-nums;
-        }
-
-        .placeholder {
-          margin: 0;
-          color: #64748b;
+        .footer {
+          text-align: center;
+          color: rgba(100, 116, 139, 0.9);
           font-weight: 800;
+          font-size: 12px;
+          padding: 6px 0 2px;
         }
 
         @media (max-width: 980px) {
-          .storesGrid {
+          .kpiGrid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .storeGrid {
             grid-template-columns: 1fr;
           }
-          .areaTiles {
+          .metricGridSecondary {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .kvGrid {
             grid-template-columns: 1fr;
           }
-          .metricCards {
-            grid-template-columns: 1fr;
-          }
-          .metricSpan2 {
-            grid-column: span 1;
-          }
-          .tilesGrid {
-            grid-template-columns: 1fr;
+          .header {
+            flex-direction: column;
+            align-items: flex-start;
           }
         }
 
@@ -1127,30 +1346,22 @@ export default function DailyUpdateClient() {
           .banner {
             display: none !important;
           }
-          .wrap {
+          .page {
             background: #fff;
             padding: 0;
           }
-          .shell {
+          .container {
             width: 100%;
             margin: 0;
-            border: none;
-            box-shadow: none;
-            background: #fff;
-            padding: 0;
           }
-          .storesGrid {
-            grid-template-columns: 1fr;
-          }
+          .section,
           .storeCard,
-          .metricCard,
-          .notes,
-          .targets,
-          .tasks,
-          .areaOverview,
-          .message {
+          .kpiTile,
+          .miniMetric,
+          .panel,
+          .noteCard {
+            box-shadow: none !important;
             break-inside: avoid;
-            box-shadow: none;
           }
         }
       `}</style>
