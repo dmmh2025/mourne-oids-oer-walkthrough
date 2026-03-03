@@ -427,6 +427,13 @@ export default function DailyUpdateClient() {
     </div>
   );
 
+  const KeyValue = (props: { label: string; value: string }) => (
+    <div className="kv">
+      <span>{props.label}</span>
+      <strong>{props.value}</strong>
+    </div>
+  );
+
   return (
     <main className="page">
       <div className="banner print-hidden">
@@ -525,7 +532,7 @@ export default function DailyUpdateClient() {
           <section className="section">
             <div className="sectionHead">
               <h2>Stores</h2>
-              <span className="mutedSmall">Single-card layout for faster scanning (director view).</span>
+              <span className="mutedSmall">No dropdowns — optimised for quick screenshots into Slack.</span>
             </div>
 
             <div className="storeGrid">
@@ -551,7 +558,6 @@ export default function DailyUpdateClient() {
                           ? "ok"
                           : "bad";
 
-                // top chips (quick scan)
                 const chipToneFromStatus = (s: MetricStatus): any => {
                   if (s === "good") return "green";
                   if (s === "ok") return "amber";
@@ -574,10 +580,10 @@ export default function DailyUpdateClient() {
                     </div>
 
                     <div className="metricGrid">
-                      <MiniMetric label="DOT" value={fmtPct2(card.service.dotPct01)} status={dotStatus} hint={`Target ≥ ${(card.targets.dotMin01 * 100).toFixed(0)}%`} />
-                      <MiniMetric label="Labour" value={fmtPct2(card.cost.labourPct01)} status={labourStatus} hint={`Target ≤ ${(card.targets.labourMax01 * 100).toFixed(0)}%`} />
-                      <MiniMetric label="R&L" value={fmtMins2(card.service.rnlMinutes)} status={rnlStatus} hint={`Target ≤ ${card.targets.rnlMaxMins.toFixed(0)}m`} />
-                      <MiniMetric label="Extremes >40" value={fmtPct2(card.service.extremesPct01)} status={extremesStatus} hint={`Target ≤ ${(card.targets.extremesMax01 * 100).toFixed(0)}%`} />
+                      <MiniMetric label="DOT" value={fmtPct2(card.service.dotPct01)} status={dotStatus} hint={`≥ ${(card.targets.dotMin01 * 100).toFixed(0)}%`} />
+                      <MiniMetric label="Labour" value={fmtPct2(card.cost.labourPct01)} status={labourStatus} hint={`≤ ${(card.targets.labourMax01 * 100).toFixed(0)}%`} />
+                      <MiniMetric label="R&L" value={fmtMins2(card.service.rnlMinutes)} status={rnlStatus} hint={`≤ ${card.targets.rnlMaxMins.toFixed(0)}m`} />
+                      <MiniMetric label="Extremes >40" value={fmtPct2(card.service.extremesPct01)} status={extremesStatus} hint={`≤ ${(card.targets.extremesMax01 * 100).toFixed(0)}%`} />
                       <MiniMetric label="Add. hours" value={fmtNum2(card.additionalHours)} status={addHoursStatus} hint="Actual vs rota" />
                       <MiniMetric label="Food variance" value={fmtPct2(card.cost.foodVarPct01)} status={foodVarStatus} hint={`Abs ≤ ${(card.targets.foodVarAbsMax01 * 100).toFixed(2)}%`} />
                     </div>
@@ -586,55 +592,57 @@ export default function DailyUpdateClient() {
                       <MiniMetric label="Missed calls" value={fmtPct2(card.daily.missedCalls01)} status={missedStatus} hint="≤ 6%" />
                       <MiniMetric label="GPS tracked" value={fmtPct2(card.daily.gps01)} status={gpsStatus} hint="≥ 95%" />
                       <MiniMetric label="AOF" value={fmtPct2(card.daily.aof01)} status={aofStatus} hint="≥ 62%" />
-                      <div className="miniMetric miniMetricGhost">
+                      <div className="miniMetric miniMetricNote">
                         <div className="miniTop">
-                          <span className="miniLabel">Quick note</span>
+                          <span className="miniLabel">Notes</span>
                           <span className="miniHint">From store</span>
                         </div>
-                        <div className="miniValue miniValueNote">{card.inputs?.notes?.trim() || "—"}</div>
+                        <div className="noteText">{card.inputs?.notes?.trim() || "—"}</div>
                       </div>
                     </div>
 
-                    {/* Details: keep the executive view clean */}
-                    <div className="detailsRow">
-                      <details className="details">
-                        <summary className="detailsSummary">Service losing targets</summary>
-                        <div className="detailsBody">
-                          <div className="kvGrid">
-                            <div className="kv"><span>Load (mins)</span><strong>{fmtNum2(card.inputs?.target_load_time_mins ?? null)}</strong></div>
-                            <div className="kv"><span>Rack (mins)</span><strong>{fmtNum2(card.inputs?.target_rack_time_mins ?? null)}</strong></div>
-                            <div className="kv"><span>ADT (mins)</span><strong>{fmtNum2(card.inputs?.target_adt_mins ?? null)}</strong></div>
-                            <div className="kv">
-                              <span>Extremes %</span>
-                              <strong>
-                                {card.inputs?.target_extremes_over40_pct == null
-                                  ? "—"
-                                  : `${Number(card.inputs.target_extremes_over40_pct).toFixed(2)}%`}
-                              </strong>
-                            </div>
-                          </div>
+                    <div className="lowerGrid">
+                      <div className="panel">
+                        <div className="panelHead">
+                          <span className="panelTitle">Service losing targets</span>
+                          <span className="panelHint">Input</span>
                         </div>
-                      </details>
+                        <div className="kvGrid">
+                          <KeyValue label="Load (mins)" value={fmtNum2(card.inputs?.target_load_time_mins ?? null)} />
+                          <KeyValue label="Rack (mins)" value={fmtNum2(card.inputs?.target_rack_time_mins ?? null)} />
+                          <KeyValue label="ADT (mins)" value={fmtNum2(card.inputs?.target_adt_mins ?? null)} />
+                          <KeyValue
+                            label="Extremes %"
+                            value={
+                              card.inputs?.target_extremes_over40_pct == null
+                                ? "—"
+                                : `${Number(card.inputs.target_extremes_over40_pct).toFixed(2)}%`
+                            }
+                          />
+                        </div>
+                      </div>
 
-                      <details className="details">
-                        <summary className="detailsSummary">Tasks ({card.tasks.length})</summary>
-                        <div className="detailsBody">
-                          {card.tasks.length === 0 ? (
-                            <p className="mutedSmall">No tasks for this store on {targetDate}.</p>
-                          ) : (
-                            <ul className="taskList">
-                              {card.tasks.map((task) => (
-                                <li key={task.id} className="task">
-                                  <label className="taskRow">
-                                    <input type="checkbox" checked={task.is_complete} onChange={() => toggleTask(task)} />
-                                    <span className={task.is_complete ? "taskDone" : ""}>{task.task}</span>
-                                  </label>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
+                      <div className="panel">
+                        <div className="panelHead">
+                          <span className="panelTitle">Tasks</span>
+                          <span className="panelHint">{card.tasks.length} item(s)</span>
                         </div>
-                      </details>
+
+                        {card.tasks.length === 0 ? (
+                          <p className="mutedSmall">No tasks for this store on {targetDate}.</p>
+                        ) : (
+                          <ul className="taskList">
+                            {card.tasks.map((task) => (
+                              <li key={task.id} className="task">
+                                <label className="taskRow">
+                                  <input type="checkbox" checked={task.is_complete} onChange={() => toggleTask(task)} />
+                                  <span className={task.is_complete ? "taskDone" : ""}>{task.task}</span>
+                                </label>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
                     </div>
                   </article>
                 );
@@ -750,11 +758,7 @@ export default function DailyUpdateClient() {
           font-size: 13px;
         }
         .metaText strong { color: rgba(15, 23, 42, 0.92); }
-        .headerRight {
-          display: flex;
-          align-items: center;
-          justify-content: flex-end;
-        }
+        .headerRight { display: flex; align-items: center; justify-content: flex-end; }
 
         .pill {
           display: inline-flex;
@@ -793,7 +797,6 @@ export default function DailyUpdateClient() {
           background: rgba(239, 68, 68, 0.12);
           color: rgba(127, 29, 29, 0.95);
         }
-        .pill-slate { /* default already */ }
 
         .section {
           background: var(--card);
@@ -848,15 +851,16 @@ export default function DailyUpdateClient() {
         .kpiLabel {
           font-size: 11px;
           font-weight: 1000;
-          letter-spacing: 0.35px;
+          letter-spacing: 0.45px;
           text-transform: uppercase;
           color: rgba(15, 23, 42, 0.62);
         }
         .kpiValue {
-          margin-top: 8px;
-          font-size: 24px;
+          margin-top: 10px;
+          font-size: 26px;
           font-weight: 1000;
-          letter-spacing: -0.2px;
+          letter-spacing: -0.25px;
+          line-height: 1.1;
           color: rgba(11, 79, 112, 0.96);
           font-variant-numeric: tabular-nums;
         }
@@ -902,7 +906,6 @@ export default function DailyUpdateClient() {
           background: rgba(124, 58, 237, 0.10);
           color: rgba(76, 29, 149, 0.95);
         }
-        .osaChip-slate { /* default */ }
         .osaChipName { opacity: 0.92; }
         .osaChipVal {
           font-variant-numeric: tabular-nums;
@@ -937,25 +940,24 @@ export default function DailyUpdateClient() {
           color: rgba(127, 29, 29, 0.95);
         }
 
+        /* ✅ BIG READABILITY FIX:
+           Auto-fit with a sensible minimum width.
+           This prevents "crushed" store cards and makes screenshots readable. */
         .storeGrid {
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 14px;
+          grid-template-columns: repeat(auto-fit, minmax(640px, 1fr));
+          gap: 16px;
+          align-items: start;
         }
+
         .storeCard {
           background: rgba(255, 255, 255, 0.94);
           border: 1px solid rgba(15, 23, 42, 0.10);
           border-radius: var(--radius);
           box-shadow: 0 10px 22px rgba(2, 6, 23, 0.06);
-          padding: 14px;
+          padding: 16px;
         }
-        .storeHead {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: 10px;
-          margin-bottom: 12px;
-        }
+        .storeHead { margin-bottom: 12px; }
         .storeTitle h3 {
           margin: 0;
           font-size: 18px;
@@ -972,10 +974,10 @@ export default function DailyUpdateClient() {
         .metricGrid {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 10px;
+          gap: 12px;
         }
         .metricGridSecondary {
-          margin-top: 10px;
+          margin-top: 12px;
           grid-template-columns: repeat(4, minmax(0, 1fr));
         }
 
@@ -983,12 +985,10 @@ export default function DailyUpdateClient() {
           border-radius: 16px;
           border: 1px solid rgba(15, 23, 42, 0.10);
           background: rgba(248, 250, 252, 0.70);
-          padding: 10px 10px;
+          padding: 12px;
+          min-height: 92px;
         }
-        .miniMetricGhost {
-          grid-column: span 1;
-          background: rgba(255, 255, 255, 0.88);
-        }
+
         .miniTop {
           display: flex;
           align-items: center;
@@ -998,23 +998,18 @@ export default function DailyUpdateClient() {
         .miniLabel {
           font-size: 11px;
           font-weight: 1000;
-          letter-spacing: 0.35px;
+          letter-spacing: 0.45px;
           text-transform: uppercase;
-          color: rgba(15, 23, 42, 0.60);
+          color: rgba(15, 23, 42, 0.62);
         }
         .miniValue {
-          margin-top: 7px;
-          font-size: 18px;
+          margin-top: 10px;
+          font-size: 20px;
           font-weight: 1000;
-          color: rgba(15, 23, 42, 0.92);
+          letter-spacing: -0.15px;
+          line-height: 1.1;
+          color: rgba(15, 23, 42, 0.94);
           font-variant-numeric: tabular-nums;
-        }
-        .miniValueNote {
-          font-size: 13px;
-          font-weight: 850;
-          line-height: 1.35;
-          white-space: pre-wrap;
-          color: rgba(15, 23, 42, 0.78);
         }
         .miniHint {
           margin-top: 6px;
@@ -1023,37 +1018,52 @@ export default function DailyUpdateClient() {
           color: rgba(100, 116, 139, 0.98);
         }
 
-        .detailsRow {
+        .miniMetricNote {
+          background: rgba(255, 255, 255, 0.92);
+          min-height: 92px;
+        }
+        .noteText {
           margin-top: 10px;
+          font-size: 13px;
+          font-weight: 850;
+          line-height: 1.35;
+          white-space: pre-wrap;
+          color: rgba(15, 23, 42, 0.78);
+        }
+
+        .lowerGrid {
+          margin-top: 12px;
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 10px;
+          gap: 12px;
+          align-items: start;
         }
-        .details {
+
+        .panel {
           border-radius: 16px;
           border: 1px solid rgba(15, 23, 42, 0.10);
-          background: rgba(255, 255, 255, 0.90);
-          overflow: hidden;
+          background: rgba(255, 255, 255, 0.92);
+          padding: 12px;
         }
-        .detailsSummary {
-          cursor: pointer;
-          padding: 10px 12px;
+        .panelHead {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+        .panelTitle {
           font-size: 12px;
           font-weight: 1000;
           letter-spacing: 0.35px;
           text-transform: uppercase;
           color: rgba(15, 23, 42, 0.74);
-          background: linear-gradient(90deg, rgba(15, 23, 42, 0.08), rgba(15, 23, 42, 0.02));
-          list-style: none;
         }
-        .detailsSummary::-webkit-details-marker { display: none; }
-        .detailsSummary:after {
-          content: "▾";
-          float: right;
-          opacity: 0.65;
+        .panelHint {
+          font-size: 12px;
+          font-weight: 900;
+          color: rgba(100, 116, 139, 0.98);
         }
-        details[open] .detailsSummary:after { content: "▴"; }
-        .detailsBody { padding: 10px 12px; }
 
         .kvGrid {
           display: grid;
@@ -1130,7 +1140,7 @@ export default function DailyUpdateClient() {
           .storeGrid { grid-template-columns: 1fr; }
           .metricGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .metricGridSecondary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-          .detailsRow { grid-template-columns: 1fr; }
+          .lowerGrid { grid-template-columns: 1fr; }
           .kvGrid { grid-template-columns: 1fr; }
           .header { flex-direction: column; align-items: flex-start; }
           .headerRight { justify-content: flex-start; }
@@ -1141,11 +1151,10 @@ export default function DailyUpdateClient() {
           .banner { display: none !important; }
           .page { background: #fff; padding: 0; }
           .container { width: 100%; margin: 0; }
-          .section, .storeCard, .details, .kpiTile, .miniMetric {
+          .section, .storeCard, .kpiTile, .miniMetric, .panel {
             box-shadow: none !important;
             break-inside: avoid;
           }
-          .detailsSummary:after { content: ""; }
         }
       `}</style>
     </main>
