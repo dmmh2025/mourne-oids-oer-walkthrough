@@ -185,33 +185,21 @@ const getTargetsForStore = (store: string, inputs: StoreInputRow | null): Target
 type MetricStatus = "good" | "ok" | "bad" | "na";
 const within = (a: number, b: number, tol: number) => Math.abs(a - b) <= tol;
 
-const statusHigherBetter = (
-  value: number | null,
-  targetMin: number,
-  tol = 0.002
-): MetricStatus => {
+const statusHigherBetter = (value: number | null, targetMin: number, tol = 0.002): MetricStatus => {
   if (value == null || !Number.isFinite(value)) return "na";
   if (value >= targetMin + tol) return "good";
   if (within(value, targetMin, tol)) return "ok";
   return "bad";
 };
 
-const statusLowerBetter = (
-  value: number | null,
-  targetMax: number,
-  tol = 0.002
-): MetricStatus => {
+const statusLowerBetter = (value: number | null, targetMax: number, tol = 0.002): MetricStatus => {
   if (value == null || !Number.isFinite(value)) return "na";
   if (value <= targetMax - tol) return "good";
   if (within(value, targetMax, tol)) return "ok";
   return "bad";
 };
 
-const statusAbsLowerBetter = (
-  value: number | null,
-  targetAbsMax: number,
-  tol = 0.002
-): MetricStatus => {
+const statusAbsLowerBetter = (value: number | null, targetAbsMax: number, tol = 0.002): MetricStatus => {
   if (value == null || !Number.isFinite(value)) return "na";
   const absVal = Math.abs(value);
   if (absVal <= targetAbsMax - tol) return "good";
@@ -275,11 +263,7 @@ export default function DailyUpdateClient() {
           costStoresRes,
           inputStoresRes,
         ] = await Promise.all([
-          supabase
-            .from("daily_update_area_message")
-            .select("date,message")
-            .eq("date", previousBusinessDay)
-            .maybeSingle(),
+          supabase.from("daily_update_area_message").select("date,message").eq("date", previousBusinessDay).maybeSingle(),
           supabase
             .from("daily_update_store_inputs")
             .select(
@@ -293,36 +277,20 @@ export default function DailyUpdateClient() {
             .order("created_at", { ascending: true }),
           supabase
             .from("service_shifts")
-            .select(
-              "shift_date,store,dot_pct,labour_pct,extreme_over_40,rnl_minutes,additional_hours"
-            )
+            .select("shift_date,store,dot_pct,labour_pct,extreme_over_40,rnl_minutes,additional_hours")
             .eq("shift_date", previousBusinessDay),
           supabase
             .from("cost_control_entries")
-            .select(
-              "shift_date,store,sales_gbp,labour_cost_gbp,ideal_food_cost_gbp,actual_food_cost_gbp"
-            )
+            .select("shift_date,store,sales_gbp,labour_cost_gbp,ideal_food_cost_gbp,actual_food_cost_gbp")
             .eq("shift_date", previousBusinessDay),
           supabase
             .from("osa_internal_results")
             .select("shift_date,store")
             .gte("shift_date", wkStart)
             .lte("shift_date", previousBusinessDay),
-          supabase
-            .from("service_shifts")
-            .select("store,shift_date")
-            .order("shift_date", { ascending: false })
-            .limit(500),
-          supabase
-            .from("cost_control_entries")
-            .select("store,shift_date")
-            .order("shift_date", { ascending: false })
-            .limit(500),
-          supabase
-            .from("daily_update_store_inputs")
-            .select("store,date")
-            .order("date", { ascending: false })
-            .limit(500),
+          supabase.from("service_shifts").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
+          supabase.from("cost_control_entries").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
+          supabase.from("daily_update_store_inputs").select("store,date").order("date", { ascending: false }).limit(500),
         ]);
 
         const firstError = [
@@ -347,11 +315,7 @@ export default function DailyUpdateClient() {
         setOsaRows((osaRes.data || []) as OsaInternalRow[]);
 
         const storeSet = new Set<string>();
-        for (const row of [
-          ...(serviceStoresRes.data || []),
-          ...(costStoresRes.data || []),
-          ...(inputStoresRes.data || []),
-        ]) {
+        for (const row of [...(serviceStoresRes.data || []), ...(costStoresRes.data || []), ...(inputStoresRes.data || [])]) {
           const s = String((row as { store?: string }).store || "").trim();
           if (s) storeSet.add(s);
         }
@@ -404,16 +368,8 @@ export default function DailyUpdateClient() {
       const labourPct01 = sales > 0 ? labourCost / sales : null;
       const foodVarPct01 = sales > 0 ? (actualFoodCost - idealFoodCost) / sales : null;
 
-      const dotPct01 = avg(
-        service
-          .map((row) => normalisePct01(row.dot_pct))
-          .filter((v): v is number => v != null)
-      );
-      const extremesPct01 = avg(
-        service
-          .map((row) => normalisePct01(row.extreme_over_40))
-          .filter((v): v is number => v != null)
-      );
+      const dotPct01 = avg(service.map((row) => normalisePct01(row.dot_pct)).filter((v): v is number => v != null));
+      const extremesPct01 = avg(service.map((row) => normalisePct01(row.extreme_over_40)).filter((v): v is number => v != null));
       const rnlMinutes = avg(service.map((row) => row.rnl_minutes).filter((v): v is number => v != null));
       const additionalHours = sum(service.map((row) => Number(row.additional_hours || 0)));
 
@@ -456,9 +412,7 @@ export default function DailyUpdateClient() {
     const completedAt = willComplete ? new Date().toISOString() : null;
 
     setTasks((prev) =>
-      prev.map((row) =>
-        row.id === task.id ? { ...row, is_complete: willComplete, completed_at: completedAt } : row
-      )
+      prev.map((row) => (row.id === task.id ? { ...row, is_complete: willComplete, completed_at: completedAt } : row))
     );
 
     const { error: updateError } = await supabase
@@ -472,7 +426,7 @@ export default function DailyUpdateClient() {
     }
   };
 
-  // ---- statuses (area) ----
+  // Area statuses
   const areaLabourStatus = statusLowerBetter(areaRollup.labourPct01, AREA_TARGETS.labourMax01);
   const areaFoodStatus = statusAbsLowerBetter(areaRollup.foodVarPct01, AREA_TARGETS.foodVarAbsMax01);
   const areaAddHoursStatus: MetricStatus =
@@ -483,10 +437,9 @@ export default function DailyUpdateClient() {
         : areaRollup.additionalHours <= AREA_TARGETS.addHoursOkMax
           ? "ok"
           : "bad";
-  const areaOsaStatus: MetricStatus =
-    osaCounts.total <= 0 ? "good" : osaCounts.total <= 1 ? "ok" : "bad";
+  const areaOsaStatus: MetricStatus = osaCounts.total <= 0 ? "good" : osaCounts.total <= 1 ? "ok" : "bad";
 
-  // ---- Slack summary ----
+  // Slack text (still generated, but not displayed)
   const slackText = useMemo(() => {
     const lines: string[] = [];
 
@@ -501,13 +454,10 @@ export default function DailyUpdateClient() {
     lines.push(
       `• Food: ${statusEmoji(areaFoodStatus)} ${fmtPct2(areaRollup.foodVarPct01)} (abs ≤ ${(AREA_TARGETS.foodVarAbsMax01 * 100).toFixed(2)}%)`
     );
-    lines.push(
-      `• Add. hours: ${statusEmoji(areaAddHoursStatus)} ${fmtNum2(areaRollup.additionalHours)} (actual vs rota)`
-    );
+    lines.push(`• Add. hours: ${statusEmoji(areaAddHoursStatus)} ${fmtNum2(areaRollup.additionalHours)} (actual vs rota)`);
     lines.push(`• OSA WTD: ${statusEmoji(areaOsaStatus)} ${osaCounts.total}`);
     lines.push("");
 
-    // Store lines sorted by DOT desc, tiebreak labour asc (per your competitive ordering)
     const ranked = [...storeCards].sort((a, b) => {
       const aDot = a.service.dotPct01 ?? -1;
       const bDot = b.service.dotPct01 ?? -1;
@@ -543,7 +493,9 @@ export default function DailyUpdateClient() {
       if (notes) lines.push(`   _Notes:_ ${notes}`);
 
       const openTasks = card.tasks.filter((t) => !t.is_complete);
-      if (openTasks.length) lines.push(`   _Open tasks (${openTasks.length}):_ ${openTasks.map((t) => t.task).join(" • ")}`);
+      if (openTasks.length) {
+        lines.push(`   _Open tasks (${openTasks.length}):_ ${openTasks.map((t) => t.task).join(" • ")}`);
+      }
     }
 
     if (areaMessage) {
@@ -568,7 +520,7 @@ export default function DailyUpdateClient() {
     storeCards,
   ]);
 
-  const copySlack = async () => {
+  const copyForSlack = async () => {
     try {
       setCopyState("idle");
       await navigator.clipboard.writeText(slackText);
@@ -591,10 +543,17 @@ export default function DailyUpdateClient() {
           <button className="navbtn" onClick={() => router.back()} type="button">
             ← Back
           </button>
+
           <div className="topbar-spacer" />
+
+          <button className="navbtn" onClick={copyForSlack} type="button" title="Copies a Slack-formatted summary">
+            {copyState === "copied" ? "✅ Copied" : copyState === "error" ? "⚠️ Copy failed" : "📋 Copy for Slack"}
+          </button>
+
           <button className="navbtn solid" onClick={() => router.push("/")} type="button">
             🏠 Home
           </button>
+
           <button className="navbtn solid" onClick={() => window.print()} type="button">
             📄 Export PDF
           </button>
@@ -644,25 +603,6 @@ export default function DailyUpdateClient() {
         ) : loading ? (
           <div className="alert muted">Loading daily update…</div>
         ) : null}
-
-        {/* Slack copy */}
-        <section className="section">
-          <div className="section-head">
-            <div>
-              <h2>Slack-ready summary</h2>
-              <p>One click copy → paste into Slack (keeps bold + bullets).</p>
-            </div>
-            <div className="kpi-mini">
-              <button className="navbtn solid" onClick={copySlack} type="button">
-                {copyState === "copied" ? "✅ Copied" : copyState === "error" ? "⚠️ Copy failed" : "📋 Copy"}
-              </button>
-            </div>
-          </div>
-
-          <div className="slackBox">
-            <pre className="slackPre">{slackText}</pre>
-          </div>
-        </section>
 
         {/* Area message */}
         {areaMessage ? (
@@ -723,8 +663,7 @@ export default function DailyUpdateClient() {
                           ? "ok"
                           : "bad";
 
-                  const osaStatus: MetricStatus =
-                    card.osaWtdCount <= 0 ? "good" : card.osaWtdCount <= 1 ? "ok" : "bad";
+                  const osaStatus: MetricStatus = card.osaWtdCount <= 0 ? "good" : card.osaWtdCount <= 1 ? "ok" : "bad";
 
                   return (
                     <article key={card.store} className="storeCard">
@@ -862,11 +801,7 @@ export default function DailyUpdateClient() {
                               {card.tasks.map((task) => (
                                 <li key={task.id} className="task">
                                   <label className="taskRow">
-                                    <input
-                                      type="checkbox"
-                                      checked={task.is_complete}
-                                      onChange={() => toggleTask(task)}
-                                    />
+                                    <input type="checkbox" checked={task.is_complete} onChange={() => toggleTask(task)} />
                                     <span className={task.is_complete ? "taskDone" : ""}>{task.task}</span>
                                   </label>
                                 </li>
@@ -893,7 +828,6 @@ export default function DailyUpdateClient() {
           --shadow: 0 16px 40px rgba(0, 0, 0, 0.05);
         }
 
-        /* OSA-style background + center shell */
         .wrap {
           min-height: 100dvh;
           background: radial-gradient(circle at top, rgba(0, 100, 145, 0.08), transparent 45%),
@@ -932,16 +866,18 @@ export default function DailyUpdateClient() {
           padding: 18px 22px 26px;
         }
 
-        /* Top nav (OSA buttons) */
         .topbar {
           display: flex;
           align-items: center;
           gap: 10px;
           margin-bottom: 10px;
+          flex-wrap: wrap;
         }
+
         .topbar-spacer {
           flex: 1;
         }
+
         .navbtn {
           border-radius: 14px;
           border: 2px solid var(--brand);
@@ -953,32 +889,37 @@ export default function DailyUpdateClient() {
           cursor: pointer;
           box-shadow: 0 6px 14px rgba(0, 100, 145, 0.12);
           transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+          white-space: nowrap;
         }
+
         .navbtn:hover {
           background: var(--brand);
           color: #fff;
           transform: translateY(-1px);
         }
+
         .navbtn.solid {
           background: var(--brand);
           color: #fff;
         }
+
         .navbtn.solid:hover {
           background: #004b75;
           border-color: #004b75;
         }
 
-        /* Header */
         .header {
           text-align: center;
           margin-bottom: 12px;
         }
+
         .header h1 {
           font-size: clamp(2rem, 3vw, 2.3rem);
           font-weight: 900;
           letter-spacing: -0.015em;
           margin: 0;
         }
+
         .subtitle {
           margin: 6px 0 0;
           color: var(--muted);
@@ -994,6 +935,7 @@ export default function DailyUpdateClient() {
           align-items: center;
           justify-content: center;
         }
+
         .kpi-chip {
           font-size: 12px;
           font-weight: 900;
@@ -1008,7 +950,6 @@ export default function DailyUpdateClient() {
           align-items: center;
         }
 
-        /* Pills (OSA) */
         .pill {
           display: inline-flex;
           align-items: center;
@@ -1022,23 +963,25 @@ export default function DailyUpdateClient() {
           background: rgba(2, 6, 23, 0.04);
           color: rgba(15, 23, 42, 0.8);
         }
+
         .pill.green {
           background: rgba(34, 197, 94, 0.12);
           border-color: rgba(34, 197, 94, 0.22);
           color: #166534;
         }
+
         .pill.amber {
           background: rgba(249, 115, 22, 0.12);
           border-color: rgba(249, 115, 22, 0.22);
           color: #9a3412;
         }
+
         .pill.red {
           background: rgba(239, 68, 68, 0.12);
           border-color: rgba(239, 68, 68, 0.22);
           color: #991b1b;
         }
 
-        /* Sections */
         .section {
           margin-top: 16px;
           background: rgba(255, 255, 255, 0.92);
@@ -1056,12 +999,14 @@ export default function DailyUpdateClient() {
           margin-bottom: 10px;
           flex-wrap: wrap;
         }
+
         .section-head h2 {
           margin: 0;
           font-size: 15px;
           font-weight: 900;
           letter-spacing: 0.01em;
         }
+
         .section-head p {
           margin: 4px 0 0;
           font-size: 12px;
@@ -1078,6 +1023,7 @@ export default function DailyUpdateClient() {
           font-weight: 800;
           color: #7f1d1d;
         }
+
         .alert.muted {
           background: rgba(255, 255, 255, 0.85);
           border: 1px solid rgba(15, 23, 42, 0.1);
@@ -1085,29 +1031,10 @@ export default function DailyUpdateClient() {
           font-weight: 800;
         }
 
-        /* Slack pre */
-        .slackBox {
-          border-radius: 16px;
-          border: 1px solid rgba(15, 23, 42, 0.10);
-          background: rgba(248, 250, 252, 0.70);
-          padding: 12px;
-          overflow: auto;
-          max-height: 420px;
-        }
-        .slackPre {
-          margin: 0;
-          white-space: pre-wrap;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
-            "Courier New", monospace;
-          font-size: 12px;
-          line-height: 1.35;
-          color: rgba(15, 23, 42, 0.92);
-        }
-
-        /* Callout */
         .callout {
           background: rgba(255, 255, 255, 0.82);
         }
+
         .calloutText {
           margin: 0;
           white-space: pre-wrap;
@@ -1116,7 +1043,6 @@ export default function DailyUpdateClient() {
           line-height: 1.45;
         }
 
-        /* Stores grid */
         .storeGrid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1201,7 +1127,6 @@ export default function DailyUpdateClient() {
           font-weight: 900;
         }
 
-        /* Main metrics */
         .metricGrid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1214,16 +1139,19 @@ export default function DailyUpdateClient() {
           background: rgba(248, 250, 252, 0.70);
           padding: 10px 10px;
         }
+
         .metricName {
           font-size: 11px;
-          font-weight: 900; /* ✅ name bold */
+          font-weight: 900;
           letter-spacing: 0.06em;
           text-transform: uppercase;
           color: rgba(15, 23, 42, 0.70);
         }
+
         .metricValue {
           margin-top: 8px;
         }
+
         .metricHint {
           margin-top: 8px;
           font-size: 12px;
@@ -1231,29 +1159,32 @@ export default function DailyUpdateClient() {
           color: rgba(100, 116, 139, 0.98);
         }
 
-        /* Secondary */
         .subGrid {
           margin-top: 10px;
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 10px;
         }
+
         .subMetric {
           border-radius: 16px;
           border: 1px solid rgba(15, 23, 42, 0.08);
           background: rgba(255, 255, 255, 0.85);
           padding: 10px 10px;
         }
+
         .subName {
           font-size: 11px;
-          font-weight: 900; /* ✅ name bold */
+          font-weight: 900;
           letter-spacing: 0.06em;
           text-transform: uppercase;
           color: rgba(15, 23, 42, 0.68);
         }
+
         .subVal {
           margin-top: 8px;
         }
+
         .subHint {
           margin-top: 8px;
           font-size: 12px;
@@ -1261,7 +1192,6 @@ export default function DailyUpdateClient() {
           color: rgba(100, 116, 139, 0.98);
         }
 
-        /* Panels */
         .panels {
           margin-top: 10px;
           display: grid;
@@ -1342,12 +1272,14 @@ export default function DailyUpdateClient() {
           display: grid;
           gap: 10px;
         }
+
         .task {
           border-radius: 14px;
           border: 1px solid rgba(15, 23, 42, 0.06);
           background: rgba(248, 250, 252, 0.85);
           padding: 8px 10px;
         }
+
         .taskRow {
           display: flex;
           align-items: flex-start;
@@ -1356,9 +1288,11 @@ export default function DailyUpdateClient() {
           color: rgba(15, 23, 42, 0.82);
           line-height: 1.25;
         }
+
         .taskRow input {
           margin-top: 2px;
         }
+
         .taskDone {
           text-decoration: line-through;
           color: rgba(100, 116, 139, 0.95);
@@ -1420,9 +1354,6 @@ export default function DailyUpdateClient() {
           .subMetric {
             box-shadow: none !important;
             break-inside: avoid;
-          }
-          .slackBox {
-            max-height: none;
           }
         }
       `}</style>
