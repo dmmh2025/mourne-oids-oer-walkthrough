@@ -3,9 +3,11 @@
 import { useEffect } from "react";
 import DailyUpdateClient from "../DailyUpdateClient";
 
+const PRINT_DELAY_MS = 900;
+
 function PrintTrigger() {
   useEffect(() => {
-    const timer = window.setTimeout(() => window.print(), 900);
+    const timer = window.setTimeout(() => window.print(), PRINT_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, []);
   return null;
