@@ -79,8 +79,6 @@ type OsaWinner = {
 };
 
 type CostWinner = {
-  labourName: string;
-  labourPct: number | null;
   foodName: string;
   foodVarPctSales: number | null;
 };
@@ -493,23 +491,14 @@ export default function DailyUpdateExportPage() {
         }
 
         const ranked = Object.entries(bucket).map(([name, totals]) => {
-          const labourPct = totals.sales > 0 ? totals.labour / totals.sales : null;
           const foodVarPctSales = totals.sales > 0 ? (totals.actualFood - totals.idealFood) / totals.sales : null;
 
           return {
             name,
             sumSales: totals.sales,
-            labourPct,
             foodVarPctSales,
-            labourDelta: labourPct == null ? Number.POSITIVE_INFINITY : Math.max(0, labourPct - 0.25),
             foodVarDelta: foodVarPctSales == null ? Number.POSITIVE_INFINITY : Math.abs(foodVarPctSales),
           };
-        });
-
-        const labourRanked = [...ranked].sort((a, b) => {
-          if (a.labourDelta !== b.labourDelta) return a.labourDelta - b.labourDelta;
-          if (a.labourPct !== b.labourPct) return (a.labourPct ?? Infinity) - (b.labourPct ?? Infinity);
-          return b.sumSales - a.sumSales;
         });
 
         const foodRanked = [...ranked].sort((a, b) => {
@@ -518,8 +507,6 @@ export default function DailyUpdateExportPage() {
         });
 
         setCostWinner({
-          labourName: labourRanked[0]?.name || "No data",
-          labourPct: labourRanked[0]?.labourPct ?? null,
           foodName: foodRanked[0]?.name || "No data",
           foodVarPctSales: foodRanked[0]?.foodVarPctSales ?? null,
         });
@@ -747,27 +734,6 @@ export default function DailyUpdateExportPage() {
                   ) : (
                     <span>
                       Avg points lost: <b>{formatAvgPointsLost(osaWinner?.avgPointsLost ?? null)}</b>
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className={`highlightCard${costHighlightError ? " warning" : ""}`}>
-              <div className="highlightTop">
-                <span className="highlightTitle">💷 Top Store Labour </span>
-                <span className="highlightPill">WTD</span>
-              </div>
-              <div className="highlightMain">
-                <div className="highlightName">{costHighlightError ? "Error" : costWinner?.labourName || "No data"}</div>
-                <div className="highlightMetricsList">
-                  {costHighlightError ? (
-                    <span>
-                      Could not load labour highlight: <b>{costHighlightError}</b>
-                    </span>
-                  ) : (
-                    <span>
-                      Labour: <b>{formatPct(costWinner?.labourPct ?? null, 1)}</b>
                     </span>
                   )}
                 </div>
@@ -1068,7 +1034,7 @@ export default function DailyUpdateExportPage() {
         }
         .highlightsGrid {
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
+          grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 1.8mm;
         }
         .highlightCard {
