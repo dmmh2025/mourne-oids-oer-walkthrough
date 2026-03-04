@@ -1,7 +1,7 @@
 "use client";
 
 import { createClient } from "@supabase/supabase-js";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -168,7 +168,7 @@ const chunk = <T,>(arr: T[], size: number) => {
 
 function PrintTrigger() {
   useEffect(() => {
-    const timer = window.setTimeout(() => window.print(), 250);
+    const timer = window.setTimeout(() => window.print(), 500);
     return () => window.clearTimeout(timer);
   }, []);
   return null;
@@ -186,6 +186,9 @@ export default function DailyUpdateExportPage() {
   const [costRows, setCostRows] = useState<CostControlRow[]>([]);
   const [osaRows, setOsaRows] = useState<OsaInternalRow[]>([]);
   const [stores, setStores] = useState<string[]>([]);
+  const [firstPageTight, setFirstPageTight] = useState(false);
+  const [firstPageClampMessage, setFirstPageClampMessage] = useState(false);
+  const firstPageRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -363,6 +366,34 @@ export default function DailyUpdateExportPage() {
   }, [stores, costRows, serviceRows, inputsByStore, tasksByStore, osaCounts.byStore]);
 
   const storePages = useMemo(() => chunk(rankedStoreCards, 2), [rankedStoreCards]);
+  const highlightCards = useMemo(() => rankedStoreCards.slice(0, 6), [rankedStoreCards]);
+
+  useEffect(() => {
+    if (loading || error) return;
+
+    const applyOverflowGuard = () => {
+      const pageEl = firstPageRef.current;
+      if (!pageEl) return;
+
+      setFirstPageTight(false);
+      setFirstPageClampMessage(false);
+
+      requestAnimationFrame(() => {
+        const hasOverflow = pageEl.scrollHeight > pageEl.clientHeight;
+        if (!hasOverflow) return;
+
+        setFirstPageTight(true);
+        requestAnimationFrame(() => {
+          const stillOverflows = pageEl.scrollHeight > pageEl.clientHeight;
+          if (stillOverflows) setFirstPageClampMessage(true);
+        });
+      });
+    };
+
+    applyOverflowGuard();
+    window.addEventListener("resize", applyOverflowGuard);
+    return () => window.removeEventListener("resize", applyOverflowGuard);
+  }, [loading, error, targetDate, weekStart, areaMessage, highlightCards.length]);
 
   if (loading) return <main className="exportShell"><p>Loading export…</p></main>;
   if (error) return <main className="exportShell"><p>Failed to load export: {error}</p></main>;
@@ -383,14 +414,18 @@ export default function DailyUpdateExportPage() {
     <main className="exportShell">
       <PrintTrigger />
 
-      <section className="exportPage firstPage">
+      <section
+        ref={firstPageRef}
+        className={`exportPage firstPage${firstPageTight ? " printTight" : ""}${firstPageClampMessage ? " printClampMessage" : ""}`}
+      >
         <div className="banner">
           <img src="/mourneoids_forms_header_1600x400.png" alt="Mourne-oids Header Banner" />
         </div>
 
         <div className="card areaOverview">
-          <h1>Daily Update Export — {targetDate}</h1>
-          <p className="muted">WTD from {weekStart}</p>
+          <h1>Daily Update — {targetDate}</h1>
+          <h2>Area Overview</h2>
+          <p className="overviewRange">WTD from {weekStart} · Previous business day {targetDate}</p>
           <div className="chipRow">
             <div className="chip">
               <span>OSA WTD count</span>
@@ -413,7 +448,26 @@ export default function DailyUpdateExportPage() {
 
         <div className="card areaMessageBlock">
           <h2>Area Message</h2>
-          <p className="fullText">{areaMessage || "No area message submitted for this date."}</p>
+          <p className="fullText areaMessageText">{areaMessage || "No area message submitted for this date."}</p>
+          <p className="messageContinuationNote">Message continues on Daily Update page.</p>
+        </div>
+
+        <div className="card highlightsBlock">
+          <h2>Highlights</h2>
+          <div className="highlightsGrid">
+            {highlightCards.map((card, idx) => (
+              <article key={`highlight-${card.store}`} className="highlightCard">
+                <p className="highlightTitle">#{idx + 1} Store Highlight</p>
+                <h3>{card.store}</h3>
+                <div className="highlightMetrics">
+                  <p><span>DOT</span><strong>{fmtPct2(card.metrics.dotPct01)}</strong></p>
+                  <p><span>Labour</span><strong>{fmtPct2(card.metrics.labourPct01)}</strong></p>
+                  <p><span>Food var</span><strong>{fmtPct2(card.metrics.foodVarPct01)}</strong></p>
+                  <p><span>OSA WTD</span><strong>{card.osaWtdCount}</strong></p>
+                </div>
+              </article>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -509,6 +563,7 @@ export default function DailyUpdateExportPage() {
           margin: 0;
           padding: 0;
           font-family: Inter, Arial, sans-serif;
+          font-size: 14px;
           color: #0f172a;
           background: #f4f7fb;
         }
@@ -524,7 +579,7 @@ export default function DailyUpdateExportPage() {
           min-height: 190mm;
           display: flex;
           flex-direction: column;
-          gap: 3mm;
+          gap: 3.5mm;
           page-break-after: always;
           break-after: page;
         }
@@ -550,28 +605,105 @@ export default function DailyUpdateExportPage() {
         }
 
         h1, h2, h3, h4, p { margin: 0; }
-        h1 { font-size: 14px; }
-        h2 { font-size: 12px; margin-bottom: 1mm; }
+        h1 { font-size: 22px; font-weight: 800; }
+        h2 { font-size: 17px; font-weight: 750; margin-bottom: 1.2mm; }
         h3 { font-size: 12px; }
-        h4 { font-size: 10.5px; margin-bottom: 0.8mm; }
+        h4 { font-size: 11px; margin-bottom: 0.8mm; }
         .muted { color: #475569; margin-top: 0.8mm; }
         .fullText { white-space: pre-wrap; line-height: 1.3; }
 
+        .areaOverview {
+          border: 1.4px solid #94a3b8;
+          background: #eef4ff;
+          padding: 3.2mm;
+        }
+        .overviewRange {
+          color: #334155;
+          font-size: 13px;
+          margin-top: 0.8mm;
+          font-weight: 500;
+        }
+
         .chipRow {
-          margin-top: 1.5mm;
+          margin-top: 2.2mm;
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 1.2mm;
+          gap: 1.8mm;
         }
         .chip {
-          border: 1px solid #e2e8f0;
-          border-radius: 1.6mm;
-          padding: 1mm;
+          border: 1.2px solid #cbd5e1;
+          border-radius: 2mm;
+          min-height: 14mm;
+          min-width: 0;
+          padding: 1.4mm 1.8mm;
           display: flex;
           justify-content: space-between;
           align-items: center;
+          gap: 1.2mm;
+          font-size: 12px;
+          font-weight: 600;
+        }
+        .chip .pill {
+          font-size: 11px;
+          padding: 0.55mm 1.8mm;
+        }
+
+        .areaMessageBlock {
+          padding: 3mm;
+        }
+        .areaMessageText {
+          font-size: 14.5px;
+          line-height: 1.58;
+        }
+        .messageContinuationNote {
+          display: none;
+          margin-top: 1.3mm;
+          font-size: 11px;
+          color: #475569;
+          font-style: italic;
+        }
+
+        .highlightsBlock {
+          padding: 3mm;
+        }
+        .highlightsGrid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 1.8mm;
+        }
+        .highlightCard {
+          border: 1px solid #dbe5f3;
+          border-radius: 1.8mm;
+          background: #f8fbff;
+          padding: 2.3mm;
+          min-height: 26mm;
+          display: grid;
           gap: 1mm;
-          font-size: 10px;
+        }
+        .highlightTitle {
+          font-size: 12px;
+          color: #334155;
+          font-weight: 700;
+        }
+        .highlightCard h3 {
+          font-size: 15px;
+          font-weight: 800;
+        }
+        .highlightMetrics {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.8mm 1.4mm;
+        }
+        .highlightMetrics p {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          font-size: 12px;
+          color: #1e293b;
+          gap: 1mm;
+        }
+        .highlightMetrics strong {
+          font-size: 13px;
         }
 
         .storesPage {
@@ -661,6 +793,21 @@ export default function DailyUpdateExportPage() {
 
         @media print {
           .exportShell { max-width: none; }
+
+          .firstPage.printTight .highlightCard {
+            padding: 1.6mm;
+          }
+
+          .firstPage.printClampMessage .areaMessageText {
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 7;
+            overflow: hidden;
+          }
+
+          .firstPage.printClampMessage .messageContinuationNote {
+            display: block;
+          }
         }
       `}</style>
     </main>
