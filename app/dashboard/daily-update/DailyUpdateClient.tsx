@@ -4,38 +4,22 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
 
 type AreaMessageRow = { date: string; message: string | null };
-
 type StoreInputRow = {
   date: string;
   store: string;
-
   missed_calls_wtd: number | null;
   gps_tracked_wtd: number | null;
   aof_wtd: number | null;
-
   target_load_time_mins: number | null;
   target_rack_time_mins: number | null;
   target_adt_mins: number | null;
   target_extremes_over40_pct: number | null;
   notes: string | null;
 };
-
-type TaskRow = {
-  id: string;
-  date: string;
-  store: string;
-  task: string;
-  is_complete: boolean;
-  created_at: string;
-  completed_at: string | null;
-};
-
+type TaskRow = { id: string; date: string; store: string; task: string; is_complete: boolean; created_at: string; completed_at: string | null };
 type ServiceShiftRow = {
   shift_date: string;
   store: string;
@@ -44,27 +28,8 @@ type ServiceShiftRow = {
   extreme_over_40: number | null;
   rnl_minutes: number | null;
   additional_hours?: number | null;
+  manager?: string | null;
 };
-
-type ServiceRowMini = {
-  store: string;
-  dot_pct: number | null;
-  labour_pct: number | null;
-  rnl_minutes?: number | null;
-  manager: string | null;
-  created_at?: string | null;
-  shift_date?: string | null;
-};
-
-type RankedItem = {
-  name: string;
-  avgDOT: number;
-  avgLabour: number;
-  avgRnlMinutes: number;
-  shifts: number;
-};
-
-
 type CostControlRow = {
   shift_date: string;
   store: string;
@@ -73,1760 +38,364 @@ type CostControlRow = {
   ideal_food_cost_gbp: number | null;
   actual_food_cost_gbp: number | null;
 };
+type OsaInternalRow = { shift_date: string; store: string | null; team_member_name?: string | null; points_lost?: number | null };
 
-type OsaInternalRow = { shift_date: string; store: string | null };
+type Targets = { dotMin01: number; labourMax01: number; rnlMaxMins: number; extremesMax01: number; foodVarAbsMax01: number };
+type MetricStatus = "good" | "ok" | "bad" | "na";
 
-type OsaInternalHighlightRow = {
-  shift_date: string;
-  team_member_name: string | null;
-  points_lost: number | null;
-};
-
-type OsaWinner = {
-  name: string;
-  avgPointsLost: number | null;
-};
-
-type CostWinner = {
-  foodName: string;
-  foodVarPctSales: number | null;
-};
-
-const INPUT_TARGETS = {
-  missedCallsMax01: 0.06,
-  aofMin01: 0.62,
-  gpsMin01: 0.95,
-};
-
-// Area targets = store targets (director view). Use consistent WTD targets.
-const AREA_TARGETS = {
-  labourMax01: 0.26,
-  foodVarAbsMax01: 0.003,
-  addHoursOkMax: 1,
+const INPUT_TARGETS = { missedCallsMax01: 0.06, aofMin01: 0.62, gpsMin01: 0.95 };
+const AREA_TARGETS = { labourMax01: 0.26, foodVarAbsMax01: 0.003, addHoursOkMax: 1 };
+const DEFAULT_TARGETS: Record<string, Targets> = {
+  Downpatrick: { dotMin01: 0.82, labourMax01: 0.25, rnlMaxMins: 9, extremesMax01: 0.03, foodVarAbsMax01: 0.003 },
+  Kilkeel: { dotMin01: 0.78, labourMax01: 0.28, rnlMaxMins: 8, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
+  Newcastle: { dotMin01: 0.78, labourMax01: 0.25, rnlMaxMins: 9, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
+  Ballynahinch: { dotMin01: 0.78, labourMax01: 0.28, rnlMaxMins: 9, extremesMax01: 0.04, foodVarAbsMax01: 0.003 },
 };
 
 const toISODateUK = (date: Date) => {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/London",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
   const year = parts.find((p) => p.type === "year")?.value ?? "0000";
   const month = parts.find((p) => p.type === "month")?.value ?? "01";
   const day = parts.find((p) => p.type === "day")?.value ?? "01";
   return `${year}-${month}-${day}`;
 };
-
 const parseIsoDate = (isoDate: string) => {
   const [year, month, day] = isoDate.split("-").map(Number);
   return new Date(year, (month || 1) - 1, day || 1);
 };
-
-const getPreviousBusinessDayUk = () => {
-  const todayUk = toISODateUK(new Date());
-  const previous = parseIsoDate(todayUk);
-  previous.setDate(previous.getDate() - 1);
-  return toISODateUK(previous);
+const shiftDateIso = (isoDate: string, days: number) => {
+  const d = parseIsoDate(isoDate);
+  d.setDate(d.getDate() + days);
+  return toISODateUK(d);
 };
-
+const getPreviousBusinessDayUk = () => shiftDateIso(toISODateUK(new Date()), -1);
 const getWeekStartUK = (isoDate: string) => {
   const d = parseIsoDate(isoDate);
   const day = d.getDay();
-  const mondayOffset = day === 0 ? 6 : day - 1;
-  d.setDate(d.getDate() - mondayOffset);
+  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
   return toISODateUK(d);
 };
 
-const normalisePct01 = (v: number | null) => {
-  if (v == null || !Number.isFinite(v)) return null;
-  return v > 1 ? v / 100 : v;
+const n01 = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? null : v > 1 ? v / 100 : v);
+const from100 = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? null : v / 100);
+const avg = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
+const sum = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
+const fmtPct = (v: number | null, d = 1) => (v == null ? "—" : `${(v * 100).toFixed(d)}%`);
+const fmtNum = (v: number | null, d = 2) => (v == null ? "—" : Number(v).toFixed(d));
+const fmtMins = (v: number | null) => (v == null ? "—" : `${Number(v).toFixed(2)}m`);
+const pp = (v: number | null) => (v == null ? "—" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}pp`);
+
+const statusHigherBetter = (value: number | null, targetMin: number): MetricStatus => (value == null ? "na" : value >= targetMin ? "good" : "bad");
+const statusLowerBetter = (value: number | null, targetMax: number): MetricStatus => (value == null ? "na" : value <= targetMax ? "good" : "bad");
+const statusAbsLowerBetter = (value: number | null, targetAbsMax: number): MetricStatus => (value == null ? "na" : Math.abs(value) <= targetAbsMax ? "good" : "bad");
+const pillClass = (s: MetricStatus) => `pill ${s}`;
+
+const getTargetsForStore = (store: string, input: StoreInputRow | null): Targets => {
+  const base = DEFAULT_TARGETS[store] || { dotMin01: 0.78, labourMax01: 0.28, rnlMaxMins: 9, extremesMax01: 0.04, foodVarAbsMax01: 0.003 };
+  const ext = input?.target_extremes_over40_pct != null ? from100(input.target_extremes_over40_pct) : null;
+  return { ...base, extremesMax01: ext ?? base.extremesMax01 };
 };
 
-const to01From100 = (v0to100: number | null) => {
-  if (v0to100 == null || !Number.isFinite(v0to100)) return null;
-  return v0to100 / 100;
-};
-
-const fmtPct2 = (v01: number | null) =>
-  v01 == null || !Number.isFinite(v01) ? "—" : `${(v01 * 100).toFixed(2)}%`;
-const fmtNum2 = (v: number | null) =>
-  v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}`;
-const fmtMins2 = (v: number | null) =>
-  v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}m`;
-
-const avg = (arr: number[]) =>
-  arr.length ? arr.reduce((acc, val) => acc + val, 0) / arr.length : null;
-const sum = (arr: number[]) => arr.reduce((acc, val) => acc + val, 0);
-
-type Targets = {
-  dotMin01: number;
-  labourMax01: number;
-  rnlMaxMins: number;
-  extremesMax01: number;
-  foodVarAbsMax01: number;
-};
-
-const DEFAULT_TARGETS: Record<string, Targets> = {
-  Downpatrick: {
-    dotMin01: 0.82,
-    labourMax01: 0.25,
-    rnlMaxMins: 9,
-    extremesMax01: 0.03,
-    foodVarAbsMax01: 0.003,
-  },
-  Kilkeel: {
-    dotMin01: 0.78,
-    labourMax01: 0.28,
-    rnlMaxMins: 8,
-    extremesMax01: 0.04,
-    foodVarAbsMax01: 0.003,
-  },
-  Newcastle: {
-    dotMin01: 0.78,
-    labourMax01: 0.25,
-    rnlMaxMins: 9,
-    extremesMax01: 0.04,
-    foodVarAbsMax01: 0.003,
-  },
-  Ballynahinch: {
-    dotMin01: 0.78,
-    labourMax01: 0.28,
-    rnlMaxMins: 9,
-    extremesMax01: 0.04,
-    foodVarAbsMax01: 0.003,
-  },
-};
-
-const getTargetsForStore = (store: string, inputs: StoreInputRow | null): Targets => {
-  const base =
-    DEFAULT_TARGETS[store] || {
-      dotMin01: 0.78,
-      labourMax01: 0.28,
-      rnlMaxMins: 9,
-      extremesMax01: 0.04,
-      foodVarAbsMax01: 0.003,
-    };
-
-  const extFromInputs01 =
-    inputs?.target_extremes_over40_pct != null
-      ? to01From100(inputs.target_extremes_over40_pct)
-      : null;
-
-  return { ...base, extremesMax01: extFromInputs01 ?? base.extremesMax01 };
-};
-
-type MetricStatus = "good" | "ok" | "bad" | "na";
-const within = (a: number, b: number, tol: number) => Math.abs(a - b) <= tol;
-
-const statusHigherBetter = (value: number | null, targetMin: number, tol = 0.002): MetricStatus => {
-  if (value == null || !Number.isFinite(value)) return "na";
-  if (value >= targetMin + tol) return "good";
-  if (within(value, targetMin, tol)) return "ok";
-  return "bad";
-};
-
-const statusLowerBetter = (value: number | null, targetMax: number, tol = 0.002): MetricStatus => {
-  if (value == null || !Number.isFinite(value)) return "na";
-  if (value <= targetMax - tol) return "good";
-  if (within(value, targetMax, tol)) return "ok";
-  return "bad";
-};
-
-const statusAbsLowerBetter = (value: number | null, targetAbsMax: number, tol = 0.002): MetricStatus => {
-  if (value == null || !Number.isFinite(value)) return "na";
-  const absVal = Math.abs(value);
-  if (absVal <= targetAbsMax - tol) return "good";
-  if (within(absVal, targetAbsMax, tol)) return "ok";
-  return "bad";
-};
-
-// ---- UI helpers aligned to OSA page ----
-const pillClassFromStatus = (s: MetricStatus) => {
-  if (s === "good") return "pill green";
-  if (s === "ok") return "pill amber";
-  if (s === "bad") return "pill red";
-  return "pill";
-};
-
-const statusEmoji = (s: MetricStatus) => {
-  if (s === "good") return "🟢";
-  if (s === "ok") return "🟠";
-  if (s === "bad") return "🔴";
-  return "⚪️";
-};
-
-const normalisePct = (v: number | null) => {
-  if (v == null) return null;
-  return v > 1 ? v / 100 : v;
-};
-
-const formatPct = (v: number | null, dp = 0) => (v == null ? "—" : (v * 100).toFixed(dp) + "%");
-
-const formatAvgPointsLost = (v: number | null) => (v == null ? "—" : v.toFixed(1));
-
-const computeRanked = (rows: ServiceRowMini[], key: "store" | "manager") => {
-  const bucket: Record<string, { dot: number[]; labour: number[]; rnl: number[]; shifts: number }> = {};
-
-  for (const r of rows) {
-    const name = key === "store" ? (r.store || "").trim() : (r.manager || "Unknown").trim() || "Unknown";
-    if (!name) continue;
-
-    if (!bucket[name]) bucket[name] = { dot: [], labour: [], rnl: [], shifts: 0 };
-    bucket[name].shifts += 1;
-
-    const d = normalisePct(r.dot_pct);
-    const l = normalisePct(r.labour_pct);
-    if (d != null) bucket[name].dot.push(d);
-    if (l != null) bucket[name].labour.push(l);
-    if (r.rnl_minutes != null) bucket[name].rnl.push(r.rnl_minutes);
-  }
-
-  const avgInner = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
-
-  const out: RankedItem[] = Object.entries(bucket).map(([name, v]) => ({
-    name,
-    avgDOT: avgInner(v.dot),
-    avgLabour: avgInner(v.labour),
-    avgRnlMinutes: avgInner(v.rnl),
-    shifts: v.shifts,
-  }));
-
-  out.sort((a, b) => {
-    if (b.avgDOT !== a.avgDOT) return b.avgDOT - a.avgDOT;
-    if (a.avgLabour !== b.avgLabour) return a.avgLabour - b.avgLabour;
-    return a.avgRnlMinutes - b.avgRnlMinutes;
-  });
-
-  return out;
+const Sparkline = ({ values }: { values: Array<number | null> }) => {
+  const usable = values.map((v) => (v == null ? null : Number(v)));
+  const min = Math.min(...usable.filter((v): v is number => v != null), 0);
+  const max = Math.max(...usable.filter((v): v is number => v != null), 1);
+  const span = Math.max(max - min, 0.0001);
+  const points = usable
+    .map((v, i) => {
+      if (v == null) return null;
+      const x = (i / 6) * 110;
+      const y = 28 - ((v - min) / span) * 24;
+      return `${x},${y}`;
+    })
+    .filter(Boolean)
+    .join(" ");
+  return (
+    <svg viewBox="0 0 110 30" className="spark">
+      <polyline fill="none" stroke="#0369a1" strokeWidth="2" points={points} />
+    </svg>
+  );
 };
 
 export default function DailyUpdateClient() {
   const router = useRouter();
-
-  const [targetDate, setTargetDate] = useState<string>("");
-  const [weekStart, setWeekStart] = useState<string>("");
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const [areaMessage, setAreaMessage] = useState<string>("");
-  const [storeInputs, setStoreInputs] = useState<StoreInputRow[]>([]);
+  const [targetDate, setTargetDate] = useState("");
+  const [weekStart, setWeekStart] = useState("");
+  const [sdlwDate, setSdlwDate] = useState("");
+  const [areaMessage, setAreaMessage] = useState("");
+  const [inputs, setInputs] = useState<StoreInputRow[]>([]);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
-  const [serviceRows, setServiceRows] = useState<ServiceShiftRow[]>([]);
-  const [costRows, setCostRows] = useState<CostControlRow[]>([]);
-  const [osaRows, setOsaRows] = useState<OsaInternalRow[]>([]);
-  const [stores, setStores] = useState<string[]>([]);
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
-  const [svcRows, setSvcRows] = useState<ServiceRowMini[]>([]);
-  const [highlightsError, setHighlightsError] = useState<string | null>(null);
-  const [osaWinner, setOsaWinner] = useState<OsaWinner | null>(null);
-  const [osaHighlightError, setOsaHighlightError] = useState<string | null>(null);
-  const [costWinner, setCostWinner] = useState<CostWinner | null>(null);
-  const [costHighlightError, setCostHighlightError] = useState<string | null>(null);
-
-  // NEW: screenshot-friendly toggle (keeps tiles compact like Service Dashboard)
-  const [showDetails, setShowDetails] = useState(false);
+  const [serviceRange, setServiceRange] = useState<ServiceShiftRow[]>([]);
+  const [costRange, setCostRange] = useState<CostControlRow[]>([]);
+  const [osaRange, setOsaRange] = useState<OsaInternalRow[]>([]);
 
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
-        setError(null);
+        const td = getPreviousBusinessDayUk();
+        const ws = getWeekStartUK(td);
+        const sdlw = shiftDateIso(td, -7);
+        setTargetDate(td);
+        setWeekStart(ws);
+        setSdlwDate(sdlw);
 
-        const previousBusinessDay = getPreviousBusinessDayUk();
-        const wkStart = getWeekStartUK(previousBusinessDay);
-
-        setTargetDate(previousBusinessDay);
-        setWeekStart(wkStart);
-
-        const [
-          areaMessageRes,
-          inputsRes,
-          tasksRes,
-          serviceRes,
-          costRes,
-          osaRes,
-          serviceStoresRes,
-          costStoresRes,
-          inputStoresRes,
-        ] = await Promise.all([
-          supabase.from("daily_update_area_message").select("date,message").eq("date", previousBusinessDay).maybeSingle(),
-          supabase
-            .from("daily_update_store_inputs")
-            .select(
-              "date,store,missed_calls_wtd,gps_tracked_wtd,aof_wtd,target_load_time_mins,target_rack_time_mins,target_adt_mins,target_extremes_over40_pct,notes"
-            )
-            .eq("date", previousBusinessDay),
-          supabase
-            .from("daily_update_store_tasks")
-            .select("id,date,store,task,is_complete,created_at,completed_at")
-            .eq("date", previousBusinessDay)
-            .order("created_at", { ascending: true }),
-          supabase
-            .from("service_shifts")
-            .select("shift_date,store,dot_pct,labour_pct,extreme_over_40,rnl_minutes,additional_hours")
-            .eq("shift_date", previousBusinessDay),
-          supabase
-            .from("cost_control_entries")
-            .select("shift_date,store,sales_gbp,labour_cost_gbp,ideal_food_cost_gbp,actual_food_cost_gbp")
-            .eq("shift_date", previousBusinessDay),
-          supabase
-            .from("osa_internal_results")
-            .select("shift_date,store")
-            .gte("shift_date", wkStart)
-            .lte("shift_date", previousBusinessDay),
-          supabase.from("service_shifts").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
-          supabase.from("cost_control_entries").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
-          supabase.from("daily_update_store_inputs").select("store,date").order("date", { ascending: false }).limit(500),
+        const [msgRes, inRes, taskRes, serviceRes, costRes, osaRes] = await Promise.all([
+          supabase.from("daily_update_area_message").select("date,message").eq("date", td).maybeSingle(),
+          supabase.from("daily_update_store_inputs").select("*").gte("date", ws).lte("date", td),
+          supabase.from("daily_update_store_tasks").select("*").eq("date", td).order("created_at", { ascending: true }),
+          supabase.from("service_shifts").select("shift_date,store,dot_pct,labour_pct,extreme_over_40,rnl_minutes,additional_hours,manager").in("shift_date", [td, sdlw]).or(`shift_date.gte.${ws},shift_date.lte.${td}`),
+          supabase.from("cost_control_entries").select("*").gte("shift_date", ws).lte("shift_date", td),
+          supabase.from("osa_internal_results").select("shift_date,store,team_member_name,points_lost").gte("shift_date", ws).lte("shift_date", td),
         ]);
-
-        const firstError = [
-          areaMessageRes.error,
-          inputsRes.error,
-          tasksRes.error,
-          serviceRes.error,
-          costRes.error,
-          osaRes.error,
-          serviceStoresRes.error,
-          costStoresRes.error,
-          inputStoresRes.error,
-        ].find(Boolean);
-
+        const firstError = [msgRes.error, inRes.error, taskRes.error, serviceRes.error, costRes.error, osaRes.error].find(Boolean);
         if (firstError) throw new Error(firstError.message);
 
-        setAreaMessage(((areaMessageRes.data as AreaMessageRow | null)?.message ?? "").trim());
-        setStoreInputs((inputsRes.data || []) as StoreInputRow[]);
-        setTasks((tasksRes.data || []) as TaskRow[]);
-        setServiceRows((serviceRes.data || []) as ServiceShiftRow[]);
-        setCostRows((costRes.data || []) as CostControlRow[]);
-        setOsaRows((osaRes.data || []) as OsaInternalRow[]);
-
-        const storeSet = new Set<string>();
-        for (const row of [...(serviceStoresRes.data || []), ...(costStoresRes.data || []), ...(inputStoresRes.data || [])]) {
-          const s = String((row as { store?: string }).store || "").trim();
-          if (s) storeSet.add(s);
-        }
-        setStores(Array.from(storeSet).sort((a, b) => a.localeCompare(b)));
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load daily update data.");
+        setAreaMessage(((msgRes.data as AreaMessageRow | null)?.message || "").trim());
+        setInputs((inRes.data || []) as StoreInputRow[]);
+        setTasks((taskRes.data || []) as TaskRow[]);
+        const rows = (serviceRes.data || []) as ServiceShiftRow[];
+        setServiceRange(rows.filter((r) => r.shift_date >= ws || r.shift_date === sdlw));
+        setCostRange((costRes.data || []) as CostControlRow[]);
+        setOsaRange((osaRes.data || []) as OsaInternalRow[]);
+      } catch (e: any) {
+        setError(e.message || "Failed to load");
       } finally {
         setLoading(false);
       }
     };
-
     load();
   }, []);
 
-  useEffect(() => {
-    const loadHighlights = async () => {
-      try {
-        setHighlightsError(null);
-
-        const now = new Date();
-        const day = now.getDay();
-        const mondayOffset = day === 0 ? 6 : day - 1;
-
-        const weekStartLocal = new Date(now);
-        weekStartLocal.setDate(now.getDate() - mondayOffset);
-        weekStartLocal.setHours(0, 0, 0, 0);
-
-        const weekStartStr = weekStartLocal.toISOString().slice(0, 10);
-
-        const { data, error: queryError } = await supabase
-          .from("service_shifts")
-          .select("store, dot_pct, labour_pct, rnl_minutes, manager, created_at, shift_date")
-          .gte("shift_date", weekStartStr)
-          .order("shift_date", { ascending: false });
-
-        if (queryError) throw queryError;
-        setSvcRows((data || []) as ServiceRowMini[]);
-      } catch (e: any) {
-        setHighlightsError(e?.message || "Could not load highlights");
-        setSvcRows([]);
-      }
-    };
-
-    loadHighlights();
-  }, []);
-
-  useEffect(() => {
-    const loadBestOsaPerformer = async () => {
-      try {
-        setOsaHighlightError(null);
-
-        const now = new Date();
-        const day = now.getDay();
-        const mondayOffset = day === 0 ? 6 : day - 1;
-        const weekStartLocal = new Date(now);
-        weekStartLocal.setDate(now.getDate() - mondayOffset);
-        weekStartLocal.setHours(0, 0, 0, 0);
-        const weekStartStr = weekStartLocal.toISOString().slice(0, 10);
-
-        const { data, error: queryError } = await supabase
-          .from("osa_internal_results")
-          .select("shift_date, team_member_name, points_lost")
-          .gte("shift_date", weekStartStr);
-
-        if (queryError) throw queryError;
-
-        const bucket: Record<string, { total: number; count: number }> = {};
-
-        for (const row of (data || []) as OsaInternalHighlightRow[]) {
-          const name = (row.team_member_name || "").trim() || "Unknown";
-          const pointsLost = Number(row.points_lost);
-          if (!Number.isFinite(pointsLost)) continue;
-
-          if (!bucket[name]) bucket[name] = { total: 0, count: 0 };
-          bucket[name].total += pointsLost;
-          bucket[name].count += 1;
-        }
-
-        const ranked = Object.entries(bucket)
-          .filter(([, v]) => v.count > 0)
-          .map(([name, v]) => ({ name, avgPointsLost: v.total / v.count }))
-          .sort((a, b) => a.avgPointsLost - b.avgPointsLost);
-
-        setOsaWinner(
-          ranked[0] ? { name: ranked[0].name, avgPointsLost: ranked[0].avgPointsLost } : { name: "No data", avgPointsLost: null }
-        );
-      } catch (e: any) {
-        setOsaHighlightError(e?.message || "Could not load OSA highlight");
-        setOsaWinner(null);
-      }
-    };
-
-    loadBestOsaPerformer();
-  }, []);
-
-  useEffect(() => {
-    const loadCostHighlights = async () => {
-      try {
-        setCostHighlightError(null);
-
-        const now = new Date();
-        const day = now.getDay();
-        const mondayOffset = day === 0 ? 6 : day - 1;
-
-        const weekStartLocal = new Date(now);
-        weekStartLocal.setDate(now.getDate() - mondayOffset);
-        weekStartLocal.setHours(0, 0, 0, 0);
-
-        const weekEnd = new Date(weekStartLocal);
-        weekEnd.setDate(weekEnd.getDate() + 7);
-
-        const weekStartStr = weekStartLocal.toISOString().slice(0, 10);
-        const weekEndStr = weekEnd.toISOString().slice(0, 10);
-
-        const { data, error: queryError } = await supabase
-          .from("cost_control_entries")
-          .select("store, shift_date, sales_gbp, labour_cost_gbp, ideal_food_cost_gbp, actual_food_cost_gbp")
-          .gte("shift_date", weekStartStr)
-          .lt("shift_date", weekEndStr);
-
-        if (queryError) throw queryError;
-
-        const bucket: Record<string, { sales: number; labour: number; idealFood: number; actualFood: number }> = {};
-
-        for (const row of (data || []) as CostControlRow[]) {
-          const name = (row.store || "").trim() || "Unknown";
-          if (!bucket[name]) bucket[name] = { sales: 0, labour: 0, idealFood: 0, actualFood: 0 };
-
-          const sales = Number(row.sales_gbp);
-          const labour = Number(row.labour_cost_gbp);
-          const idealFood = Number(row.ideal_food_cost_gbp);
-          const actualFood = Number(row.actual_food_cost_gbp);
-
-          if (Number.isFinite(sales)) bucket[name].sales += sales;
-          if (Number.isFinite(labour)) bucket[name].labour += labour;
-          if (Number.isFinite(idealFood)) bucket[name].idealFood += idealFood;
-          if (Number.isFinite(actualFood)) bucket[name].actualFood += actualFood;
-        }
-
-        const ranked = Object.entries(bucket).map(([name, totals]) => {
-          const foodVarPctSales = totals.sales > 0 ? (totals.actualFood - totals.idealFood) / totals.sales : null;
-
-          return {
-            name,
-            sumSales: totals.sales,
-            foodVarPctSales,
-            foodVarDelta: foodVarPctSales == null ? Number.POSITIVE_INFINITY : Math.abs(foodVarPctSales),
-          };
-        });
-
-        const foodRanked = [...ranked].sort((a, b) => {
-          if (a.foodVarDelta !== b.foodVarDelta) return a.foodVarDelta - b.foodVarDelta;
-          return b.sumSales - a.sumSales;
-        });
-
-        setCostWinner({
-          foodName: foodRanked[0]?.name || "No data",
-          foodVarPctSales: foodRanked[0]?.foodVarPctSales ?? null,
-        });
-      } catch (e: any) {
-        setCostHighlightError(e?.message || "Could not load cost highlights");
-        setCostWinner(null);
-      }
-    };
-
-    loadCostHighlights();
-  }, []);
-
-  const inputsByStore = useMemo(() => {
-    const m = new Map<string, StoreInputRow>();
-    for (const row of storeInputs) m.set(row.store, row);
+  const dayInputs = useMemo(() => inputs.filter((r) => r.date === targetDate), [inputs, targetDate]);
+  const stores = useMemo(() => Array.from(new Set([...dayInputs.map((r) => r.store), ...serviceRange.map((r) => r.store), ...costRange.map((r) => r.store)])).sort(), [dayInputs, serviceRange, costRange]);
+  const inputByStore = useMemo(() => new Map(dayInputs.map((r) => [r.store, r])), [dayInputs]);
+  const inputWtd = useMemo(() => {
+    const m = new Map<string, StoreInputRow[]>();
+    for (const r of inputs.filter((x) => x.date >= weekStart && x.date <= targetDate)) m.set(r.store, [...(m.get(r.store) || []), r]);
     return m;
-  }, [storeInputs]);
-
+  }, [inputs, weekStart, targetDate]);
   const tasksByStore = useMemo(() => {
     const m = new Map<string, TaskRow[]>();
-    for (const row of tasks) m.set(row.store, [...(m.get(row.store) || []), row]);
+    for (const t of tasks) m.set(t.store, [...(m.get(t.store) || []), t]);
     return m;
   }, [tasks]);
 
-  const osaCounts = useMemo(() => {
-    const total = osaRows.length;
-    const byStore = new Map<string, number>();
-    for (const r of osaRows) {
+  const serviceYesterday = useMemo(() => serviceRange.filter((r) => r.shift_date === targetDate), [serviceRange, targetDate]);
+  const serviceSdlw = useMemo(() => serviceRange.filter((r) => r.shift_date === sdlwDate), [serviceRange, sdlwDate]);
+  const serviceByStoreDate = useMemo(() => {
+    const m = new Map<string, ServiceShiftRow[]>();
+    for (const r of serviceRange) m.set(`${r.store}|${r.shift_date}`, [...(m.get(`${r.store}|${r.shift_date}`) || []), r]);
+    return m;
+  }, [serviceRange]);
+  const costYesterday = useMemo(() => costRange.filter((r) => r.shift_date === targetDate), [costRange, targetDate]);
+  const osaWtdByStore = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of osaRange) {
       const s = String(r.store || "").trim();
-      if (!s) continue;
-      byStore.set(s, (byStore.get(s) || 0) + 1);
+      if (s) m.set(s, (m.get(s) || 0) + 1);
     }
-    return { total, byStore };
-  }, [osaRows]);
+    return m;
+  }, [osaRange]);
+
+  const managerTop = useMemo(() => {
+    const b: Record<string, { dot: number[]; labour: number[] }> = {};
+    for (const r of serviceRange.filter((x) => x.shift_date >= weekStart && x.shift_date <= targetDate)) {
+      const key = (r.manager || "Unknown").trim() || "Unknown";
+      b[key] ||= { dot: [], labour: [] };
+      const d = n01(r.dot_pct);
+      const l = n01(r.labour_pct);
+      if (d != null) b[key].dot.push(d);
+      if (l != null) b[key].labour.push(l);
+    }
+    return Object.entries(b)
+      .map(([name, v]) => ({ name, dot: avg(v.dot), labour: avg(v.labour) }))
+      .sort((a, b) => (b.dot || -1) - (a.dot || -1) || (a.labour || 99) - (b.labour || 99))[0] || null;
+  }, [serviceRange, weekStart, targetDate]);
+
+  const osaWinner = useMemo(() => {
+    const b: Record<string, { t: number; c: number }> = {};
+    for (const r of osaRange) {
+      const n = (r.team_member_name || "Unknown").trim() || "Unknown";
+      const p = Number(r.points_lost);
+      if (!Number.isFinite(p)) continue;
+      b[n] ||= { t: 0, c: 0 };
+      b[n].t += p;
+      b[n].c += 1;
+    }
+    const sorted = Object.entries(b).map(([name, v]) => ({ name, avg: v.c ? v.t / v.c : null })).sort((a, b) => (a.avg ?? 99) - (b.avg ?? 99));
+    return sorted[0] || null;
+  }, [osaRange]);
+
+  const costWinner = useMemo(() => {
+    const b: Record<string, { sales: number; ideal: number; actual: number }> = {};
+    for (const r of costRange) {
+      b[r.store] ||= { sales: 0, ideal: 0, actual: 0 };
+      b[r.store].sales += Number(r.sales_gbp || 0);
+      b[r.store].ideal += Number(r.ideal_food_cost_gbp || 0);
+      b[r.store].actual += Number(r.actual_food_cost_gbp || 0);
+    }
+    return Object.entries(b)
+      .map(([store, v]) => ({ store, varp: v.sales > 0 ? (v.actual - v.ideal) / v.sales : null }))
+      .sort((a, b) => Math.abs(a.varp ?? 99) - Math.abs(b.varp ?? 99))[0] || null;
+  }, [costRange]);
 
   const storeCards = useMemo(() => {
-    return stores.map((store) => {
-      const cost = costRows.filter((row) => row.store === store);
-      const service = serviceRows.filter((row) => row.store === store);
-      const inputs = inputsByStore.get(store) || null;
-      const storeTasks = tasksByStore.get(store) || [];
+    return stores
+      .map((store) => {
+        const input = inputByStore.get(store) || null;
+        const wtdIn = inputWtd.get(store) || [];
+        const sY = serviceByStoreDate.get(`${store}|${targetDate}`) || [];
+        const sS = serviceByStoreDate.get(`${store}|${sdlwDate}`) || [];
+        const cY = costYesterday.filter((r) => r.store === store);
+        const cW = costRange.filter((r) => r.store === store && r.shift_date >= weekStart && r.shift_date <= targetDate);
 
-      const sales = sum(cost.map((row) => Number(row.sales_gbp || 0)));
-      const labourCost = sum(cost.map((row) => Number(row.labour_cost_gbp || 0)));
-      const idealFoodCost = sum(cost.map((row) => Number(row.ideal_food_cost_gbp || 0)));
-      const actualFoodCost = sum(cost.map((row) => Number(row.actual_food_cost_gbp || 0)));
+        const salesY = sum(cY.map((r) => Number(r.sales_gbp || 0)));
+        const salesW = sum(cW.map((r) => Number(r.sales_gbp || 0)));
+        const labourY = salesY > 0 ? sum(cY.map((r) => Number(r.labour_cost_gbp || 0))) / salesY : null;
+        const labourW = salesW > 0 ? sum(cW.map((r) => Number(r.labour_cost_gbp || 0))) / salesW : null;
+        const foodY = salesY > 0 ? (sum(cY.map((r) => Number(r.actual_food_cost_gbp || 0))) - sum(cY.map((r) => Number(r.ideal_food_cost_gbp || 0)))) / salesY : null;
+        const foodW = salesW > 0 ? (sum(cW.map((r) => Number(r.actual_food_cost_gbp || 0))) - sum(cW.map((r) => Number(r.ideal_food_cost_gbp || 0)))) / salesW : null;
 
-      const labourPct01 = sales > 0 ? labourCost / sales : null;
-      const foodVarPct01 = sales > 0 ? (actualFoodCost - idealFoodCost) / sales : null;
+        const dotY = avg(sY.map((r) => n01(r.dot_pct)).filter((v): v is number => v != null));
+        const dotS = avg(sS.map((r) => n01(r.dot_pct)).filter((v): v is number => v != null));
+        const extY = avg(sY.map((r) => n01(r.extreme_over_40)).filter((v): v is number => v != null));
+        const extS = avg(sS.map((r) => n01(r.extreme_over_40)).filter((v): v is number => v != null));
+        const rnlY = avg(sY.map((r) => r.rnl_minutes).filter((v): v is number => v != null));
+        const rnlS = avg(sS.map((r) => r.rnl_minutes).filter((v): v is number => v != null));
+        const addH = sum(sY.map((r) => Number(r.additional_hours || 0)));
 
-      const dotPct01 = avg(service.map((row) => normalisePct01(row.dot_pct)).filter((v): v is number => v != null));
-      const extremesPct01 = avg(service.map((row) => normalisePct01(row.extreme_over_40)).filter((v): v is number => v != null));
-      const rnlMinutes = avg(service.map((row) => row.rnl_minutes).filter((v): v is number => v != null));
-      const additionalHours = sum(service.map((row) => Number(row.additional_hours || 0)));
+        const missedY = from100(input?.missed_calls_wtd);
+        const gpsY = from100(input?.gps_tracked_wtd);
+        const aofY = from100(input?.aof_wtd);
+        const missedW = avg(wtdIn.map((r) => from100(r.missed_calls_wtd)).filter((v): v is number => v != null));
+        const gpsW = avg(wtdIn.map((r) => from100(r.gps_tracked_wtd)).filter((v): v is number => v != null));
+        const aofW = avg(wtdIn.map((r) => from100(r.aof_wtd)).filter((v): v is number => v != null));
 
-      const targets = getTargetsForStore(store, inputs);
+        return {
+          store,
+          input,
+          tasks: tasksByStore.get(store) || [],
+          osaWtd: osaWtdByStore.get(store) || 0,
+          targets: getTargetsForStore(store, input),
+          metrics: { dotY, dotS, extY, extS, rnlY, rnlS, labourY, labourW, foodY, foodW, missedY, missedW, gpsY, gpsW, aofY, aofW, addH },
+        };
+      })
+      .sort((a, b) => (b.metrics.dotY ?? -1) - (a.metrics.dotY ?? -1) || (a.metrics.labourY ?? 9) - (b.metrics.labourY ?? 9))
+      .map((c, i) => ({ ...c, rank: i + 1 }));
+  }, [stores, inputByStore, inputWtd, serviceByStoreDate, targetDate, sdlwDate, costYesterday, costRange, weekStart, tasksByStore, osaWtdByStore]);
 
-      const missedCalls01 = to01From100(inputs?.missed_calls_wtd ?? null);
-      const gps01 = to01From100(inputs?.gps_tracked_wtd ?? null);
-      const aof01 = to01From100(inputs?.aof_wtd ?? null);
+  const areaOverview = useMemo(() => {
+    const salesY = sum(costYesterday.map((r) => Number(r.sales_gbp || 0)));
+    const salesW = sum(costRange.map((r) => Number(r.sales_gbp || 0)));
+    const labourY = salesY > 0 ? sum(costYesterday.map((r) => Number(r.labour_cost_gbp || 0))) / salesY : null;
+    const labourW = salesW > 0 ? sum(costRange.map((r) => Number(r.labour_cost_gbp || 0))) / salesW : null;
+    const foodY = salesY > 0 ? (sum(costYesterday.map((r) => Number(r.actual_food_cost_gbp || 0))) - sum(costYesterday.map((r) => Number(r.ideal_food_cost_gbp || 0)))) / salesY : null;
+    const foodW = salesW > 0 ? (sum(costRange.map((r) => Number(r.actual_food_cost_gbp || 0))) - sum(costRange.map((r) => Number(r.ideal_food_cost_gbp || 0)))) / salesW : null;
+    const dotY = avg(serviceYesterday.map((r) => n01(r.dot_pct)).filter((v): v is number => v != null));
+    const dotS = avg(serviceSdlw.map((r) => n01(r.dot_pct)).filter((v): v is number => v != null));
+    const extY = avg(serviceYesterday.map((r) => n01(r.extreme_over_40)).filter((v): v is number => v != null));
+    const extS = avg(serviceSdlw.map((r) => n01(r.extreme_over_40)).filter((v): v is number => v != null));
+    const rnlY = avg(serviceYesterday.map((r) => r.rnl_minutes).filter((v): v is number => v != null));
+    const rnlS = avg(serviceSdlw.map((r) => r.rnl_minutes).filter((v): v is number => v != null));
+    return { labourY, labourW, foodY, foodW, dotY, dotS, extY, extS, rnlY, rnlS };
+  }, [costYesterday, costRange, serviceYesterday, serviceSdlw]);
 
-      return {
-        store,
-        additionalHours,
-        cost: { labourPct01, foodVarPct01 },
-        service: { dotPct01, extremesPct01, rnlMinutes },
-        inputs,
-        tasks: storeTasks,
-        targets,
-        osaWtdCount: osaCounts.byStore.get(store) || 0,
-        daily: { missedCalls01, gps01, aof01 },
-      };
-    });
-  }, [stores, costRows, serviceRows, inputsByStore, tasksByStore, osaCounts.byStore]);
-
-  const areaRollup = useMemo(() => {
-    const sales = sum(costRows.map((r) => Number(r.sales_gbp || 0)));
-    const labourCost = sum(costRows.map((r) => Number(r.labour_cost_gbp || 0)));
-    const idealFood = sum(costRows.map((r) => Number(r.ideal_food_cost_gbp || 0)));
-    const actualFood = sum(costRows.map((r) => Number(r.actual_food_cost_gbp || 0)));
-
-    const labourPct01 = sales > 0 ? labourCost / sales : null;
-    const foodVarPct01 = sales > 0 ? (actualFood - idealFood) / sales : null;
-
-    const additionalHours = sum(serviceRows.map((r) => Number(r.additional_hours || 0)));
-
-    return { labourPct01, foodVarPct01, additionalHours };
-  }, [costRows, serviceRows]);
-
-  const topManager = useMemo(() => {
-    const rankedManagers = computeRanked(svcRows, "manager");
-    return rankedManagers[0] || null;
-  }, [svcRows]);
-
-
-  const toggleTask = async (task: TaskRow) => {
-    const willComplete = !task.is_complete;
-    const completedAt = willComplete ? new Date().toISOString() : null;
-
-    setTasks((prev) =>
-      prev.map((row) => (row.id === task.id ? { ...row, is_complete: willComplete, completed_at: completedAt } : row))
-    );
-
-    const { error: updateError } = await supabase
-      .from("daily_update_store_tasks")
-      .update({ is_complete: willComplete, completed_at: completedAt })
-      .eq("id", task.id);
-
-    if (updateError) {
-      setTasks((prev) => prev.map((row) => (row.id === task.id ? task : row)));
-      setError(updateError.message);
+  const watchList = useMemo(() => {
+    const alerts: string[] = [];
+    for (const c of storeCards) {
+      const t = c.targets;
+      if (c.metrics.dotY != null && c.metrics.dotY < t.dotMin01) alerts.push(`${c.store} · DOT ${fmtPct(c.metrics.dotY)} below target`);
+      if (c.metrics.dotY != null && c.metrics.dotS != null && c.metrics.dotY - c.metrics.dotS < -0.03) alerts.push(`${c.store} · DOT ${fmtPct(c.metrics.dotY)} down ${pp((c.metrics.dotY - c.metrics.dotS))} vs SDLW`);
+      if (c.metrics.rnlY != null && c.metrics.rnlY > t.rnlMaxMins) alerts.push(`${c.store} · R&L ${fmtMins(c.metrics.rnlY)} above max`);
+      if (c.metrics.extY != null && c.metrics.extY > t.extremesMax01) alerts.push(`${c.store} · Extremes ${fmtPct(c.metrics.extY)} above max`);
+      if (c.metrics.labourY != null && c.metrics.labourY > t.labourMax01) alerts.push(`${c.store} · Labour ${fmtPct(c.metrics.labourY)} above max`);
+      if (c.metrics.foodY != null && Math.abs(c.metrics.foodY) > t.foodVarAbsMax01) alerts.push(`${c.store} · Food variance ${fmtPct(c.metrics.foodY)} breach`);
+      if (c.metrics.missedY != null && c.metrics.missedY > INPUT_TARGETS.missedCallsMax01) alerts.push(`${c.store} · Missed calls ${fmtPct(c.metrics.missedY)} > 6%`);
+      if (c.metrics.gpsY != null && c.metrics.gpsY < INPUT_TARGETS.gpsMin01) alerts.push(`${c.store} · GPS tracked ${fmtPct(c.metrics.gpsY)} < 95%`);
+      if (c.metrics.aofY != null && c.metrics.aofY < INPUT_TARGETS.aofMin01) alerts.push(`${c.store} · AOF ${fmtPct(c.metrics.aofY)} < 62%`);
+      if (c.metrics.addH > 1) alerts.push(`${c.store} · Additional hours ${fmtNum(c.metrics.addH, 1)} > 1`);
     }
-  };
+    return alerts;
+  }, [storeCards]);
 
-  // Area statuses
-  const areaLabourStatus = statusLowerBetter(areaRollup.labourPct01, AREA_TARGETS.labourMax01);
-  const areaFoodStatus = statusAbsLowerBetter(areaRollup.foodVarPct01, AREA_TARGETS.foodVarAbsMax01);
-  const areaAddHoursStatus: MetricStatus =
-    areaRollup.additionalHours == null || !Number.isFinite(areaRollup.additionalHours)
-      ? "na"
-      : areaRollup.additionalHours <= 0
-        ? "good"
-        : areaRollup.additionalHours <= AREA_TARGETS.addHoursOkMax
-          ? "ok"
-          : "bad";
-  const areaOsaStatus: MetricStatus = osaCounts.total <= 0 ? "good" : osaCounts.total <= 1 ? "ok" : "bad";
+  const trends = useMemo(() => {
+    const days = Array.from({ length: 7 }, (_, i) => shiftDateIso(targetDate, i - 6));
+    const dayCost = (d: string) => costRange.filter((r) => r.shift_date === d);
+    const dayInputsRows = (d: string) => inputs.filter((r) => r.date === d);
+    const dayOsa = (d: string) => osaRange.filter((r) => r.shift_date === d);
+    return {
+      labour: days.map((d) => {
+        const rows = dayCost(d); const s = sum(rows.map((r) => Number(r.sales_gbp || 0))); return s > 0 ? sum(rows.map((r) => Number(r.labour_cost_gbp || 0))) / s : null;
+      }),
+      food: days.map((d) => {
+        const rows = dayCost(d); const s = sum(rows.map((r) => Number(r.sales_gbp || 0))); return s > 0 ? (sum(rows.map((r) => Number(r.actual_food_cost_gbp || 0))) - sum(rows.map((r) => Number(r.ideal_food_cost_gbp || 0)))) / s : null;
+      }),
+      osa: days.map((d) => dayOsa(d).length),
+      missed: days.map((d) => avg(dayInputsRows(d).map((r) => from100(r.missed_calls_wtd)).filter((v): v is number => v != null))),
+      gps: days.map((d) => avg(dayInputsRows(d).map((r) => from100(r.gps_tracked_wtd)).filter((v): v is number => v != null))),
+      aof: days.map((d) => avg(dayInputsRows(d).map((r) => from100(r.aof_wtd)).filter((v): v is number => v != null))),
+    };
+  }, [targetDate, costRange, inputs, osaRange]);
 
-  // Slack text (still generated, but not displayed)
-  const slackText = useMemo(() => {
-    const lines: string[] = [];
-
-    lines.push(`*Mourne-oids Daily Update* (${targetDate || "—"})`);
-    if (weekStart) lines.push(`WTD from *${weekStart}*`);
-    lines.push("");
-
-    lines.push(`*Area overview*`);
-    lines.push(
-      `• Labour: ${statusEmoji(areaLabourStatus)} ${fmtPct2(areaRollup.labourPct01)} (≤ ${(AREA_TARGETS.labourMax01 * 100).toFixed(0)}%)`
-    );
-    lines.push(
-      `• Food: ${statusEmoji(areaFoodStatus)} ${fmtPct2(areaRollup.foodVarPct01)} (abs ≤ ${(AREA_TARGETS.foodVarAbsMax01 * 100).toFixed(2)}%)`
-    );
-    lines.push(`• Add. hours: ${statusEmoji(areaAddHoursStatus)} ${fmtNum2(areaRollup.additionalHours)} (actual vs rota)`);
-    lines.push(`• OSA WTD: ${statusEmoji(areaOsaStatus)} ${osaCounts.total}`);
-    lines.push("");
-
-    const ranked = [...storeCards].sort((a, b) => {
-      const aDot = a.service.dotPct01 ?? -1;
-      const bDot = b.service.dotPct01 ?? -1;
-      if (bDot !== aDot) return bDot - aDot;
-
-      const aLab = a.cost.labourPct01 ?? Number.POSITIVE_INFINITY;
-      const bLab = b.cost.labourPct01 ?? Number.POSITIVE_INFINITY;
-      return aLab - bLab;
-    });
-
-    lines.push(`*Stores (ranked by DOT)*`);
-    for (const card of ranked) {
-      const dotStatus = statusHigherBetter(card.service.dotPct01, card.targets.dotMin01);
-      const labourStatus = statusLowerBetter(card.cost.labourPct01, card.targets.labourMax01);
-      const rnlStatus = statusLowerBetter(card.service.rnlMinutes, card.targets.rnlMaxMins, 0.1);
-      const extremesStatus = statusLowerBetter(card.service.extremesPct01, card.targets.extremesMax01);
-      const foodVarStatus = statusAbsLowerBetter(card.cost.foodVarPct01, card.targets.foodVarAbsMax01);
-
-      const addHoursStatus: MetricStatus =
-        card.additionalHours == null || !Number.isFinite(card.additionalHours)
-          ? "na"
-          : card.additionalHours <= 0
-            ? "good"
-            : card.additionalHours <= 1
-              ? "ok"
-              : "bad";
-
-      lines.push(
-        `• *${card.store}* | DOT ${statusEmoji(dotStatus)} ${fmtPct2(card.service.dotPct01)} | Labour ${statusEmoji(labourStatus)} ${fmtPct2(card.cost.labourPct01)} | R&L ${statusEmoji(rnlStatus)} ${fmtMins2(card.service.rnlMinutes)} | Extremes ${statusEmoji(extremesStatus)} ${fmtPct2(card.service.extremesPct01)} | AddH ${statusEmoji(addHoursStatus)} ${fmtNum2(card.additionalHours)} | Food ${statusEmoji(foodVarStatus)} ${fmtPct2(card.cost.foodVarPct01)} | OSA ${card.osaWtdCount}`
-      );
-
-      const notes = card.inputs?.notes?.trim();
-      if (notes) lines.push(`   _Notes:_ ${notes}`);
-
-      const openTasks = card.tasks.filter((t) => !t.is_complete);
-      if (openTasks.length) {
-        lines.push(`   _Open tasks (${openTasks.length}):_ ${openTasks.map((t) => t.task).join(" • ")}`);
-      }
-    }
-
-    if (areaMessage) {
-      lines.push("");
-      lines.push(`*Area message*`);
-      lines.push(areaMessage);
-    }
-
-    return lines.join("\n");
-  }, [
-    targetDate,
-    weekStart,
-    areaMessage,
-    areaRollup.additionalHours,
-    areaRollup.foodVarPct01,
-    areaRollup.labourPct01,
-    areaLabourStatus,
-    areaFoodStatus,
-    areaAddHoursStatus,
-    areaOsaStatus,
-    osaCounts.total,
-    storeCards,
-  ]);
-
-  const copyForSlack = async () => {
-    try {
-      setCopyState("idle");
-      await navigator.clipboard.writeText(slackText);
-      setCopyState("copied");
-      setTimeout(() => setCopyState("idle"), 1200);
-    } catch {
-      setCopyState("error");
-      setTimeout(() => setCopyState("idle"), 1600);
-    }
-  };
+  if (loading) return <main className="wrap">Loading…</main>;
+  if (error) return <main className="wrap">Failed: {error}</main>;
 
   return (
     <main className="wrap">
-      <div className="banner print-hidden">
-        <img src="/mourneoids_forms_header_1600x400.png" alt="Mourne-oids Header Banner" />
-      </div>
+      <header className="top"><h1>Daily Update · {targetDate}</h1><button onClick={() => router.push("/dashboard/daily-update/export")}>Export PDF</button></header>
 
-      <div className="shell">
-        <div className="topbar print-hidden">
-          <button className="navbtn" onClick={() => router.back()} type="button">
-            ← Back
-          </button>
-
-          <div className="topbar-spacer" />
-
-          <button className="navbtn" onClick={copyForSlack} type="button" title="Copies a Slack-formatted summary">
-            {copyState === "copied" ? "✅ Copied" : copyState === "error" ? "⚠️ Copy failed" : "📋 Copy for Slack"}
-          </button>
-
-          <button
-            className="navbtn"
-            onClick={() => setShowDetails((v) => !v)}
-            type="button"
-            title="Toggle details (targets, notes, tasks)"
-          >
-            {showDetails ? "🧾 Hide details" : "🧾 Show details"}
-          </button>
-
-          <button className="navbtn solid" onClick={() => router.push("/")} type="button">
-            🏠 Home
-          </button>
-
-          <button
-            className="navbtn solid"
-            onClick={() => window.open("/dashboard/daily-update/export", "_blank", "noopener,noreferrer")}
-            type="button"
-          >
-            📄 Export PDF
-          </button>
+      <section className="card overview">
+        <h2>Area Overview</h2>
+        <div className="chips">
+          <div className="chip"><b>DOT vs SDLW</b><span>{fmtPct(areaOverview.dotY)} · {pp((areaOverview.dotY ?? 0) - (areaOverview.dotS ?? 0))}</span></div>
+          <div className="chip"><b>R&L vs SDLW</b><span>{fmtMins(areaOverview.rnlY)} · {fmtNum((areaOverview.rnlY ?? 0) - (areaOverview.rnlS ?? 0))}m</span></div>
+          <div className="chip"><b>Extremes vs SDLW</b><span>{fmtPct(areaOverview.extY)} · {pp((areaOverview.extY ?? 0) - (areaOverview.extS ?? 0))}</span></div>
+          <div className="chip"><b>Labour Y / WTD</b><span>{fmtPct(areaOverview.labourY)} / {fmtPct(areaOverview.labourW)}</span></div>
+          <div className="chip"><b>Food var Y / WTD</b><span>{fmtPct(areaOverview.foodY)} / {fmtPct(areaOverview.foodW)}</span></div>
+          <div className="chip"><b>OSA WTD count</b><span>{osaRange.length}</span></div>
         </div>
+      </section>
 
-        <header className="header">
-          <h1>Daily Update</h1>
-          <p className="subtitle">
-            Previous business day: <b>{targetDate || "Loading…"}</b>
-            {weekStart ? (
-              <>
-                {" "}
-                • WTD from <b>{weekStart}</b>
-              </>
-            ) : null}
-          </p>
+      <section className="card message"><h2>Area Message</h2><p>{areaMessage || "No area message submitted for this date."}</p></section>
 
-          <div className="areaOverview">
-            <span className="areaOverviewLabel">Area Overview</span>
-            <div className="kpi-mini">
-              <span className="kpi-chip">
-                <b>OSA WTD</b>{" "}
-                <span className={pillClassFromStatus(areaOsaStatus)} style={{ minWidth: 54 }}>
-                  {osaCounts.total}
-                </span>
-              </span>
+      <section className="card"><h2>Highlights</h2><div className="highlights"><div>✅ Top Manager (WTD): <b>{managerTop?.name || "No data"}</b> ({fmtPct(managerTop?.dot ?? null)})</div><div>✅ Best OSA (WTD): <b>{osaWinner?.name || "No data"}</b> (avg lost {fmtNum(osaWinner?.avg ?? null, 1)})</div><div>✅ Top Store Food (WTD): <b>{costWinner?.store || "No data"}</b> ({fmtPct(costWinner?.varp ?? null)})</div></div></section>
 
-              <span className="kpi-chip">
-                <b>Labour</b>{" "}
-                <span className={pillClassFromStatus(areaLabourStatus)}>{fmtPct2(areaRollup.labourPct01)}</span>
-              </span>
+      <section className="card"><h2>Watch List</h2>{watchList.length ? <div className="watch">{watchList.map((a) => <span key={a} className="alert">{a}</span>)}</div> : <p className="ok">🟢 No watch list alerts today</p>}</section>
 
-              <span className="kpi-chip">
-                <b>Food</b>{" "}
-                <span className={pillClassFromStatus(areaFoodStatus)}>{fmtPct2(areaRollup.foodVarPct01)}</span>
-              </span>
+      <section className="card"><h2>Mini Trends (7 days)</h2><div className="trends">{(["labour", "food", "osa", "missed", "gps", "aof"] as const).map((k) => <div key={k}><b>{k.toUpperCase()}</b><Sparkline values={trends[k] as Array<number | null>} /></div>)}</div></section>
 
-              <span className="kpi-chip">
-                <b>Add. hours</b>{" "}
-                <span className={pillClassFromStatus(areaAddHoursStatus)}>{fmtNum2(areaRollup.additionalHours)}</span>
-              </span>
-            </div>
+      {storeCards.map((c) => (
+        <article key={c.store} className="card store">
+          <div className="storeHead"><strong>#{c.rank} {c.store}</strong><span className="pill good">OSA WTD {c.osaWtd}</span></div>
+          <div className="grid">
+            <div>DOT {fmtPct(c.metrics.dotY)} <small>SDLW {fmtPct(c.metrics.dotS)} ({pp((c.metrics.dotY ?? 0) - (c.metrics.dotS ?? 0))})</small></div>
+            <div>R&L {fmtMins(c.metrics.rnlY)} <small>SDLW {fmtMins(c.metrics.rnlS)} ({fmtNum((c.metrics.rnlY ?? 0) - (c.metrics.rnlS ?? 0))}m)</small></div>
+            <div>Extremes {fmtPct(c.metrics.extY)} <small>SDLW {fmtPct(c.metrics.extS)} ({pp((c.metrics.extY ?? 0) - (c.metrics.extS ?? 0))})</small></div>
+            <div>Labour {fmtPct(c.metrics.labourY)} <small>WTD {fmtPct(c.metrics.labourW)} Δ {pp((c.metrics.labourY ?? 0) - (c.metrics.labourW ?? 0))}</small></div>
+            <div>Food {fmtPct(c.metrics.foodY)} <small>WTD {fmtPct(c.metrics.foodW)} Δ {pp((c.metrics.foodY ?? 0) - (c.metrics.foodW ?? 0))}</small></div>
+            <div>Missed {fmtPct(c.metrics.missedY)} <small>WTD {fmtPct(c.metrics.missedW)}</small></div>
+            <div>GPS {fmtPct(c.metrics.gpsY)} <small>WTD {fmtPct(c.metrics.gpsW)}</small></div>
+            <div>AOF {fmtPct(c.metrics.aofY)} <small>WTD {fmtPct(c.metrics.aofW)}</small></div>
+            <div>Add Hours {fmtNum(c.metrics.addH, 1)}</div>
           </div>
-        </header>
-
-        {error ? (
-          <div className="alert">
-            <b>Error:</b> {error}
-          </div>
-        ) : loading ? (
-          <div className="alert muted">Loading daily update…</div>
-        ) : null}
-
-        {/* Area message */}
-        {areaMessage ? (
-          <section className="section callout">
-            <div className="section-head">
-              <div>
-                <h2>Area message</h2>
-                <p>Action focus for today.</p>
-              </div>
-              <span className="pill amber">Action focus</span>
-            </div>
-            <p className="calloutText">{areaMessage}</p>
-          </section>
-        ) : null}
-
-        {!loading && !error ? (
-          <section className="section highlights">
-            <div className="highlights-head">
-              <h2>Highlights</h2>
-              <p></p>
-            </div>
-
-            {highlightsError && (
-              <div className="highlight-card warning" style={{ marginBottom: 12 }}>
-                <div className="highlight-top">
-                  <span className="highlight-title">⚠️ Highlights</span>
-                </div>
-                <div className="highlight-body">Could not load highlights: {highlightsError}</div>
-              </div>
-            )}
-
-            <div className="highlights-grid">
-              <div className="highlight-card">
-                <div className="highlight-top">
-                  <span className="highlight-title">🥇 Top Manager </span>
-                  <span className="highlight-pill">WTD</span>
-                </div>
-                <div className="highlight-main">
-                  <div className="highlight-name">{topManager && !highlightsError ? topManager.name : "No data"}</div>
-                  <div className="highlight-metrics">
-                    <span>
-                      DOT: <b>{topManager && !highlightsError ? formatPct(topManager.avgDOT, 0) : "—"}</b>
-                    </span>
-                    <span>
-                      Labour: <b>{topManager && !highlightsError ? formatPct(topManager.avgLabour, 1) : "—"}</b>
-                    </span>
-                    <span>
-                      Shifts: <b>{topManager && !highlightsError ? topManager.shifts : "—"}</b>
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className={`highlight-card${osaHighlightError ? " warning" : ""}`}>
-                <div className="highlight-top">
-                  <span className="highlight-title">🛡️ Best OSA Performance </span>
-                  <span className="highlight-pill">WTD</span>
-                </div>
-                <div className="highlight-main">
-                  <div className="highlight-name">{osaHighlightError ? "Error" : osaWinner?.name || "No data"}</div>
-                  <div className="highlight-metrics">
-                    {osaHighlightError ? (
-                      <span>
-                        Could not load OSA highlight: <b>{osaHighlightError}</b>
-                      </span>
-                    ) : (
-                      <span>
-                        Avg points lost: <b>{formatAvgPointsLost(osaWinner?.avgPointsLost ?? null)}</b>
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className={`highlight-card${costHighlightError ? " warning" : ""}`}>
-                <div className="highlight-top">
-                  <span className="highlight-title">🍕 Top Store Food </span>
-                  <span className="highlight-pill">WTD</span>
-                </div>
-                <div className="highlight-main">
-                  <div className="highlight-name">{costHighlightError ? "Error" : costWinner?.foodName || "No data"}</div>
-                  <div className="highlight-metrics">
-                    {costHighlightError ? (
-                      <span>
-                        Could not load food highlight: <b>{costHighlightError}</b>
-                      </span>
-                    ) : (
-                      <span>
-                        Variance: <b>{formatPct(costWinner?.foodVarPctSales ?? null, 2)}</b>
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-        ) : null}
-
-        {/* Store cards */}
-        {!loading && !error ? (
-          <section className="section">
-            <div className="section-head">
-              <div>
-                <h2>Stores</h2>
-                <p></p>
-              </div>
-              <div className="kpi-mini">
-                <span className="kpi-chip">
-                  <b>{stores.length}</b> stores
-                </span>
-              </div>
-            </div>
-
-            <div className="storeGrid">
-              {[...storeCards]
-                .sort((a, b) => {
-                  const aDot = a.service.dotPct01 ?? -1;
-                  const bDot = b.service.dotPct01 ?? -1;
-                  if (bDot !== aDot) return bDot - aDot;
-                  const aLab = a.cost.labourPct01 ?? Number.POSITIVE_INFINITY;
-                  const bLab = b.cost.labourPct01 ?? Number.POSITIVE_INFINITY;
-                  return aLab - bLab;
-                })
-                .map((card) => {
-                  const dotStatus = statusHigherBetter(card.service.dotPct01, card.targets.dotMin01);
-                  const labourStatus = statusLowerBetter(card.cost.labourPct01, card.targets.labourMax01);
-                  const rnlStatus = statusLowerBetter(card.service.rnlMinutes, card.targets.rnlMaxMins, 0.1);
-                  const extremesStatus = statusLowerBetter(card.service.extremesPct01, card.targets.extremesMax01);
-                  const foodVarStatus = statusAbsLowerBetter(card.cost.foodVarPct01, card.targets.foodVarAbsMax01);
-
-                  const missedStatus = statusLowerBetter(card.daily.missedCalls01, INPUT_TARGETS.missedCallsMax01);
-                  const gpsStatus = statusHigherBetter(card.daily.gps01, INPUT_TARGETS.gpsMin01);
-                  const aofStatus = statusHigherBetter(card.daily.aof01, INPUT_TARGETS.aofMin01);
-
-                  const addHoursStatus: MetricStatus =
-                    card.additionalHours == null || !Number.isFinite(card.additionalHours)
-                      ? "na"
-                      : card.additionalHours <= 0
-                        ? "good"
-                        : card.additionalHours <= 1
-                          ? "ok"
-                          : "bad";
-
-                  const osaStatus: MetricStatus = card.osaWtdCount <= 0 ? "good" : card.osaWtdCount <= 1 ? "ok" : "bad";
-
-                  return (
-                    <article key={card.store} className="storeCard">
-                      <div className="storeTop">
-                        <div className="storeTitleRow">
-                          <div className="storeName">{card.store}</div>
-                          <div className="storePills">
-                            <span className="storeChip">
-                              <span className="storeChipLabel">OSA WTD</span>
-                              <span className={pillClassFromStatus(osaStatus)} style={{ minWidth: 52 }}>
-                                {card.osaWtdCount}
-                              </span>
-                            </span>
-
-                            {/* Keep AOF visible without bloating the grid */}
-                            <span className="storeChip">
-                              <span className="storeChipLabel">AOF</span>
-                              <span className={pillClassFromStatus(aofStatus)} style={{ minWidth: 84 }}>
-                                {fmtPct2(card.daily.aof01)}
-                              </span>
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Service-dashboard style: 2 columns x 3 rows */}
-                      <div className="metricsList">
-                        {/* Column/row order chosen to read cleanly in screenshots */}
-                        <div className="metricRow">
-                          <div className="rowText">
-                            <div className="rowLabel">DOT</div>
-                            <div className="rowHint">≥ {(card.targets.dotMin01 * 100).toFixed(0)}%</div>
-                          </div>
-                          <span className={pillClassFromStatus(dotStatus)}>{fmtPct2(card.service.dotPct01)}</span>
-                        </div>
-
-                        <div className="metricRow">
-                          <div className="rowText">
-                            <div className="rowLabel">Labour</div>
-                            <div className="rowHint">≤ {(card.targets.labourMax01 * 100).toFixed(0)}%</div>
-                          </div>
-                          <span className={pillClassFromStatus(labourStatus)}>{fmtPct2(card.cost.labourPct01)}</span>
-                        </div>
-
-                        <div className="metricRow">
-                          <div className="rowText">
-                            <div className="rowLabel">R&amp;L</div>
-                            <div className="rowHint">≤ {card.targets.rnlMaxMins.toFixed(0)}m</div>
-                          </div>
-                          <span className={pillClassFromStatus(rnlStatus)}>{fmtMins2(card.service.rnlMinutes)}</span>
-                        </div>
-
-                        <div className="metricRow">
-                          <div className="rowText">
-                            <div className="rowLabel">Extremes &gt;40</div>
-                            <div className="rowHint">≤ {(card.targets.extremesMax01 * 100).toFixed(0)}%</div>
-                          </div>
-                          <span className={pillClassFromStatus(extremesStatus)}>{fmtPct2(card.service.extremesPct01)}</span>
-                        </div>
-
-                        <div className="metricRow">
-                          <div className="rowText">
-                            <div className="rowLabel">Add. hours</div>
-                            <div className="rowHint">Actual vs rota</div>
-                          </div>
-                          <span className={pillClassFromStatus(addHoursStatus)}>{fmtNum2(card.additionalHours)}</span>
-                        </div>
-
-                        <div className="metricRow">
-                          <div className="rowText">
-                            <div className="rowLabel">Food variance</div>
-                            <div className="rowHint">Abs ≤ {(card.targets.foodVarAbsMax01 * 100).toFixed(2)}%</div>
-                          </div>
-                          <span className={pillClassFromStatus(foodVarStatus)}>{fmtPct2(card.cost.foodVarPct01)}</span>
-                        </div>
-                      </div>
-
-                      {/* Compact “inputs” row (optional – keeps screenshot clean) */}
-                      <div className="inputsRow">
-                        <div className="inputChip">
-                          <span className="inputLabel">Missed calls</span>
-                          <span className={pillClassFromStatus(missedStatus)}>{fmtPct2(card.daily.missedCalls01)}</span>
-                        </div>
-                        <div className="inputChip">
-                          <span className="inputLabel">GPS tracked</span>
-                          <span className={pillClassFromStatus(gpsStatus)}>{fmtPct2(card.daily.gps01)}</span>
-                        </div>
-                      </div>
-
-                      {/* Details: hidden by default for screenshot parity with Service Dashboard */}
-                      <div className={`details ${showDetails ? "show" : ""}`}>
-                        <div className="detailsGrid">
-                          <div className="panel">
-                            <div className="panelHead">
-                              <div className="panelTitle">Service losing targets</div>
-                              <div className="panelHint">Input</div>
-                            </div>
-                            <div className="kvGrid">
-                              <div className="kv">
-                                <span className="kvLabel">Load</span>
-                                <span className="kvValue">{fmtNum2(card.inputs?.target_load_time_mins ?? null)}</span>
-                              </div>
-                              <div className="kv">
-                                <span className="kvLabel">Rack</span>
-                                <span className="kvValue">{fmtNum2(card.inputs?.target_rack_time_mins ?? null)}</span>
-                              </div>
-                              <div className="kv">
-                                <span className="kvLabel">ADT</span>
-                                <span className="kvValue">{fmtNum2(card.inputs?.target_adt_mins ?? null)}</span>
-                              </div>
-                              <div className="kv">
-                                <span className="kvLabel">Extremes %</span>
-                                <span className="kvValue">
-                                  {card.inputs?.target_extremes_over40_pct == null
-                                    ? "—"
-                                    : `${Number(card.inputs.target_extremes_over40_pct).toFixed(2)}%`}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="panel">
-                            <div className="panelHead">
-                              <div className="panelTitle">Notes</div>
-                              <div className="panelHint">From store</div>
-                            </div>
-                            <div className="noteText">{card.inputs?.notes?.trim() || "—"}</div>
-                          </div>
-
-                          <div className="panel">
-                            <div className="panelHead">
-                              <div className="panelTitle">Tasks</div>
-                              <div className="panelHint">{card.tasks.length} item(s)</div>
-                            </div>
-
-                            {card.tasks.length === 0 ? (
-                              <p className="mutedSmall">No tasks for this store on {targetDate}.</p>
-                            ) : (
-                              <ul className="taskList">
-                                {card.tasks.map((task) => (
-                                  <li key={task.id} className="task">
-                                    <label className="taskRow">
-                                      <input type="checkbox" checked={task.is_complete} onChange={() => toggleTask(task)} />
-                                      <span className={task.is_complete ? "taskDone" : ""}>{task.task}</span>
-                                    </label>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </article>
-                  );
-                })}
-            </div>
-          </section>
-        ) : null}
-
-        <footer className="footer">© {new Date().getFullYear()} Mourne-oids | Domino’s Pizza | Racz Group</footer>
-      </div>
+          <div className="notes"><b>Service losing targets:</b> Load {fmtNum(c.input?.target_load_time_mins ?? null)} · Rack {fmtNum(c.input?.target_rack_time_mins ?? null)} · ADT {fmtNum(c.input?.target_adt_mins ?? null)} · Extremes {fmtNum(c.input?.target_extremes_over40_pct ?? null)}%</div>
+          <p><b>Notes:</b> {c.input?.notes || "—"}</p>
+          <p><b>Tasks:</b> {c.tasks.map((t) => `${t.is_complete ? "☑" : "☐"} ${t.task}`).join(" · ") || "—"}</p>
+        </article>
+      ))}
 
       <style jsx>{`
-        :root {
-          --text: #0f172a;
-          --muted: #64748b;
-          --brand: #006491;
-          --shadow: 0 16px 40px rgba(0, 0, 0, 0.05);
-        }
-
-        .wrap {
-          min-height: 100dvh;
-          background: radial-gradient(circle at top, rgba(0, 100, 145, 0.08), transparent 45%),
-            linear-gradient(180deg, #e3edf4 0%, #f2f5f9 30%, #f2f5f9 100%);
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          color: var(--text);
-          padding-bottom: 40px;
-        }
-
-        .banner {
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          background: #fff;
-          border-bottom: 3px solid var(--brand);
-          box-shadow: 0 12px 35px rgba(2, 6, 23, 0.08);
-          width: 100%;
-        }
-
-        .banner img {
-          max-width: min(1160px, 92%);
-          height: auto;
-          display: block;
-        }
-
-        .shell {
-          width: min(1100px, 94vw);
-          margin-top: 18px;
-          background: rgba(255, 255, 255, 0.65);
-          backdrop-filter: saturate(160%) blur(6px);
-          border: 1px solid rgba(255, 255, 255, 0.22);
-          border-radius: 1.5rem;
-          box-shadow: var(--shadow);
-          padding: 18px 22px 26px;
-        }
-
-        .topbar {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          margin-bottom: 10px;
-          flex-wrap: wrap;
-        }
-
-        .topbar-spacer {
-          flex: 1;
-        }
-
-        .navbtn {
-          border-radius: 14px;
-          border: 2px solid var(--brand);
-          background: #fff;
-          color: var(--brand);
-          font-weight: 900;
-          font-size: 14px;
-          padding: 8px 12px;
-          cursor: pointer;
-          box-shadow: 0 6px 14px rgba(0, 100, 145, 0.12);
-          transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
-          white-space: nowrap;
-        }
-
-        .navbtn:hover {
-          background: var(--brand);
-          color: #fff;
-          transform: translateY(-1px);
-        }
-
-        .navbtn.solid {
-          background: var(--brand);
-          color: #fff;
-        }
-
-        .navbtn.solid:hover {
-          background: #004b75;
-          border-color: #004b75;
-        }
-
-        .header {
-          text-align: center;
-          margin-bottom: 12px;
-        }
-
-        .header h1 {
-          font-size: clamp(2rem, 3vw, 2.3rem);
-          font-weight: 900;
-          letter-spacing: -0.015em;
-          margin: 0;
-        }
-
-        .subtitle {
-          margin: 6px 0 0;
-          color: var(--muted);
-          font-weight: 700;
-          font-size: 0.95rem;
-        }
-
-        .areaOverview {
-          margin-top: 12px;
-          display: inline-flex;
-          gap: 10px;
-          flex-wrap: wrap;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .areaOverviewLabel {
-          font-size: 11px;
-          font-weight: 900;
-          letter-spacing: 0.06em;
-          text-transform: uppercase;
-          padding: 6px 10px;
-          border-radius: 999px;
-          background: rgba(15, 23, 42, 0.06);
-          border: 1px solid rgba(15, 23, 42, 0.1);
-          color: #0f172a;
-          white-space: nowrap;
-        }
-
-        .kpi-mini {
-          display: inline-flex;
-          gap: 8px;
-          flex-wrap: wrap;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .kpi-chip {
-          font-size: 12px;
-          font-weight: 900;
-          padding: 6px 10px;
-          border-radius: 999px;
-          background: rgba(0, 100, 145, 0.08);
-          border: 1px solid rgba(0, 100, 145, 0.14);
-          color: #004b75;
-          white-space: nowrap;
-          display: inline-flex;
-          gap: 8px;
-          align-items: center;
-        }
-
-        .pill {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          min-width: 72px;
-          padding: 4px 10px;
-          border-radius: 999px;
-          font-weight: 900;
-          font-variant-numeric: tabular-nums;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          background: rgba(2, 6, 23, 0.04);
-          color: rgba(15, 23, 42, 0.8);
-          white-space: nowrap;
-        }
-
-        .pill.green {
-          background: rgba(34, 197, 94, 0.12);
-          border-color: rgba(34, 197, 94, 0.22);
-          color: #166534;
-        }
-
-        .pill.amber {
-          background: rgba(249, 115, 22, 0.12);
-          border-color: rgba(249, 115, 22, 0.22);
-          color: #9a3412;
-        }
-
-        .pill.red {
-          background: rgba(239, 68, 68, 0.12);
-          border-color: rgba(239, 68, 68, 0.22);
-          color: #991b1b;
-        }
-
-        .section {
-          margin-top: 16px;
-          background: rgba(255, 255, 255, 0.92);
-          border-radius: 18px;
-          border: 1px solid rgba(0, 100, 145, 0.14);
-          box-shadow: 0 12px 28px rgba(2, 6, 23, 0.05);
-          padding: 14px 14px;
-        }
-
-        .section-head {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-end;
-          gap: 10px;
-          margin-bottom: 10px;
-          flex-wrap: wrap;
-        }
-
-        .section-head h2 {
-          margin: 0;
-          font-size: 15px;
-          font-weight: 900;
-          letter-spacing: 0.01em;
-        }
-
-        .section-head p {
-          margin: 4px 0 0;
-          font-size: 12px;
-          color: var(--muted);
-          font-weight: 800;
-        }
-
-        .highlights {
-          margin-top: 16px;
-          text-align: left;
-        }
-
-        .highlights-head {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-end;
-          gap: 10px;
-          margin-bottom: 10px;
-          flex-wrap: wrap;
-        }
-
-        .highlights-head h2 {
-          font-size: 15px;
-          font-weight: 900;
-          margin: 0;
-          color: #0f172a;
-        }
-
-        .highlights-head p {
-          margin: 0;
-          font-size: 12px;
-          color: #64748b;
-          font-weight: 700;
-        }
-
-        .highlights-grid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 12px;
-        }
-
-        .highlight-card {
-          background: rgba(255, 255, 255, 0.92);
-          border-radius: 16px;
-          border: 1px solid rgba(0, 100, 145, 0.14);
-          box-shadow: 0 12px 28px rgba(2, 6, 23, 0.05);
-          padding: 12px 14px;
-        }
-
-        .highlight-card.warning {
-          border-color: rgba(239, 68, 68, 0.22);
-          background: rgba(254, 242, 242, 0.85);
-        }
-
-        .highlight-top {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-          margin-bottom: 8px;
-        }
-
-        .highlight-title {
-          font-size: 12px;
-          font-weight: 900;
-          color: #0f172a;
-          letter-spacing: 0.02em;
-          text-transform: uppercase;
-        }
-
-        .highlight-pill {
-          font-size: 11px;
-          font-weight: 800;
-          padding: 4px 10px;
-          border-radius: 999px;
-          background: rgba(0, 100, 145, 0.1);
-          border: 1px solid rgba(0, 100, 145, 0.16);
-          color: #004b75;
-          white-space: nowrap;
-        }
-
-        .highlight-main {
-          min-width: 0;
-        }
-
-        .highlight-name {
-          font-size: 16px;
-          font-weight: 900;
-          color: #0f172a;
-          margin-bottom: 6px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .highlight-metrics {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-          font-size: 13px;
-          color: #334155;
-          font-weight: 700;
-        }
-
-        .highlight-body {
-          font-size: 13px;
-          color: #334155;
-          font-weight: 800;
-        }
-
-        .alert {
-          margin-top: 14px;
-          background: rgba(254, 242, 242, 0.9);
-          border: 1px solid rgba(239, 68, 68, 0.25);
-          border-radius: 14px;
-          padding: 12px 14px;
-          font-weight: 800;
-          color: #7f1d1d;
-        }
-
-        .alert.muted {
-          background: rgba(255, 255, 255, 0.85);
-          border: 1px solid rgba(15, 23, 42, 0.1);
-          color: #334155;
-          font-weight: 800;
-        }
-
-        .callout {
-          background: rgba(255, 255, 255, 0.82);
-        }
-
-        .calloutText {
-          margin: 0;
-          white-space: pre-wrap;
-          font-weight: 800;
-          color: rgba(15, 23, 42, 0.78);
-          line-height: 1.45;
-        }
-
-        .storeGrid {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 14px;
-          align-items: start;
-        }
-
-        .storeCard {
-          background: rgba(255, 255, 255, 0.92);
-          border-radius: 18px;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          box-shadow: 0 12px 28px rgba(2, 6, 23, 0.05);
-          padding: 12px 12px;
-        }
-
-        .storeTop {
-          margin-bottom: 10px;
-        }
-
-        .storeTitleRow {
-          display: flex;
-          justify-content: space-between;
-          gap: 12px;
-          align-items: flex-start;
-          flex-wrap: wrap;
-        }
-
-        .storeName {
-          font-size: 18px;
-          font-weight: 900;
-          letter-spacing: -0.01em;
-        }
-
-        .storePills {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-          justify-content: flex-end;
-        }
-
-        .storeChip {
-          display: inline-flex;
-          gap: 8px;
-          align-items: center;
-          padding: 6px 10px;
-          border-radius: 999px;
-          border: 1px solid rgba(0, 100, 145, 0.14);
-          background: rgba(0, 100, 145, 0.06);
-          font-size: 12px;
-          font-weight: 900;
-          color: #004b75;
-          white-space: nowrap;
-        }
-
-        .storeChipLabel {
-          opacity: 0.9;
-          letter-spacing: 0.02em;
-          text-transform: uppercase;
-          font-size: 11px;
-        }
-
-        /* 2 columns x 3 rows (6 rows total) like Service Dashboard */
-        .metricsList {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 10px;
-        }
-
-        .metricRow {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 10px;
-          border-radius: 16px;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          background: rgba(248, 250, 252, 0.7);
-          padding: 10px 10px;
-        }
-
-        .rowText {
-          min-width: 0;
-          display: grid;
-          gap: 4px;
-        }
-
-        .rowLabel {
-          font-size: 12px;
-          font-weight: 900;
-          color: rgba(15, 23, 42, 0.86);
-          letter-spacing: 0.01em;
-        }
-
-        .rowHint {
-          font-size: 12px;
-          font-weight: 800;
-          color: rgba(100, 116, 139, 0.98);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .inputsRow {
-          margin-top: 10px;
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 10px;
-        }
-
-        .inputChip {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 10px;
-          border-radius: 16px;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          background: rgba(255, 255, 255, 0.85);
-          padding: 10px 10px;
-        }
-
-        .inputLabel {
-          font-size: 12px;
-          font-weight: 900;
-          color: rgba(15, 23, 42, 0.78);
-          letter-spacing: 0.01em;
-        }
-
-        .details {
-          display: none;
-          margin-top: 10px;
-        }
-
-        .details.show {
-          display: block;
-        }
-
-        .detailsGrid {
-          display: grid;
-          gap: 10px;
-        }
-
-        .panel {
-          border-radius: 16px;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          background: rgba(255, 255, 255, 0.92);
-          padding: 10px 10px;
-        }
-
-        .panelHead {
-          display: flex;
-          flex-direction: column;
-          align-items: flex-start;
-          gap: 4px;
-          margin-bottom: 10px;
-        }
-
-        .panelTitle {
-          font-size: 12px;
-          font-weight: 900;
-          letter-spacing: 0.06em;
-          text-transform: uppercase;
-          color: rgba(15, 23, 42, 0.78);
-          line-height: 1.2;
-        }
-
-        .panelHint {
-          font-size: 12px;
-          font-weight: 800;
-          color: rgba(100, 116, 139, 0.98);
-        }
-
-        .kvGrid {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 10px;
-        }
-
-        .kv {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-          border-radius: 14px;
-          border: 1px solid rgba(15, 23, 42, 0.06);
-          background: rgba(248, 250, 252, 0.85);
-          padding: 9px 10px;
-        }
-
-        .kvLabel {
-          font-size: 12px;
-          font-weight: 900;
-          color: rgba(15, 23, 42, 0.72);
-        }
-
-        .kvValue {
-          font-variant-numeric: tabular-nums;
-          font-weight: 900;
-          color: rgba(15, 23, 42, 0.92);
-        }
-
-        .noteText {
-          white-space: pre-wrap;
-          font-weight: 800;
-          color: rgba(15, 23, 42, 0.82);
-          line-height: 1.35;
-          font-size: 13px;
-        }
-
-        .taskList {
-          margin: 0;
-          padding: 0;
-          list-style: none;
-          display: grid;
-          gap: 10px;
-        }
-
-        .task {
-          border-radius: 14px;
-          border: 1px solid rgba(15, 23, 42, 0.06);
-          background: rgba(248, 250, 252, 0.85);
-          padding: 8px 10px;
-        }
-
-        .taskRow {
-          display: flex;
-          align-items: flex-start;
-          gap: 10px;
-          font-weight: 800;
-          color: rgba(15, 23, 42, 0.82);
-          line-height: 1.25;
-        }
-
-        .taskRow input {
-          margin-top: 2px;
-        }
-
-        .taskDone {
-          text-decoration: line-through;
-          color: rgba(100, 116, 139, 0.95);
-        }
-
-        .mutedSmall {
-          color: rgba(100, 116, 139, 0.98);
-          font-weight: 800;
-          font-size: 12px;
-          margin: 0;
-        }
-
-        .footer {
-          text-align: center;
-          margin-top: 18px;
-          color: #94a3b8;
-          font-size: 0.8rem;
-          font-weight: 700;
-        }
-
-        @media (max-width: 980px) {
-          .storeGrid {
-            grid-template-columns: 1fr;
-          }
-          .highlights-grid {
-            grid-template-columns: 1fr;
-          }
-          .kvGrid {
-            grid-template-columns: 1fr;
-          }
-          .metricsList {
-            grid-template-columns: 1fr;
-          }
-          .inputsRow {
-            grid-template-columns: 1fr;
-          }
-          .storePills {
-            justify-content: flex-start;
-          }
-        }
-
-        @media print {
-          .print-hidden,
-          .banner {
-            display: none !important;
-          }
-          .wrap {
-            background: #fff;
-            padding: 0;
-          }
-          .shell {
-            width: 100%;
-            margin: 0;
-            box-shadow: none;
-            border: none;
-            background: #fff;
-          }
-          .section,
-          .storeCard,
-          .panel,
-          .metricRow,
-          .inputChip {
-            box-shadow: none !important;
-            break-inside: avoid;
-          }
-          /* Print should include details even if hidden on screen */
-          .details {
-            display: block !important;
-          }
-        }
+        .wrap{padding:20px;background:#f1f5f9;display:grid;gap:14px}.top{display:flex;justify-content:space-between;align-items:center}
+        .card{background:white;border:1px solid #cbd5e1;border-radius:12px;padding:14px}.overview{background:#eaf2ff;border:2px solid #60a5fa}
+        .chips{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.chip{background:#fff;border:1px solid #bfdbfe;border-radius:10px;padding:10px;font-size:15px}.chip span{font-size:20px;font-weight:800}
+        .message{background:#fff7ed;border:2px solid #fb923c}.message p{font-weight:700;line-height:1.7;font-size:18px}
+        .highlights,.watch,.trends{display:grid;gap:8px}.watch{grid-template-columns:repeat(2,minmax(0,1fr))}.alert{background:#fee2e2;border:1px solid #f87171;padding:6px 8px;border-radius:999px;font-size:12px}.ok{color:#15803d;font-weight:700}
+        .spark{width:120px;height:30px}.storeHead{display:flex;justify-content:space-between}.pill{padding:3px 8px;border-radius:999px}.pill.good{background:#dcfce7}
+        .grid{margin-top:8px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.grid>div{border:1px solid #e2e8f0;border-radius:8px;padding:8px} small{display:block;color:#475569}
+        .notes{margin:10px 0;font-weight:700}
       `}</style>
     </main>
   );
