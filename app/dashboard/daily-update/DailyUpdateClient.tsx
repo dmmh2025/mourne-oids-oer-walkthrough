@@ -240,6 +240,9 @@ export default function DailyUpdateClient() {
   const [stores, setStores] = useState<string[]>([]);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
 
+  // NEW: screenshot-friendly toggle (keeps tiles compact like Service Dashboard)
+  const [showDetails, setShowDetails] = useState(false);
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -550,6 +553,15 @@ export default function DailyUpdateClient() {
             {copyState === "copied" ? "✅ Copied" : copyState === "error" ? "⚠️ Copy failed" : "📋 Copy for Slack"}
           </button>
 
+          <button
+            className="navbtn"
+            onClick={() => setShowDetails((v) => !v)}
+            type="button"
+            title="Toggle details (targets, notes, tasks)"
+          >
+            {showDetails ? "🧾 Hide details" : "🧾 Show details"}
+          </button>
+
           <button className="navbtn solid" onClick={() => router.push("/")} type="button">
             🏠 Home
           </button>
@@ -624,7 +636,7 @@ export default function DailyUpdateClient() {
             <div className="section-head">
               <div>
                 <h2>Stores</h2>
-                <p></p>
+                <p>Screenshot-friendly tiles (3 rows per column).</p>
               </div>
               <div className="kpi-mini">
                 <span className="kpi-chip">
@@ -668,146 +680,152 @@ export default function DailyUpdateClient() {
                   return (
                     <article key={card.store} className="storeCard">
                       <div className="storeTop">
-                        <div>
+                        <div className="storeTitleRow">
                           <div className="storeName">{card.store}</div>
-                          <div className="storeMeta">
+                          <div className="storePills">
                             <span className="storeChip">
                               <span className="storeChipLabel">OSA WTD</span>
                               <span className={pillClassFromStatus(osaStatus)} style={{ minWidth: 52 }}>
                                 {card.osaWtdCount}
                               </span>
                             </span>
-                          </div>
-                        </div>
 
-                        <div className="storeBadges">
-                          <span className="storeBadge">
-                            <span className="badgeLabel">DOT</span>
-                            <span className={pillClassFromStatus(dotStatus)}>{fmtPct2(card.service.dotPct01)}</span>
-                          </span>
-                          <span className="storeBadge">
-                            <span className="badgeLabel">Labour</span>
-                            <span className={pillClassFromStatus(labourStatus)}>{fmtPct2(card.cost.labourPct01)}</span>
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="metricGrid">
-                        <div className="metric">
-                          <div className="metricName">R&amp;L</div>
-                          <div className="metricValue">
-                            <span className={pillClassFromStatus(rnlStatus)}>{fmtMins2(card.service.rnlMinutes)}</span>
-                          </div>
-                          <div className="metricHint">≤ {card.targets.rnlMaxMins.toFixed(0)}m</div>
-                        </div>
-
-                        <div className="metric">
-                          <div className="metricName">Extremes &gt;40</div>
-                          <div className="metricValue">
-                            <span className={pillClassFromStatus(extremesStatus)}>{fmtPct2(card.service.extremesPct01)}</span>
-                          </div>
-                          <div className="metricHint">≤ {(card.targets.extremesMax01 * 100).toFixed(0)}%</div>
-                        </div>
-
-                        <div className="metric">
-                          <div className="metricName">Additional hours</div>
-                          <div className="metricValue">
-                            <span className={pillClassFromStatus(addHoursStatus)}>{fmtNum2(card.additionalHours)}</span>
-                          </div>
-                          <div className="metricHint">Actual vs rota</div>
-                        </div>
-
-                        <div className="metric">
-                          <div className="metricName">Food variance</div>
-                          <div className="metricValue">
-                            <span className={pillClassFromStatus(foodVarStatus)}>{fmtPct2(card.cost.foodVarPct01)}</span>
-                          </div>
-                          <div className="metricHint">Abs ≤ {(card.targets.foodVarAbsMax01 * 100).toFixed(2)}%</div>
-                        </div>
-                      </div>
-
-                      <div className="subGrid">
-                        <div className="subMetric">
-                          <div className="subName">Missed calls</div>
-                          <div className="subVal">
-                            <span className={pillClassFromStatus(missedStatus)}>{fmtPct2(card.daily.missedCalls01)}</span>
-                          </div>
-                          <div className="subHint">≤ 6%</div>
-                        </div>
-                        <div className="subMetric">
-                          <div className="subName">GPS tracked</div>
-                          <div className="subVal">
-                            <span className={pillClassFromStatus(gpsStatus)}>{fmtPct2(card.daily.gps01)}</span>
-                          </div>
-                          <div className="subHint">≥ 95%</div>
-                        </div>
-                        <div className="subMetric">
-                          <div className="subName">AOF</div>
-                          <div className="subVal">
-                            <span className={pillClassFromStatus(aofStatus)}>{fmtPct2(card.daily.aof01)}</span>
-                          </div>
-                          <div className="subHint">≥ 62%</div>
-                        </div>
-                      </div>
-
-                      <div className="panels">
-                        <div className="panel">
-                          <div className="panelHead">
-                            <div className="panelTitle">Service losing targets</div>
-                            <div className="panelHint">Input</div>
-                          </div>
-                          <div className="kvGrid">
-                            <div className="kv">
-                              <span className="kvLabel">Load</span>
-                              <span className="kvValue">{fmtNum2(card.inputs?.target_load_time_mins ?? null)}</span>
-                            </div>
-                            <div className="kv">
-                              <span className="kvLabel">Rack</span>
-                              <span className="kvValue">{fmtNum2(card.inputs?.target_rack_time_mins ?? null)}</span>
-                            </div>
-                            <div className="kv">
-                              <span className="kvLabel">ADT</span>
-                              <span className="kvValue">{fmtNum2(card.inputs?.target_adt_mins ?? null)}</span>
-                            </div>
-                            <div className="kv">
-                              <span className="kvLabel">Extremes %</span>
-                              <span className="kvValue">
-                                {card.inputs?.target_extremes_over40_pct == null
-                                  ? "—"
-                                  : `${Number(card.inputs.target_extremes_over40_pct).toFixed(2)}%`}
+                            {/* Keep AOF visible without bloating the grid */}
+                            <span className="storeChip">
+                              <span className="storeChipLabel">AOF</span>
+                              <span className={pillClassFromStatus(aofStatus)} style={{ minWidth: 84 }}>
+                                {fmtPct2(card.daily.aof01)}
                               </span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Service-dashboard style: 2 columns x 3 rows */}
+                      <div className="metricsList">
+                        {/* Column/row order chosen to read cleanly in screenshots */}
+                        <div className="metricRow">
+                          <div className="rowText">
+                            <div className="rowLabel">DOT</div>
+                            <div className="rowHint">≥ {(card.targets.dotMin01 * 100).toFixed(0)}%</div>
+                          </div>
+                          <span className={pillClassFromStatus(dotStatus)}>{fmtPct2(card.service.dotPct01)}</span>
+                        </div>
+
+                        <div className="metricRow">
+                          <div className="rowText">
+                            <div className="rowLabel">Labour</div>
+                            <div className="rowHint">≤ {(card.targets.labourMax01 * 100).toFixed(0)}%</div>
+                          </div>
+                          <span className={pillClassFromStatus(labourStatus)}>{fmtPct2(card.cost.labourPct01)}</span>
+                        </div>
+
+                        <div className="metricRow">
+                          <div className="rowText">
+                            <div className="rowLabel">R&amp;L</div>
+                            <div className="rowHint">≤ {card.targets.rnlMaxMins.toFixed(0)}m</div>
+                          </div>
+                          <span className={pillClassFromStatus(rnlStatus)}>{fmtMins2(card.service.rnlMinutes)}</span>
+                        </div>
+
+                        <div className="metricRow">
+                          <div className="rowText">
+                            <div className="rowLabel">Extremes &gt;40</div>
+                            <div className="rowHint">≤ {(card.targets.extremesMax01 * 100).toFixed(0)}%</div>
+                          </div>
+                          <span className={pillClassFromStatus(extremesStatus)}>{fmtPct2(card.service.extremesPct01)}</span>
+                        </div>
+
+                        <div className="metricRow">
+                          <div className="rowText">
+                            <div className="rowLabel">Add. hours</div>
+                            <div className="rowHint">Actual vs rota</div>
+                          </div>
+                          <span className={pillClassFromStatus(addHoursStatus)}>{fmtNum2(card.additionalHours)}</span>
+                        </div>
+
+                        <div className="metricRow">
+                          <div className="rowText">
+                            <div className="rowLabel">Food variance</div>
+                            <div className="rowHint">Abs ≤ {(card.targets.foodVarAbsMax01 * 100).toFixed(2)}%</div>
+                          </div>
+                          <span className={pillClassFromStatus(foodVarStatus)}>{fmtPct2(card.cost.foodVarPct01)}</span>
+                        </div>
+                      </div>
+
+                      {/* Compact “inputs” row (optional – keeps screenshot clean) */}
+                      <div className="inputsRow">
+                        <div className="inputChip">
+                          <span className="inputLabel">Missed calls</span>
+                          <span className={pillClassFromStatus(missedStatus)}>{fmtPct2(card.daily.missedCalls01)}</span>
+                        </div>
+                        <div className="inputChip">
+                          <span className="inputLabel">GPS tracked</span>
+                          <span className={pillClassFromStatus(gpsStatus)}>{fmtPct2(card.daily.gps01)}</span>
+                        </div>
+                      </div>
+
+                      {/* Details: hidden by default for screenshot parity with Service Dashboard */}
+                      <div className={`details ${showDetails ? "show" : ""}`}>
+                        <div className="detailsGrid">
+                          <div className="panel">
+                            <div className="panelHead">
+                              <div className="panelTitle">Service losing targets</div>
+                              <div className="panelHint">Input</div>
+                            </div>
+                            <div className="kvGrid">
+                              <div className="kv">
+                                <span className="kvLabel">Load</span>
+                                <span className="kvValue">{fmtNum2(card.inputs?.target_load_time_mins ?? null)}</span>
+                              </div>
+                              <div className="kv">
+                                <span className="kvLabel">Rack</span>
+                                <span className="kvValue">{fmtNum2(card.inputs?.target_rack_time_mins ?? null)}</span>
+                              </div>
+                              <div className="kv">
+                                <span className="kvLabel">ADT</span>
+                                <span className="kvValue">{fmtNum2(card.inputs?.target_adt_mins ?? null)}</span>
+                              </div>
+                              <div className="kv">
+                                <span className="kvLabel">Extremes %</span>
+                                <span className="kvValue">
+                                  {card.inputs?.target_extremes_over40_pct == null
+                                    ? "—"
+                                    : `${Number(card.inputs.target_extremes_over40_pct).toFixed(2)}%`}
+                                </span>
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        <div className="panel">
-                          <div className="panelHead">
-                            <div className="panelTitle">Notes</div>
-                            <div className="panelHint">From store</div>
-                          </div>
-                          <div className="noteText">{card.inputs?.notes?.trim() || "—"}</div>
-                        </div>
-
-                        <div className="panel">
-                          <div className="panelHead">
-                            <div className="panelTitle">Tasks</div>
-                            <div className="panelHint">{card.tasks.length} item(s)</div>
+                          <div className="panel">
+                            <div className="panelHead">
+                              <div className="panelTitle">Notes</div>
+                              <div className="panelHint">From store</div>
+                            </div>
+                            <div className="noteText">{card.inputs?.notes?.trim() || "—"}</div>
                           </div>
 
-                          {card.tasks.length === 0 ? (
-                            <p className="mutedSmall">No tasks for this store on {targetDate}.</p>
-                          ) : (
-                            <ul className="taskList">
-                              {card.tasks.map((task) => (
-                                <li key={task.id} className="task">
-                                  <label className="taskRow">
-                                    <input type="checkbox" checked={task.is_complete} onChange={() => toggleTask(task)} />
-                                    <span className={task.is_complete ? "taskDone" : ""}>{task.task}</span>
-                                  </label>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
+                          <div className="panel">
+                            <div className="panelHead">
+                              <div className="panelTitle">Tasks</div>
+                              <div className="panelHint">{card.tasks.length} item(s)</div>
+                            </div>
+
+                            {card.tasks.length === 0 ? (
+                              <p className="mutedSmall">No tasks for this store on {targetDate}.</p>
+                            ) : (
+                              <ul className="taskList">
+                                {card.tasks.map((task) => (
+                                  <li key={task.id} className="task">
+                                    <label className="taskRow">
+                                      <input type="checkbox" checked={task.is_complete} onChange={() => toggleTask(task)} />
+                                      <span className={task.is_complete ? "taskDone" : ""}>{task.task}</span>
+                                    </label>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </article>
@@ -954,7 +972,7 @@ export default function DailyUpdateClient() {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          min-width: 76px;
+          min-width: 72px;
           padding: 4px 10px;
           border-radius: 999px;
           font-weight: 900;
@@ -962,6 +980,7 @@ export default function DailyUpdateClient() {
           border: 1px solid rgba(15, 23, 42, 0.08);
           background: rgba(2, 6, 23, 0.04);
           color: rgba(15, 23, 42, 0.8);
+          white-space: nowrap;
         }
 
         .pill.green {
@@ -1059,11 +1078,15 @@ export default function DailyUpdateClient() {
         }
 
         .storeTop {
+          margin-bottom: 10px;
+        }
+
+        .storeTitleRow {
           display: flex;
           justify-content: space-between;
           gap: 12px;
           align-items: flex-start;
-          margin-bottom: 10px;
+          flex-wrap: wrap;
         }
 
         .storeName {
@@ -1072,11 +1095,11 @@ export default function DailyUpdateClient() {
           letter-spacing: -0.01em;
         }
 
-        .storeMeta {
-          margin-top: 6px;
+        .storePills {
           display: flex;
           gap: 8px;
           flex-wrap: wrap;
+          justify-content: flex-end;
         }
 
         .storeChip {
@@ -1100,100 +1123,81 @@ export default function DailyUpdateClient() {
           font-size: 11px;
         }
 
-        .storeBadges {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-          justify-content: flex-end;
-        }
-
-        .storeBadge {
-          display: inline-flex;
-          gap: 8px;
-          align-items: center;
-          padding: 6px 10px;
-          border-radius: 999px;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          background: rgba(2, 6, 23, 0.04);
-          font-size: 12px;
-          font-weight: 900;
-        }
-
-        .badgeLabel {
-          font-size: 11px;
-          letter-spacing: 0.02em;
-          text-transform: uppercase;
-          color: rgba(15, 23, 42, 0.65);
-          font-weight: 900;
-        }
-
-        .metricGrid {
+        /* 2 columns x 3 rows (6 rows total) like Service Dashboard */
+        .metricsList {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px;
         }
 
-        .metric {
+        .metricRow {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
           border-radius: 16px;
           border: 1px solid rgba(15, 23, 42, 0.08);
-          background: rgba(248, 250, 252, 0.70);
+          background: rgba(248, 250, 252, 0.7);
           padding: 10px 10px;
         }
 
-        .metricName {
-          font-size: 11px;
+        .rowText {
+          min-width: 0;
+          display: grid;
+          gap: 4px;
+        }
+
+        .rowLabel {
+          font-size: 12px;
           font-weight: 900;
-          letter-spacing: 0.06em;
-          text-transform: uppercase;
-          color: rgba(15, 23, 42, 0.70);
+          color: rgba(15, 23, 42, 0.86);
+          letter-spacing: 0.01em;
         }
 
-        .metricValue {
-          margin-top: 8px;
-        }
-
-        .metricHint {
-          margin-top: 8px;
+        .rowHint {
           font-size: 12px;
           font-weight: 800;
           color: rgba(100, 116, 139, 0.98);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
-        .subGrid {
+        .inputsRow {
           margin-top: 10px;
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 10px;
         }
 
-        .subMetric {
+        .inputChip {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
           border-radius: 16px;
           border: 1px solid rgba(15, 23, 42, 0.08);
           background: rgba(255, 255, 255, 0.85);
           padding: 10px 10px;
         }
 
-        .subName {
-          font-size: 11px;
-          font-weight: 900;
-          letter-spacing: 0.06em;
-          text-transform: uppercase;
-          color: rgba(15, 23, 42, 0.68);
-        }
-
-        .subVal {
-          margin-top: 8px;
-        }
-
-        .subHint {
-          margin-top: 8px;
+        .inputLabel {
           font-size: 12px;
-          font-weight: 800;
-          color: rgba(100, 116, 139, 0.98);
+          font-weight: 900;
+          color: rgba(15, 23, 42, 0.78);
+          letter-spacing: 0.01em;
         }
 
-        .panels {
+        .details {
+          display: none;
           margin-top: 10px;
+        }
+
+        .details.show {
+          display: block;
+        }
+
+        .detailsGrid {
           display: grid;
           gap: 10px;
         }
@@ -1317,16 +1321,16 @@ export default function DailyUpdateClient() {
           .storeGrid {
             grid-template-columns: 1fr;
           }
-          .subGrid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
           .kvGrid {
             grid-template-columns: 1fr;
           }
-          .storeTop {
-            flex-direction: column;
+          .metricsList {
+            grid-template-columns: 1fr;
           }
-          .storeBadges {
+          .inputsRow {
+            grid-template-columns: 1fr;
+          }
+          .storePills {
             justify-content: flex-start;
           }
         }
@@ -1350,10 +1354,14 @@ export default function DailyUpdateClient() {
           .section,
           .storeCard,
           .panel,
-          .metric,
-          .subMetric {
+          .metricRow,
+          .inputChip {
             box-shadow: none !important;
             break-inside: avoid;
+          }
+          /* Print should include details even if hidden on screen */
+          .details {
+            display: block !important;
           }
         }
       `}</style>
