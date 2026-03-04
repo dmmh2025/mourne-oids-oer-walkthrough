@@ -960,63 +960,88 @@ export default function DailyUpdateExportPage() {
                     <div className="leftCol">
                       <h4 className="sectionTitle">Core performance</h4>
 
-                      <div className="metricRow">
-                        <div className="metricText"><span className="metricName">DOT</span><small>Target ≥ {(card.targets.dotMin01 * 100).toFixed(0)}%</small></div>
-                        <span className={pillClassFromStatus(dotStatus)}>{fmtPct2(card.metrics.dotPct01)}</span>
-                      </div>
-                      <div className="metricRow">
-                        <div className="metricText"><span className="metricName">Labour</span><small>Target ≤ {(card.targets.labourMax01 * 100).toFixed(0)}%</small></div>
-                        <span className={pillClassFromStatus(labourStatus)}>{fmtPct2(card.metrics.labourPct01)}</span>
-                      </div>
-                      <div className="metricRow">
-                        <div className="metricText"><span className="metricName">R&amp;L</span><small>Target ≤ {card.targets.rnlMaxMins.toFixed(0)}m</small></div>
-                        <span className={pillClassFromStatus(rnlStatus)}>{fmtMins2(card.metrics.rnlMinutes)}</span>
-                      </div>
-                      <div className="metricRow">
-                        <div className="metricText"><span className="metricName">Extremes</span><small>Target ≤ {(card.targets.extremesMax01 * 100).toFixed(0)}%</small></div>
-                        <span className={pillClassFromStatus(extremesStatus)}>{fmtPct2(card.metrics.extremesPct01)}</span>
-                      </div>
-                      <div className="metricRow">
-                        <div className="metricText"><span className="metricName">Add Hours</span><small>Target: actual vs rota</small></div>
-                        <span className={pillClassFromStatus(addHoursStatus)}>{fmtNum2(card.metrics.additionalHours)}</span>
-                      </div>
-                      <div className="metricRow">
-                        <div className="metricText"><span className="metricName">Food Var</span><small>Target abs ≤ {(card.targets.foodVarAbsMax01 * 100).toFixed(2)}%</small></div>
-                        <span className={pillClassFromStatus(foodVarStatus)}>{fmtPct2(card.metrics.foodVarPct01)}</span>
-                      </div>
-                      <div className="metricRow">
-                        <div className="metricText"><span className="metricName">Missed Calls</span><small>Target ≤ {(INPUT_TARGETS.missedCallsMax01 * 100).toFixed(0)}%</small></div>
-                        <span className={pillClassFromStatus(missedStatus)}>{fmtPct2(card.metrics.missedCalls01)}</span>
-                      </div>
-                      <div className="metricRow">
-                        <div className="metricText"><span className="metricName">GPS</span><small>Target ≥ {(INPUT_TARGETS.gpsMin01 * 100).toFixed(0)}%</small></div>
-                        <span className={pillClassFromStatus(gpsStatus)}>{fmtPct2(card.metrics.gps01)}</span>
-                      </div>
-                      <div className="metricRow">
-                        <div className="metricText"><span className="metricName">AOF</span><small>Target ≥ {(INPUT_TARGETS.aofMin01 * 100).toFixed(0)}%</small></div>
-                        <span className={pillClassFromStatus(aofStatus)}>{fmtPct2(card.metrics.aof01)}</span>
+                      <div className="metricTilesGrid">
+                        <div className="metricTile">
+                          <span className="metricName">DOT %</span>
+                          <span className={`${pillClassFromStatus(dotStatus)} metricValuePill`}>{fmtPct2(card.metrics.dotPct01)}</span>
+                          <small>Target ≥ {(card.targets.dotMin01 * 100).toFixed(0)}%</small>
+                        </div>
+                        <div className="metricTile">
+                          <span className="metricName">Labour %</span>
+                          <span className={`${pillClassFromStatus(labourStatus)} metricValuePill`}>{fmtPct2(card.metrics.labourPct01)}</span>
+                          <small>Target ≤ {(card.targets.labourMax01 * 100).toFixed(0)}%</small>
+                        </div>
+                        <div className="metricTile">
+                          <span className="metricName">R&amp;L mins</span>
+                          <span className={`${pillClassFromStatus(rnlStatus)} metricValuePill`}>{fmtMins2(card.metrics.rnlMinutes)}</span>
+                          <small>Target ≤ {card.targets.rnlMaxMins.toFixed(0)}m</small>
+                        </div>
+                        <div className="metricTile">
+                          <span className="metricName">Extremes &gt;40 %</span>
+                          <span className={`${pillClassFromStatus(extremesStatus)} metricValuePill`}>{fmtPct2(card.metrics.extremesPct01)}</span>
+                          <small>Target ≤ {(card.targets.extremesMax01 * 100).toFixed(0)}%</small>
+                        </div>
+                        <div className="metricTile">
+                          <span className="metricName">Additional hours</span>
+                          <span className={`${pillClassFromStatus(addHoursStatus)} metricValuePill`}>{fmtNum2(card.metrics.additionalHours)}</span>
+                          <small>Target: actual vs rota</small>
+                        </div>
+                        <div className="metricTile">
+                          <span className="metricName">Food variance %</span>
+                          <span className={`${pillClassFromStatus(foodVarStatus)} metricValuePill`}>{fmtPct2(card.metrics.foodVarPct01)}</span>
+                          <small>Target abs ≤ {(card.targets.foodVarAbsMax01 * 100).toFixed(2)}%</small>
+                        </div>
+                        <div className="metricTile">
+                          <span className="metricName">Missed calls WTD %</span>
+                          <span className={`${pillClassFromStatus(missedStatus)} metricValuePill`}>{fmtPct2(card.metrics.missedCalls01)}</span>
+                          <small>Target ≤ {(INPUT_TARGETS.missedCallsMax01 * 100).toFixed(0)}%</small>
+                        </div>
+                        <div className="metricTile">
+                          <span className="metricName">GPS tracked WTD %</span>
+                          <span className={`${pillClassFromStatus(gpsStatus)} metricValuePill`}>{fmtPct2(card.metrics.gps01)}</span>
+                          <small>Target ≥ {(INPUT_TARGETS.gpsMin01 * 100).toFixed(0)}%</small>
+                        </div>
+                        <div className="metricTile">
+                          <span className="metricName">AOF WTD %</span>
+                          <span className={`${pillClassFromStatus(aofStatus)} metricValuePill`}>{fmtPct2(card.metrics.aof01)}</span>
+                          <small>Target ≥ {(INPUT_TARGETS.aofMin01 * 100).toFixed(0)}%</small>
+                        </div>
                       </div>
                     </div>
 
                     <div className="rightCol">
                       <div className="panel">
                         <h4 className="sectionTitle">Service losing targets</h4>
-                        <p>Load time target: {fmtNum2(card.inputs?.target_load_time_mins ?? null)}m</p>
-                        <p>Rack time target: {fmtNum2(card.inputs?.target_rack_time_mins ?? null)}m</p>
-                        <p>ADT target: {fmtNum2(card.inputs?.target_adt_mins ?? null)}m</p>
-                        <p>
-                          Extremes target %: {card.inputs?.target_extremes_over40_pct == null
-                            ? "—"
-                            : `${Number(card.inputs.target_extremes_over40_pct).toFixed(2)}%`}
-                        </p>
+                        <div className="inputPillGrid">
+                          <div className="inputPillItem">
+                            <span className="inputPillLabel">Load time target</span>
+                            <span className="pill neutral inputValuePill">{fmtNum2(card.inputs?.target_load_time_mins ?? null)}m</span>
+                          </div>
+                          <div className="inputPillItem">
+                            <span className="inputPillLabel">Rack time target</span>
+                            <span className="pill neutral inputValuePill">{fmtNum2(card.inputs?.target_rack_time_mins ?? null)}m</span>
+                          </div>
+                          <div className="inputPillItem">
+                            <span className="inputPillLabel">ADT target</span>
+                            <span className="pill neutral inputValuePill">{fmtNum2(card.inputs?.target_adt_mins ?? null)}m</span>
+                          </div>
+                          <div className="inputPillItem">
+                            <span className="inputPillLabel">Extremes target %</span>
+                            <span className="pill neutral inputValuePill">
+                              {card.inputs?.target_extremes_over40_pct == null
+                                ? "—"
+                                : `${Number(card.inputs.target_extremes_over40_pct).toFixed(2)}%`}
+                            </span>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="panel">
+                      <div className="panel notesPanel">
                         <h4 className="sectionTitle">Notes</h4>
                         <p className="fullText">{card.inputs?.notes?.trim() || "—"}</p>
                       </div>
 
-                      <div className="panel">
+                      <div className="panel tasksPanel">
                         <h4 className="sectionTitle">Tasks</h4>
                         {card.tasks.length === 0 ? (
                           <p>No tasks for this store on {targetDate}.</p>
@@ -1274,20 +1299,31 @@ export default function DailyUpdateExportPage() {
           padding: 1.1mm 1.2mm;
           display: grid;
           grid-template-columns: 1fr;
-          gap: 0;
+          gap: 0.8mm;
           align-content: start;
         }
-        .metricRow {
+        .metricTilesGrid {
           display: grid;
-          grid-template-columns: minmax(0, 1fr) auto;
-          gap: 1mm;
-          align-items: center;
-          border-bottom: 1px solid #dbe5f3;
-          padding: 0.85mm 0.15mm;
-          min-height: 9mm;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 0.8mm;
         }
-        .metricRow:last-child {
-          border-bottom: 0;
+        .metricTile {
+          display: grid;
+          gap: 0.45mm;
+          align-content: start;
+          border: 1px solid #d8e3f4;
+          border-radius: 1.2mm;
+          background: #f2f7ff;
+          padding: 0.85mm;
+          min-height: 19mm;
+        }
+        .metricValuePill {
+          width: 100%;
+          justify-content: center;
+          font-size: 11.8px !important;
+          font-weight: 840 !important;
+          padding: 1.05mm 1.6mm !important;
+          min-width: 0 !important;
         }
         .metricText {
           display: grid;
@@ -1295,13 +1331,15 @@ export default function DailyUpdateExportPage() {
           min-width: 0;
         }
         .metricName {
-          font-size: 11.4px;
-          font-weight: 740;
-          line-height: 1.2;
-        }
-        .metricRow small {
-          color: #64748b;
           font-size: 9.2px;
+          font-weight: 820;
+          line-height: 1.2;
+          letter-spacing: 0.02em;
+          text-transform: uppercase;
+        }
+        .metricTile small {
+          color: #64748b;
+          font-size: 8.5px;
           line-height: 1.2;
         }
 
@@ -1331,22 +1369,73 @@ export default function DailyUpdateExportPage() {
         }
         .panel p { line-height: 1.28; font-size: 10px; }
 
+        .inputPillGrid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.9mm;
+        }
+        .inputPillItem {
+          display: grid;
+          gap: 0.45mm;
+          border: 1px solid #d6dfef;
+          border-radius: 1.2mm;
+          background: #f9fbff;
+          padding: 0.8mm;
+        }
+        .inputPillLabel {
+          font-size: 9.8px;
+          font-weight: 780;
+          color: #334155;
+          line-height: 1.2;
+        }
+        .pill.neutral {
+          background: #eef2f7;
+          border-color: #cbd5e1;
+          color: #1f2937;
+        }
+        .inputValuePill {
+          font-size: 11.2px !important;
+          font-weight: 820 !important;
+          padding: 0.95mm 1.4mm !important;
+          min-width: 0 !important;
+          text-align: center;
+        }
+
+        .notesPanel {
+          border-color: #b8c7e6;
+          background: #f3f7ff;
+          border-width: 1.4px;
+        }
+        .notesPanel .fullText {
+          font-size: 10.9px;
+          line-height: 1.5;
+          font-weight: 860;
+          color: #0f172a;
+        }
+
+        .tasksPanel {
+          border-color: #c7d4ea;
+          background: #f7faff;
+          border-width: 1.25px;
+        }
+
         .taskList {
           list-style: none;
           margin: 0;
           padding: 0;
           display: grid;
-          gap: 0.35mm;
-          line-height: 1.25;
+          gap: 0.5mm;
+          line-height: 1.36;
         }
         .taskList li {
-          font-size: 10.2px;
+          font-size: 10.8px;
+          font-weight: 850;
           display: flex;
           gap: 0.8mm;
           align-items: baseline;
         }
         .taskState {
-          font-size: 11px;
+          font-size: 11.4px;
           line-height: 1;
           width: 3mm;
           flex: 0 0 auto;
@@ -1354,6 +1443,7 @@ export default function DailyUpdateExportPage() {
         .taskDone {
           color: #64748b;
           text-decoration: line-through;
+          text-decoration-thickness: 1px;
         }
 
         .pill {
