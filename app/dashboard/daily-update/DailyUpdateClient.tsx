@@ -566,7 +566,11 @@ export default function DailyUpdateClient() {
             🏠 Home
           </button>
 
-          <button className="navbtn solid" onClick={() => window.print()} type="button">
+          <button
+            className="navbtn solid"
+            onClick={() => window.open("/dashboard/daily-update/export", "_blank", "noopener,noreferrer")}
+            type="button"
+          >
             📄 Export PDF
           </button>
         </div>
