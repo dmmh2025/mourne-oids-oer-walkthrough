@@ -46,6 +46,30 @@ type ServiceShiftRow = {
   additional_hours?: number | null;
 };
 
+type ServiceRowMini = {
+  store: string;
+  dot_pct: number | null;
+  labour_pct: number | null;
+  rnl_minutes?: number | null;
+  manager: string | null;
+  created_at?: string | null;
+  shift_date?: string | null;
+};
+
+type RankedItem = {
+  name: string;
+  avgDOT: number;
+  avgLabour: number;
+  avgRnlMinutes: number;
+  shifts: number;
+};
+
+type ImprovedItem = {
+  name: string;
+  dotDelta: number;
+  weekDOT: number;
+};
+
 type CostControlRow = {
   shift_date: string;
   store: string;
@@ -56,6 +80,24 @@ type CostControlRow = {
 };
 
 type OsaInternalRow = { shift_date: string; store: string | null };
+
+type OsaInternalHighlightRow = {
+  shift_date: string;
+  team_member_name: string | null;
+  points_lost: number | null;
+};
+
+type OsaWinner = {
+  name: string;
+  avgPointsLost: number | null;
+};
+
+type CostWinner = {
+  labourName: string;
+  labourPct: number | null;
+  foodName: string;
+  foodVarPctSales: number | null;
+};
 
 const INPUT_TARGETS = {
   missedCallsMax01: 0.06,
@@ -222,6 +264,84 @@ const statusEmoji = (s: MetricStatus) => {
   return "⚪️";
 };
 
+const normalisePct = (v: number | null) => {
+  if (v == null) return null;
+  return v > 1 ? v / 100 : v;
+};
+
+const formatPct = (v: number | null, dp = 0) => (v == null ? "—" : (v * 100).toFixed(dp) + "%");
+
+const formatAvgPointsLost = (v: number | null) => (v == null ? "—" : v.toFixed(1));
+
+const computeRanked = (rows: ServiceRowMini[], key: "store" | "manager") => {
+  const bucket: Record<string, { dot: number[]; labour: number[]; rnl: number[]; shifts: number }> = {};
+
+  for (const r of rows) {
+    const name = key === "store" ? (r.store || "").trim() : (r.manager || "Unknown").trim() || "Unknown";
+    if (!name) continue;
+
+    if (!bucket[name]) bucket[name] = { dot: [], labour: [], rnl: [], shifts: 0 };
+    bucket[name].shifts += 1;
+
+    const d = normalisePct(r.dot_pct);
+    const l = normalisePct(r.labour_pct);
+    if (d != null) bucket[name].dot.push(d);
+    if (l != null) bucket[name].labour.push(l);
+    if (r.rnl_minutes != null) bucket[name].rnl.push(r.rnl_minutes);
+  }
+
+  const avgInner = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
+
+  const out: RankedItem[] = Object.entries(bucket).map(([name, v]) => ({
+    name,
+    avgDOT: avgInner(v.dot),
+    avgLabour: avgInner(v.labour),
+    avgRnlMinutes: avgInner(v.rnl),
+    shifts: v.shifts,
+  }));
+
+  out.sort((a, b) => {
+    if (b.avgDOT !== a.avgDOT) return b.avgDOT - a.avgDOT;
+    if (a.avgLabour !== b.avgLabour) return a.avgLabour - b.avgLabour;
+    return a.avgRnlMinutes - b.avgRnlMinutes;
+  });
+
+  return out;
+};
+
+const computeImproved = (week: ServiceRowMini[], prevWeek: ServiceRowMini[]) => {
+  const makeBucket = (rows: ServiceRowMini[]) => {
+    const bucket: Record<string, { dot: number[] }> = {};
+
+    for (const r of rows) {
+      const name = (r.store || "").trim();
+      if (!name) continue;
+      if (!bucket[name]) bucket[name] = { dot: [] };
+
+      const d = normalisePct(r.dot_pct);
+      if (d != null) bucket[name].dot.push(d);
+    }
+
+    return bucket;
+  };
+
+  const avgInner = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
+
+  const weekBucket = makeBucket(week);
+  const prevWeekBucket = makeBucket(prevWeek);
+  const names = Array.from(new Set([...Object.keys(weekBucket), ...Object.keys(prevWeekBucket)]));
+
+  const items: ImprovedItem[] = names.map((name) => {
+    const weekDOT = weekBucket[name] ? avgInner(weekBucket[name].dot) : 0;
+    const prevDOT = prevWeekBucket[name] ? avgInner(prevWeekBucket[name].dot) : 0;
+
+    return { name, dotDelta: weekDOT - prevDOT, weekDOT };
+  });
+
+  items.sort((a, b) => b.dotDelta - a.dotDelta);
+  return items;
+};
+
 export default function DailyUpdateClient() {
   const router = useRouter();
 
@@ -239,6 +359,12 @@ export default function DailyUpdateClient() {
   const [osaRows, setOsaRows] = useState<OsaInternalRow[]>([]);
   const [stores, setStores] = useState<string[]>([]);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const [svcRows, setSvcRows] = useState<ServiceRowMini[]>([]);
+  const [highlightsError, setHighlightsError] = useState<string | null>(null);
+  const [osaWinner, setOsaWinner] = useState<OsaWinner | null>(null);
+  const [osaHighlightError, setOsaHighlightError] = useState<string | null>(null);
+  const [costWinner, setCostWinner] = useState<CostWinner | null>(null);
+  const [costHighlightError, setCostHighlightError] = useState<string | null>(null);
 
   // NEW: screenshot-friendly toggle (keeps tiles compact like Service Dashboard)
   const [showDetails, setShowDetails] = useState(false);
@@ -333,6 +459,178 @@ export default function DailyUpdateClient() {
     load();
   }, []);
 
+  useEffect(() => {
+    const loadHighlights = async () => {
+      try {
+        setHighlightsError(null);
+
+        const now = new Date();
+        const day = now.getDay();
+        const mondayOffset = day === 0 ? 6 : day - 1;
+
+        const weekStartLocal = new Date(now);
+        weekStartLocal.setDate(now.getDate() - mondayOffset);
+        weekStartLocal.setHours(0, 0, 0, 0);
+
+        const prevWeekStart = new Date(weekStartLocal);
+        prevWeekStart.setDate(weekStartLocal.getDate() - 7);
+
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        monthStart.setHours(0, 0, 0, 0);
+
+        const from = prevWeekStart < monthStart ? prevWeekStart : monthStart;
+        const fromStr = from.toISOString().slice(0, 10);
+
+        const { data, error: queryError } = await supabase
+          .from("service_shifts")
+          .select("store, dot_pct, labour_pct, rnl_minutes, manager, created_at, shift_date")
+          .gte("shift_date", fromStr)
+          .order("shift_date", { ascending: false });
+
+        if (queryError) throw queryError;
+        setSvcRows((data || []) as ServiceRowMini[]);
+      } catch (e: any) {
+        setHighlightsError(e?.message || "Could not load highlights");
+        setSvcRows([]);
+      }
+    };
+
+    loadHighlights();
+  }, []);
+
+  useEffect(() => {
+    const loadBestOsaPerformer = async () => {
+      try {
+        setOsaHighlightError(null);
+
+        const now = new Date();
+        const day = now.getDay();
+        const mondayOffset = day === 0 ? 6 : day - 1;
+        const weekStartLocal = new Date(now);
+        weekStartLocal.setDate(now.getDate() - mondayOffset);
+        weekStartLocal.setHours(0, 0, 0, 0);
+        const weekStartStr = weekStartLocal.toISOString().slice(0, 10);
+
+        const { data, error: queryError } = await supabase
+          .from("osa_internal_results")
+          .select("shift_date, team_member_name, points_lost")
+          .gte("shift_date", weekStartStr);
+
+        if (queryError) throw queryError;
+
+        const bucket: Record<string, { total: number; count: number }> = {};
+
+        for (const row of (data || []) as OsaInternalHighlightRow[]) {
+          const name = (row.team_member_name || "").trim() || "Unknown";
+          const pointsLost = Number(row.points_lost);
+          if (!Number.isFinite(pointsLost)) continue;
+
+          if (!bucket[name]) bucket[name] = { total: 0, count: 0 };
+          bucket[name].total += pointsLost;
+          bucket[name].count += 1;
+        }
+
+        const ranked = Object.entries(bucket)
+          .filter(([, v]) => v.count > 0)
+          .map(([name, v]) => ({ name, avgPointsLost: v.total / v.count }))
+          .sort((a, b) => a.avgPointsLost - b.avgPointsLost);
+
+        setOsaWinner(
+          ranked[0] ? { name: ranked[0].name, avgPointsLost: ranked[0].avgPointsLost } : { name: "No data", avgPointsLost: null }
+        );
+      } catch (e: any) {
+        setOsaHighlightError(e?.message || "Could not load OSA highlight");
+        setOsaWinner(null);
+      }
+    };
+
+    loadBestOsaPerformer();
+  }, []);
+
+  useEffect(() => {
+    const loadCostHighlights = async () => {
+      try {
+        setCostHighlightError(null);
+
+        const now = new Date();
+        const day = now.getDay();
+        const mondayOffset = day === 0 ? 6 : day - 1;
+
+        const weekStartLocal = new Date(now);
+        weekStartLocal.setDate(now.getDate() - mondayOffset);
+        weekStartLocal.setHours(0, 0, 0, 0);
+
+        const weekEnd = new Date(weekStartLocal);
+        weekEnd.setDate(weekEnd.getDate() + 7);
+
+        const weekStartStr = weekStartLocal.toISOString().slice(0, 10);
+        const weekEndStr = weekEnd.toISOString().slice(0, 10);
+
+        const { data, error: queryError } = await supabase
+          .from("cost_control_entries")
+          .select("store, shift_date, sales_gbp, labour_cost_gbp, ideal_food_cost_gbp, actual_food_cost_gbp")
+          .gte("shift_date", weekStartStr)
+          .lt("shift_date", weekEndStr);
+
+        if (queryError) throw queryError;
+
+        const bucket: Record<string, { sales: number; labour: number; idealFood: number; actualFood: number }> = {};
+
+        for (const row of (data || []) as CostControlRow[]) {
+          const name = (row.store || "").trim() || "Unknown";
+          if (!bucket[name]) bucket[name] = { sales: 0, labour: 0, idealFood: 0, actualFood: 0 };
+
+          const sales = Number(row.sales_gbp);
+          const labour = Number(row.labour_cost_gbp);
+          const idealFood = Number(row.ideal_food_cost_gbp);
+          const actualFood = Number(row.actual_food_cost_gbp);
+
+          if (Number.isFinite(sales)) bucket[name].sales += sales;
+          if (Number.isFinite(labour)) bucket[name].labour += labour;
+          if (Number.isFinite(idealFood)) bucket[name].idealFood += idealFood;
+          if (Number.isFinite(actualFood)) bucket[name].actualFood += actualFood;
+        }
+
+        const ranked = Object.entries(bucket).map(([name, totals]) => {
+          const labourPct = totals.sales > 0 ? totals.labour / totals.sales : null;
+          const foodVarPctSales = totals.sales > 0 ? (totals.actualFood - totals.idealFood) / totals.sales : null;
+
+          return {
+            name,
+            sumSales: totals.sales,
+            labourPct,
+            foodVarPctSales,
+            labourDelta: labourPct == null ? Number.POSITIVE_INFINITY : Math.max(0, labourPct - 0.25),
+            foodVarDelta: foodVarPctSales == null ? Number.POSITIVE_INFINITY : Math.abs(foodVarPctSales),
+          };
+        });
+
+        const labourRanked = [...ranked].sort((a, b) => {
+          if (a.labourDelta !== b.labourDelta) return a.labourDelta - b.labourDelta;
+          if (a.labourPct !== b.labourPct) return (a.labourPct ?? Infinity) - (b.labourPct ?? Infinity);
+          return b.sumSales - a.sumSales;
+        });
+
+        const foodRanked = [...ranked].sort((a, b) => {
+          if (a.foodVarDelta !== b.foodVarDelta) return a.foodVarDelta - b.foodVarDelta;
+          return b.sumSales - a.sumSales;
+        });
+
+        setCostWinner({
+          labourName: labourRanked[0]?.name || "No data",
+          labourPct: labourRanked[0]?.labourPct ?? null,
+          foodName: foodRanked[0]?.name || "No data",
+          foodVarPctSales: foodRanked[0]?.foodVarPctSales ?? null,
+        });
+      } catch (e: any) {
+        setCostHighlightError(e?.message || "Could not load cost highlights");
+        setCostWinner(null);
+      }
+    };
+
+    loadCostHighlights();
+  }, []);
+
   const inputsByStore = useMemo(() => {
     const m = new Map<string, StoreInputRow>();
     for (const row of storeInputs) m.set(row.store, row);
@@ -409,6 +707,55 @@ export default function DailyUpdateClient() {
 
     return { labourPct01, foodVarPct01, additionalHours };
   }, [costRows, serviceRows]);
+
+  const splitSvcRows = useMemo(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const mondayOffset = day === 0 ? 6 : day - 1;
+
+    const weekStartLocal = new Date(now);
+    weekStartLocal.setDate(now.getDate() - mondayOffset);
+    weekStartLocal.setHours(0, 0, 0, 0);
+
+    const prevWeekStart = new Date(weekStartLocal);
+    prevWeekStart.setDate(weekStartLocal.getDate() - 7);
+
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const weekToDate: ServiceRowMini[] = [];
+    const previousWeek: ServiceRowMini[] = [];
+    const monthToDate: ServiceRowMini[] = [];
+
+    for (const r of svcRows) {
+      const sourceDate = r.shift_date || r.created_at;
+      const d = sourceDate ? new Date(sourceDate) : null;
+      if (!d || isNaN(d.getTime())) continue;
+
+      if (d >= monthStart) monthToDate.push(r);
+
+      if (d >= weekStartLocal) weekToDate.push(r);
+      else if (d >= prevWeekStart && d < weekStartLocal) previousWeek.push(r);
+    }
+
+    return { weekToDate, previousWeek, monthToDate };
+  }, [svcRows]);
+
+  const topStore = useMemo(() => {
+    const rankedStores = computeRanked(splitSvcRows.weekToDate, "store");
+    return rankedStores[0] || null;
+  }, [splitSvcRows]);
+
+  const topManager = useMemo(() => {
+    const rankedManagers = computeRanked(splitSvcRows.weekToDate, "manager");
+    return rankedManagers[0] || null;
+  }, [splitSvcRows]);
+
+  const mostImprovedStore = useMemo(() => {
+    const improved = computeImproved(splitSvcRows.weekToDate, splitSvcRows.previousWeek);
+    return improved[0] || null;
+  }, [splitSvcRows]);
+
 
   const toggleTask = async (task: TaskRow) => {
     const willComplete = !task.is_complete;
@@ -587,28 +934,31 @@ export default function DailyUpdateClient() {
             ) : null}
           </p>
 
-          <div className="kpi-mini">
-            <span className="kpi-chip">
-              <b>OSA WTD</b>{" "}
-              <span className={pillClassFromStatus(areaOsaStatus)} style={{ minWidth: 54 }}>
-                {osaCounts.total}
+          <div className="areaOverview">
+            <span className="areaOverviewLabel">Area Overview</span>
+            <div className="kpi-mini">
+              <span className="kpi-chip">
+                <b>OSA WTD</b>{" "}
+                <span className={pillClassFromStatus(areaOsaStatus)} style={{ minWidth: 54 }}>
+                  {osaCounts.total}
+                </span>
               </span>
-            </span>
 
-            <span className="kpi-chip">
-              <b>Labour</b>{" "}
-              <span className={pillClassFromStatus(areaLabourStatus)}>{fmtPct2(areaRollup.labourPct01)}</span>
-            </span>
+              <span className="kpi-chip">
+                <b>Labour</b>{" "}
+                <span className={pillClassFromStatus(areaLabourStatus)}>{fmtPct2(areaRollup.labourPct01)}</span>
+              </span>
 
-            <span className="kpi-chip">
-              <b>Food</b>{" "}
-              <span className={pillClassFromStatus(areaFoodStatus)}>{fmtPct2(areaRollup.foodVarPct01)}</span>
-            </span>
+              <span className="kpi-chip">
+                <b>Food</b>{" "}
+                <span className={pillClassFromStatus(areaFoodStatus)}>{fmtPct2(areaRollup.foodVarPct01)}</span>
+              </span>
 
-            <span className="kpi-chip">
-              <b>Add. hours</b>{" "}
-              <span className={pillClassFromStatus(areaAddHoursStatus)}>{fmtNum2(areaRollup.additionalHours)}</span>
-            </span>
+              <span className="kpi-chip">
+                <b>Add. hours</b>{" "}
+                <span className={pillClassFromStatus(areaAddHoursStatus)}>{fmtNum2(areaRollup.additionalHours)}</span>
+              </span>
+            </div>
           </div>
         </header>
 
@@ -631,6 +981,148 @@ export default function DailyUpdateClient() {
               <span className="pill amber">Action focus</span>
             </div>
             <p className="calloutText">{areaMessage}</p>
+          </section>
+        ) : null}
+
+        {!loading && !error ? (
+          <section className="section highlights">
+            <div className="highlights-head">
+              <h2>Highlights</h2>
+              <p>This week to date • ranked by DOT, labour, then RNL</p>
+            </div>
+
+            {highlightsError && (
+              <div className="highlight-card warning" style={{ marginBottom: 12 }}>
+                <div className="highlight-top">
+                  <span className="highlight-title">⚠️ Highlights</span>
+                </div>
+                <div className="highlight-body">Could not load highlights: {highlightsError}</div>
+              </div>
+            )}
+
+            <div className="highlights-grid">
+              <div className="highlight-card">
+                <div className="highlight-top">
+                  <span className="highlight-title">🏆 Top Store </span>
+                  <span className="highlight-pill">WTD</span>
+                </div>
+                <div className="highlight-main">
+                  <div className="highlight-name">{topStore && !highlightsError ? topStore.name : "No data"}</div>
+                  <div className="highlight-metrics">
+                    <span>
+                      DOT: <b>{topStore && !highlightsError ? formatPct(topStore.avgDOT, 0) : "—"}</b>
+                    </span>
+                    <span>
+                      Labour: <b>{topStore && !highlightsError ? formatPct(topStore.avgLabour, 1) : "—"}</b>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="highlight-card">
+                <div className="highlight-top">
+                  <span className="highlight-title">🥇 Top Manager </span>
+                  <span className="highlight-pill">WTD</span>
+                </div>
+                <div className="highlight-main">
+                  <div className="highlight-name">{topManager && !highlightsError ? topManager.name : "No data"}</div>
+                  <div className="highlight-metrics">
+                    <span>
+                      DOT: <b>{topManager && !highlightsError ? formatPct(topManager.avgDOT, 0) : "—"}</b>
+                    </span>
+                    <span>
+                      Labour: <b>{topManager && !highlightsError ? formatPct(topManager.avgLabour, 1) : "—"}</b>
+                    </span>
+                    <span>
+                      Shifts: <b>{topManager && !highlightsError ? topManager.shifts : "—"}</b>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="highlight-card">
+                <div className="highlight-top">
+                  <span className="highlight-title">📈 Best Improved Store </span>
+                  <span className="highlight-pill">WTD vs prev week</span>
+                </div>
+                <div className="highlight-main">
+                  <div className="highlight-name">
+                    {mostImprovedStore && !highlightsError ? mostImprovedStore.name : "No data"}
+                  </div>
+                  <div className="highlight-metrics">
+                    <span>
+                      DOT gain: <b>{mostImprovedStore && !highlightsError ? `${(mostImprovedStore.dotDelta * 100).toFixed(1)}pp` : "—"}</b>
+                    </span>
+                    <span>
+                      WTD DOT: <b>{mostImprovedStore && !highlightsError ? formatPct(mostImprovedStore.weekDOT, 0) : "—"}</b>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className={`highlight-card${osaHighlightError ? " warning" : ""}`}>
+                <div className="highlight-top">
+                  <span className="highlight-title">⭐ Best OSA Performance </span>
+                  <span className="highlight-pill">WTD</span>
+                </div>
+                <div className="highlight-main">
+                  <div className="highlight-name">{osaHighlightError ? "Error" : osaWinner?.name || "No data"}</div>
+                  <div className="highlight-metrics">
+                    {osaHighlightError ? (
+                      <span>
+                        Could not load OSA highlight: <b>{osaHighlightError}</b>
+                      </span>
+                    ) : (
+                      <span>
+                        Avg points lost: <b>{formatAvgPointsLost(osaWinner?.avgPointsLost ?? null)}</b>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className={`highlight-card${costHighlightError ? " warning" : ""}`}>
+                <div className="highlight-top">
+                  <span className="highlight-title">💷 Top Store Labour </span>
+                  <span className="highlight-pill">WTD</span>
+                </div>
+                <div className="highlight-main">
+                  <div className="highlight-name">{costHighlightError ? "Error" : costWinner?.labourName || "No data"}</div>
+                  <div className="highlight-metrics">
+                    {costHighlightError ? (
+                      <span>
+                        Could not load labour highlight: <b>{costHighlightError}</b>
+                      </span>
+                    ) : (
+                      <span>
+                        Labour: <b>{formatPct(costWinner?.labourPct ?? null, 1)}</b>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className={`highlight-card${costHighlightError ? " warning" : ""}`}>
+                <div className="highlight-top">
+                  <span className="highlight-title">🍕 Top Store Food </span>
+                  <span className="highlight-pill">WTD</span>
+                </div>
+                <div className="highlight-main">
+                  <div className="highlight-name">{costHighlightError ? "Error" : costWinner?.foodName || "No data"}</div>
+                  <div className="highlight-metrics">
+                    {costHighlightError ? (
+                      <span>
+                        Could not load food highlight: <b>{costHighlightError}</b>
+                      </span>
+                    ) : (
+                      <span>
+                        Variance: <b>{formatPct(costWinner?.foodVarPctSales ?? null, 2)}</b>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           </section>
         ) : null}
 
@@ -949,8 +1441,29 @@ export default function DailyUpdateClient() {
           font-size: 0.95rem;
         }
 
-        .kpi-mini {
+        .areaOverview {
           margin-top: 12px;
+          display: inline-flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .areaOverviewLabel {
+          font-size: 11px;
+          font-weight: 900;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(15, 23, 42, 0.06);
+          border: 1px solid rgba(15, 23, 42, 0.1);
+          color: #0f172a;
+          white-space: nowrap;
+        }
+
+        .kpi-mini {
           display: inline-flex;
           gap: 8px;
           flex-wrap: wrap;
@@ -1034,6 +1547,109 @@ export default function DailyUpdateClient() {
           margin: 4px 0 0;
           font-size: 12px;
           color: var(--muted);
+          font-weight: 800;
+        }
+
+        .highlights {
+          margin-top: 16px;
+          text-align: left;
+        }
+
+        .highlights-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          gap: 10px;
+          margin-bottom: 10px;
+          flex-wrap: wrap;
+        }
+
+        .highlights-head h2 {
+          font-size: 15px;
+          font-weight: 900;
+          margin: 0;
+          color: #0f172a;
+        }
+
+        .highlights-head p {
+          margin: 0;
+          font-size: 12px;
+          color: #64748b;
+          font-weight: 700;
+        }
+
+        .highlights-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .highlight-card {
+          background: rgba(255, 255, 255, 0.92);
+          border-radius: 16px;
+          border: 1px solid rgba(0, 100, 145, 0.14);
+          box-shadow: 0 12px 28px rgba(2, 6, 23, 0.05);
+          padding: 12px 14px;
+        }
+
+        .highlight-card.warning {
+          border-color: rgba(239, 68, 68, 0.22);
+          background: rgba(254, 242, 242, 0.85);
+        }
+
+        .highlight-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 8px;
+        }
+
+        .highlight-title {
+          font-size: 12px;
+          font-weight: 900;
+          color: #0f172a;
+          letter-spacing: 0.02em;
+          text-transform: uppercase;
+        }
+
+        .highlight-pill {
+          font-size: 11px;
+          font-weight: 800;
+          padding: 4px 10px;
+          border-radius: 999px;
+          background: rgba(0, 100, 145, 0.1);
+          border: 1px solid rgba(0, 100, 145, 0.16);
+          color: #004b75;
+          white-space: nowrap;
+        }
+
+        .highlight-main {
+          min-width: 0;
+        }
+
+        .highlight-name {
+          font-size: 16px;
+          font-weight: 900;
+          color: #0f172a;
+          margin-bottom: 6px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .highlight-metrics {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          font-size: 13px;
+          color: #334155;
+          font-weight: 700;
+        }
+
+        .highlight-body {
+          font-size: 13px;
+          color: #334155;
           font-weight: 800;
         }
 
@@ -1323,6 +1939,9 @@ export default function DailyUpdateClient() {
 
         @media (max-width: 980px) {
           .storeGrid {
+            grid-template-columns: 1fr;
+          }
+          .highlights-grid {
             grid-template-columns: 1fr;
           }
           .kvGrid {
