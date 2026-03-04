@@ -64,11 +64,6 @@ type RankedItem = {
   shifts: number;
 };
 
-type ImprovedItem = {
-  name: string;
-  dotDelta: number;
-  weekDOT: number;
-};
 
 type CostControlRow = {
   shift_date: string;
@@ -309,39 +304,6 @@ const computeRanked = (rows: ServiceRowMini[], key: "store" | "manager") => {
   return out;
 };
 
-const computeImproved = (week: ServiceRowMini[], prevWeek: ServiceRowMini[]) => {
-  const makeBucket = (rows: ServiceRowMini[]) => {
-    const bucket: Record<string, { dot: number[] }> = {};
-
-    for (const r of rows) {
-      const name = (r.store || "").trim();
-      if (!name) continue;
-      if (!bucket[name]) bucket[name] = { dot: [] };
-
-      const d = normalisePct(r.dot_pct);
-      if (d != null) bucket[name].dot.push(d);
-    }
-
-    return bucket;
-  };
-
-  const avgInner = (arr: number[]) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
-
-  const weekBucket = makeBucket(week);
-  const prevWeekBucket = makeBucket(prevWeek);
-  const names = Array.from(new Set([...Object.keys(weekBucket), ...Object.keys(prevWeekBucket)]));
-
-  const items: ImprovedItem[] = names.map((name) => {
-    const weekDOT = weekBucket[name] ? avgInner(weekBucket[name].dot) : 0;
-    const prevDOT = prevWeekBucket[name] ? avgInner(prevWeekBucket[name].dot) : 0;
-
-    return { name, dotDelta: weekDOT - prevDOT, weekDOT };
-  });
-
-  items.sort((a, b) => b.dotDelta - a.dotDelta);
-  return items;
-};
-
 export default function DailyUpdateClient() {
   const router = useRouter();
 
@@ -472,19 +434,12 @@ export default function DailyUpdateClient() {
         weekStartLocal.setDate(now.getDate() - mondayOffset);
         weekStartLocal.setHours(0, 0, 0, 0);
 
-        const prevWeekStart = new Date(weekStartLocal);
-        prevWeekStart.setDate(weekStartLocal.getDate() - 7);
-
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        monthStart.setHours(0, 0, 0, 0);
-
-        const from = prevWeekStart < monthStart ? prevWeekStart : monthStart;
-        const fromStr = from.toISOString().slice(0, 10);
+        const weekStartStr = weekStartLocal.toISOString().slice(0, 10);
 
         const { data, error: queryError } = await supabase
           .from("service_shifts")
           .select("store, dot_pct, labour_pct, rnl_minutes, manager, created_at, shift_date")
-          .gte("shift_date", fromStr)
+          .gte("shift_date", weekStartStr)
           .order("shift_date", { ascending: false });
 
         if (queryError) throw queryError;
@@ -708,53 +663,10 @@ export default function DailyUpdateClient() {
     return { labourPct01, foodVarPct01, additionalHours };
   }, [costRows, serviceRows]);
 
-  const splitSvcRows = useMemo(() => {
-    const now = new Date();
-    const day = now.getDay();
-    const mondayOffset = day === 0 ? 6 : day - 1;
-
-    const weekStartLocal = new Date(now);
-    weekStartLocal.setDate(now.getDate() - mondayOffset);
-    weekStartLocal.setHours(0, 0, 0, 0);
-
-    const prevWeekStart = new Date(weekStartLocal);
-    prevWeekStart.setDate(weekStartLocal.getDate() - 7);
-
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    monthStart.setHours(0, 0, 0, 0);
-
-    const weekToDate: ServiceRowMini[] = [];
-    const previousWeek: ServiceRowMini[] = [];
-    const monthToDate: ServiceRowMini[] = [];
-
-    for (const r of svcRows) {
-      const sourceDate = r.shift_date || r.created_at;
-      const d = sourceDate ? new Date(sourceDate) : null;
-      if (!d || isNaN(d.getTime())) continue;
-
-      if (d >= monthStart) monthToDate.push(r);
-
-      if (d >= weekStartLocal) weekToDate.push(r);
-      else if (d >= prevWeekStart && d < weekStartLocal) previousWeek.push(r);
-    }
-
-    return { weekToDate, previousWeek, monthToDate };
-  }, [svcRows]);
-
-  const topStore = useMemo(() => {
-    const rankedStores = computeRanked(splitSvcRows.weekToDate, "store");
-    return rankedStores[0] || null;
-  }, [splitSvcRows]);
-
   const topManager = useMemo(() => {
-    const rankedManagers = computeRanked(splitSvcRows.weekToDate, "manager");
+    const rankedManagers = computeRanked(svcRows, "manager");
     return rankedManagers[0] || null;
-  }, [splitSvcRows]);
-
-  const mostImprovedStore = useMemo(() => {
-    const improved = computeImproved(splitSvcRows.weekToDate, splitSvcRows.previousWeek);
-    return improved[0] || null;
-  }, [splitSvcRows]);
+  }, [svcRows]);
 
 
   const toggleTask = async (task: TaskRow) => {
@@ -1003,24 +915,6 @@ export default function DailyUpdateClient() {
             <div className="highlights-grid">
               <div className="highlight-card">
                 <div className="highlight-top">
-                  <span className="highlight-title">🏆 Top Store </span>
-                  <span className="highlight-pill">WTD</span>
-                </div>
-                <div className="highlight-main">
-                  <div className="highlight-name">{topStore && !highlightsError ? topStore.name : "No data"}</div>
-                  <div className="highlight-metrics">
-                    <span>
-                      DOT: <b>{topStore && !highlightsError ? formatPct(topStore.avgDOT, 0) : "—"}</b>
-                    </span>
-                    <span>
-                      Labour: <b>{topStore && !highlightsError ? formatPct(topStore.avgLabour, 1) : "—"}</b>
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="highlight-card">
-                <div className="highlight-top">
                   <span className="highlight-title">🥇 Top Manager </span>
                   <span className="highlight-pill">WTD</span>
                 </div>
@@ -1040,29 +934,9 @@ export default function DailyUpdateClient() {
                 </div>
               </div>
 
-              <div className="highlight-card">
-                <div className="highlight-top">
-                  <span className="highlight-title">📈 Best Improved Store </span>
-                  <span className="highlight-pill">WTD vs prev week</span>
-                </div>
-                <div className="highlight-main">
-                  <div className="highlight-name">
-                    {mostImprovedStore && !highlightsError ? mostImprovedStore.name : "No data"}
-                  </div>
-                  <div className="highlight-metrics">
-                    <span>
-                      DOT gain: <b>{mostImprovedStore && !highlightsError ? `${(mostImprovedStore.dotDelta * 100).toFixed(1)}pp` : "—"}</b>
-                    </span>
-                    <span>
-                      WTD DOT: <b>{mostImprovedStore && !highlightsError ? formatPct(mostImprovedStore.weekDOT, 0) : "—"}</b>
-                    </span>
-                  </div>
-                </div>
-              </div>
-
               <div className={`highlight-card${osaHighlightError ? " warning" : ""}`}>
                 <div className="highlight-top">
-                  <span className="highlight-title">⭐ Best OSA Performance </span>
+                  <span className="highlight-title">🛡️ Best OSA Performance </span>
                   <span className="highlight-pill">WTD</span>
                 </div>
                 <div className="highlight-main">
@@ -1580,7 +1454,7 @@ export default function DailyUpdateClient() {
 
         .highlights-grid {
           display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 12px;
         }
 
