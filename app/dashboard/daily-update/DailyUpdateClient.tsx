@@ -74,7 +74,7 @@ type CostControlRow = {
   actual_food_cost_gbp: number | null;
 };
 
-type OsaInternalRow = { shift_date: string; store: string | null };
+type OsaInternalRow = { shift_date: string; store: string | null; points_lost: number | null };
 
 type OsaInternalHighlightRow = {
   shift_date: string;
@@ -302,7 +302,106 @@ const computeRanked = (rows: ServiceRowMini[], key: "store" | "manager") => {
   return out;
 };
 
-export default function DailyUpdateClient() {
+
+
+type DailyCostBucket = {
+  date: string;
+  byStore: Record<string, { labourPct01: number | null; foodVarPct01: number | null }>;
+  area: { labourPct01: number | null; foodVarPct01: number | null };
+};
+
+const eachDateInclusive = (startIso: string, endIso: string) => {
+  const out: string[] = [];
+  const cursor = parseIsoDate(startIso);
+  const end = parseIsoDate(endIso);
+  while (cursor <= end) {
+    out.push(toISODateUK(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return out;
+};
+
+const computeCostWtdBuckets = (rows: CostControlRow[], weekStartIso: string, targetDateIso: string): DailyCostBucket[] => {
+  const dates = eachDateInclusive(weekStartIso, targetDateIso);
+  return dates.map((date) => {
+    const rowsForDay = rows.filter((r) => r.shift_date === date);
+    const storeTotals: Record<string, { sales: number; labour: number; ideal: number; actual: number }> = {};
+    let areaSales = 0;
+    let areaLabour = 0;
+    let areaIdeal = 0;
+    let areaActual = 0;
+
+    for (const row of rowsForDay) {
+      const store = String(row.store || '').trim();
+      if (!storeTotals[store]) storeTotals[store] = { sales: 0, labour: 0, ideal: 0, actual: 0 };
+
+      const sales = Number(row.sales_gbp);
+      const labour = Number(row.labour_cost_gbp);
+      const ideal = Number(row.ideal_food_cost_gbp);
+      const actual = Number(row.actual_food_cost_gbp);
+
+      if (Number.isFinite(sales)) {
+        storeTotals[store].sales += sales;
+        areaSales += sales;
+      }
+      if (Number.isFinite(labour)) {
+        storeTotals[store].labour += labour;
+        areaLabour += labour;
+      }
+      if (Number.isFinite(ideal)) {
+        storeTotals[store].ideal += ideal;
+        areaIdeal += ideal;
+      }
+      if (Number.isFinite(actual)) {
+        storeTotals[store].actual += actual;
+        areaActual += actual;
+      }
+    }
+
+    const byStore: DailyCostBucket['byStore'] = {};
+    for (const [store, t] of Object.entries(storeTotals)) {
+      byStore[store] = {
+        labourPct01: t.sales > 0 ? t.labour / t.sales : null,
+        foodVarPct01: t.sales > 0 ? (t.actual - t.ideal) / t.sales : null,
+      };
+    }
+
+    return {
+      date,
+      byStore,
+      area: {
+        labourPct01: areaSales > 0 ? areaLabour / areaSales : null,
+        foodVarPct01: areaSales > 0 ? (areaActual - areaIdeal) / areaSales : null,
+      },
+    };
+  });
+};
+
+const Sparkline = ({ points }: { points: Array<number | null> }) => {
+  const width = 140;
+  const height = 32;
+  const pad = 2;
+  const vals = points.filter((v): v is number => v != null && Number.isFinite(v));
+  if (!vals.length) return <svg width={width} height={height} aria-hidden />;
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const range = max - min || 1;
+  const step = points.length > 1 ? (width - pad * 2) / (points.length - 1) : 0;
+  const d = points
+    .map((v, i) => {
+      const yVal = v == null ? vals[vals.length - 1] : v;
+      const x = pad + i * step;
+      const y = height - pad - ((yVal - min) / range) * (height - pad * 2);
+      return `${i === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(' ');
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Trend sparkline">
+      <path d={d} fill="none" stroke="currentColor" strokeOpacity="0.6" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+};
+export default function DailyUpdateClient({ exportMode = false }: { exportMode?: boolean } = {}) {
   const router = useRouter();
 
   const [targetDate, setTargetDate] = useState<string>("");
@@ -316,6 +415,7 @@ export default function DailyUpdateClient() {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [serviceRows, setServiceRows] = useState<ServiceShiftRow[]>([]);
   const [costRows, setCostRows] = useState<CostControlRow[]>([]);
+  const [costWtdRows, setCostWtdRows] = useState<CostControlRow[]>([]);
   const [osaRows, setOsaRows] = useState<OsaInternalRow[]>([]);
   const [stores, setStores] = useState<string[]>([]);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
@@ -327,7 +427,7 @@ export default function DailyUpdateClient() {
   const [costHighlightError, setCostHighlightError] = useState<string | null>(null);
 
   // NEW: screenshot-friendly toggle (keeps tiles compact like Service Dashboard)
-  const [showDetails, setShowDetails] = useState(false);
+  const [showDetails, setShowDetails] = useState(exportMode);
 
   useEffect(() => {
     const load = async () => {
@@ -347,6 +447,7 @@ export default function DailyUpdateClient() {
           tasksRes,
           serviceRes,
           costRes,
+          costWtdRes,
           osaRes,
           serviceStoresRes,
           costStoresRes,
@@ -373,8 +474,13 @@ export default function DailyUpdateClient() {
             .select("shift_date,store,sales_gbp,labour_cost_gbp,ideal_food_cost_gbp,actual_food_cost_gbp")
             .eq("shift_date", previousBusinessDay),
           supabase
+            .from("cost_control_entries")
+            .select("shift_date,store,sales_gbp,labour_cost_gbp,ideal_food_cost_gbp,actual_food_cost_gbp")
+            .gte("shift_date", wkStart)
+            .lte("shift_date", previousBusinessDay),
+          supabase
             .from("osa_internal_results")
-            .select("shift_date,store")
+            .select("shift_date,store,points_lost")
             .gte("shift_date", wkStart)
             .lte("shift_date", previousBusinessDay),
           supabase.from("service_shifts").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
@@ -388,6 +494,7 @@ export default function DailyUpdateClient() {
           tasksRes.error,
           serviceRes.error,
           costRes.error,
+          costWtdRes.error,
           osaRes.error,
           serviceStoresRes.error,
           costStoresRes.error,
@@ -401,6 +508,7 @@ export default function DailyUpdateClient() {
         setTasks((tasksRes.data || []) as TaskRow[]);
         setServiceRows((serviceRes.data || []) as ServiceShiftRow[]);
         setCostRows((costRes.data || []) as CostControlRow[]);
+        setCostWtdRows((costWtdRes.data || []) as CostControlRow[]);
         setOsaRows((osaRes.data || []) as OsaInternalRow[]);
 
         const storeSet = new Set<string>();
@@ -650,6 +758,72 @@ export default function DailyUpdateClient() {
     return { labourPct01, foodVarPct01, additionalHours };
   }, [costRows, serviceRows]);
 
+  const costWtdBuckets = useMemo(
+    () => (weekStart && targetDate ? computeCostWtdBuckets(costWtdRows, weekStart, targetDate) : []),
+    [costWtdRows, weekStart, targetDate]
+  );
+
+  const keySignals = useMemo(() => {
+    const latest = costWtdBuckets[costWtdBuckets.length - 1];
+    if (!latest) return [] as Array<{ store: string; label: string; value: number | null; targetText: string; status: MetricStatus }>;
+
+    return stores.map((store) => {
+      const metric = latest.byStore[store] || { labourPct01: null, foodVarPct01: null };
+      const targets = DEFAULT_TARGETS[store] || DEFAULT_TARGETS.Newcastle;
+      const foodStatus = statusAbsLowerBetter(metric.foodVarPct01, targets.foodVarAbsMax01);
+      const labourStatus = statusLowerBetter(metric.labourPct01, targets.labourMax01);
+
+      if (foodStatus === "bad") {
+        return {
+          store,
+          label: "Food variance breach",
+          value: metric.foodVarPct01,
+          targetText: `Target abs ≤ ${(targets.foodVarAbsMax01 * 100).toFixed(2)}%`,
+          status: foodStatus,
+        };
+      }
+      if (labourStatus === "bad") {
+        return {
+          store,
+          label: "Labour breach",
+          value: metric.labourPct01,
+          targetText: `Target ≤ ${(targets.labourMax01 * 100).toFixed(0)}%`,
+          status: labourStatus,
+        };
+      }
+      return {
+        store,
+        label: "On track",
+        value: metric.foodVarPct01,
+        targetText: `Food abs ≤ ${(targets.foodVarAbsMax01 * 100).toFixed(2)}% • Labour ≤ ${(targets.labourMax01 * 100).toFixed(0)}%`,
+        status: "good" as MetricStatus,
+      };
+    });
+  }, [costWtdBuckets, stores]);
+
+  const miniTrends = useMemo(() => {
+    const labourSeries = costWtdBuckets.map((b) => b.area.labourPct01);
+    const foodSeries = costWtdBuckets.map((b) => b.area.foodVarPct01);
+
+    const osaDates = weekStart && targetDate ? eachDateInclusive(weekStart, targetDate) : [];
+    const osaSeries = osaDates.map((date) => {
+      const vals = osaRows
+        .filter((r) => r.shift_date === date)
+        .map((r) => (r.points_lost == null ? null : Number(r.points_lost)))
+        .filter((v): v is number => v != null && Number.isFinite(v));
+      return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    });
+
+    return {
+      labourSeries,
+      foodSeries,
+      osaSeries,
+      labourLatest: labourSeries[labourSeries.length - 1] ?? null,
+      foodLatest: foodSeries[foodSeries.length - 1] ?? null,
+      osaLatest: osaSeries[osaSeries.length - 1] ?? null,
+    };
+  }, [costWtdBuckets, osaRows, targetDate, weekStart]);
+
   const topManager = useMemo(() => {
     const rankedManagers = computeRanked(svcRows, "manager");
     return rankedManagers[0] || null;
@@ -782,13 +956,13 @@ export default function DailyUpdateClient() {
   };
 
   return (
-    <main className="wrap">
-      <div className="banner print-hidden">
+    <main className={`wrap ${exportMode ? "exportMode" : ""}`}>
+      <div className={`banner ${exportMode ? "" : "print-hidden"}`}>
         <img src="/mourneoids_forms_header_1600x400.png" alt="Mourne-oids Header Banner" />
       </div>
 
       <div className="shell">
-        <div className="topbar print-hidden">
+        {!exportMode ? (<div className="topbar print-hidden">
           <button className="navbtn" onClick={() => router.back()} type="button">
             ← Back
           </button>
@@ -819,7 +993,7 @@ export default function DailyUpdateClient() {
           >
             📄 Export PDF
           </button>
-        </div>
+        </div>) : null}
 
         <header className="header">
           <h1>Daily Update</h1>
@@ -962,6 +1136,55 @@ export default function DailyUpdateClient() {
                   </div>
                 </div>
               </div>
+            </div>
+          </section>
+        ) : null}
+
+        {!loading && !error ? (
+          <section className="section">
+            <div className="section-head">
+              <div>
+                <h2>Key Signals</h2>
+                <p>Cost-only signals from weighted daily totals.</p>
+              </div>
+              <span className="pill">Target checks</span>
+            </div>
+            <div className="signalsGrid">
+              {keySignals.map((signal) => (
+                <article key={signal.store} className="signalCard">
+                  <div className="signalTop">
+                    <b>{signal.store}</b>
+                    <span className={pillClassFromStatus(signal.status)}>{fmtPct2(signal.value)}</span>
+                  </div>
+                  <div className="signalLabel">{signal.label}</div>
+                  <p className="signalTarget">{signal.targetText}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {!loading && !error ? (
+          <section className="section">
+            <div className="section-head">
+              <div>
+                <h2>Mini-trends (WTD)</h2>
+                <p>Week start to target date.</p>
+              </div>
+            </div>
+            <div className="miniTrendGrid">
+              <article className="miniTrendCard">
+                <div className="miniTrendHead"><b>Labour WTD</b><span className={pillClassFromStatus(statusLowerBetter(miniTrends.labourLatest, AREA_TARGETS.labourMax01))}>{fmtPct2(miniTrends.labourLatest)}</span></div>
+                <div className="sparkWrap"><Sparkline points={miniTrends.labourSeries} /></div>
+              </article>
+              <article className="miniTrendCard">
+                <div className="miniTrendHead"><b>Food variance WTD</b><span className={pillClassFromStatus(statusAbsLowerBetter(miniTrends.foodLatest, AREA_TARGETS.foodVarAbsMax01))}>{fmtPct2(miniTrends.foodLatest)}</span></div>
+                <div className="sparkWrap"><Sparkline points={miniTrends.foodSeries} /></div>
+              </article>
+              <article className="miniTrendCard">
+                <div className="miniTrendHead"><b>OSA Avg Points Lost WTD</b><span className="pill">{fmtNum2(miniTrends.osaLatest)}</span></div>
+                <div className="sparkWrap"><Sparkline points={miniTrends.osaSeries} /></div>
+              </article>
             </div>
           </section>
         ) : null}
@@ -1769,6 +1992,69 @@ export default function DailyUpdateClient() {
           margin: 0;
         }
 
+
+        .signalsGrid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .signalCard {
+          border-radius: 16px;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          background: rgba(248, 250, 252, 0.8);
+          padding: 10px;
+          box-shadow: 0 8px 18px rgba(2, 6, 23, 0.04);
+        }
+
+        .signalTop {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .signalLabel {
+          font-weight: 900;
+          margin-top: 8px;
+          font-size: 13px;
+        }
+
+        .signalTarget {
+          margin: 6px 0 0;
+          font-size: 12px;
+          color: var(--muted);
+          font-weight: 800;
+        }
+
+        .miniTrendGrid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .miniTrendCard {
+          border-radius: 16px;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          background: rgba(248, 250, 252, 0.8);
+          padding: 10px;
+          color: #0f172a;
+          box-shadow: 0 8px 18px rgba(2, 6, 23, 0.04);
+        }
+
+        .miniTrendHead {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 8px;
+          font-size: 12px;
+        }
+
+        .sparkWrap {
+          margin-top: 8px;
+          opacity: 0.9;
+        }
+
         .footer {
           text-align: center;
           margin-top: 18px;
@@ -1782,6 +2068,10 @@ export default function DailyUpdateClient() {
             grid-template-columns: 1fr;
           }
           .highlights-grid {
+            grid-template-columns: 1fr;
+          }
+          .signalsGrid,
+          .miniTrendGrid {
             grid-template-columns: 1fr;
           }
           .kvGrid {
@@ -1800,7 +2090,10 @@ export default function DailyUpdateClient() {
 
         @media print {
           .print-hidden,
-          .banner {
+          .exportMode .topbar {
+            display: none !important;
+          }
+          .wrap:not(.exportMode) .banner {
             display: none !important;
           }
           .wrap {
@@ -1816,11 +2109,25 @@ export default function DailyUpdateClient() {
           }
           .section,
           .storeCard,
+          .signalCard,
+          .miniTrendCard,
           .panel,
           .metricRow,
           .inputChip {
             box-shadow: none !important;
             break-inside: avoid;
+          }
+          .exportMode .storeGrid {
+            grid-template-columns: 1fr !important;
+          }
+          .storeCard {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          .exportMode,
+          .exportMode * {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
           }
           /* Print should include details even if hidden on screen */
           .details {
