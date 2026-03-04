@@ -624,7 +624,7 @@ export default function DailyUpdateClient() {
             <div className="section-head">
               <div>
                 <h2>Stores</h2>
-                <p>Card layout aligned to OSA scorecard style (scan-first).</p>
+                <p></p>
               </div>
               <div className="kpi-mini">
                 <span className="kpi-chip">
