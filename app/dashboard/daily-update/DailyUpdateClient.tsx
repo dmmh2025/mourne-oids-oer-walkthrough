@@ -26,6 +26,15 @@ type StoreInputRow = {
   notes: string | null;
 };
 
+type ServiceLosingActualRow = {
+  date: string;
+  store: string;
+  load_time_mins: number | null;
+  rack_time_mins: number | null;
+  adt_mins: number | null;
+  extremes_over_40_pct: number | null;
+};
+
 type TaskRow = {
   id: string;
   date: string;
@@ -131,6 +140,14 @@ const getPreviousBusinessDayUk = () => {
   return toISODateUK(previous);
 };
 
+const getTodayUk = () => toISODateUK(new Date());
+
+const addDaysIsoUk = (isoDate: string, days: number) => {
+  const d = parseIsoDate(isoDate);
+  d.setDate(d.getDate() + days);
+  return toISODateUK(d);
+};
+
 const getWeekStartUK = (isoDate: string) => {
   const d = parseIsoDate(isoDate);
   const day = d.getDay();
@@ -155,6 +172,22 @@ const fmtNum2 = (v: number | null) =>
   v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}`;
 const fmtMins2 = (v: number | null) =>
   v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}m`;
+
+const fmtDelta = (delta: number | null, kind: "pct" | "mins") => {
+  if (delta == null || !Number.isFinite(delta)) return "";
+  const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "•";
+  const abs = Math.abs(delta);
+  if (kind === "mins") return `${arrow} ${(delta >= 0 ? "+" : "-")}${abs.toFixed(2)}m`;
+  return `${arrow} ${(delta >= 0 ? "+" : "-")}${(abs * 100).toFixed(2)}pp`;
+};
+
+const buildSdlwLine = (value: number | null, sdlwValue: number | null, kind: "pct" | "mins") => {
+  if (sdlwValue == null || !Number.isFinite(sdlwValue)) return "SDLW: —";
+  const base = kind === "mins" ? `${sdlwValue.toFixed(2)}m` : `${(sdlwValue * 100).toFixed(2)}%`;
+  const delta = value == null || !Number.isFinite(value) ? null : value - sdlwValue;
+  const deltaText = fmtDelta(delta, kind);
+  return `SDLW: ${base}${deltaText ? ` ${deltaText}` : ""}`;
+};
 
 const avg = (arr: number[]) =>
   arr.length ? arr.reduce((acc, val) => acc + val, 0) / arr.length : null;
@@ -304,12 +337,6 @@ const computeRanked = (rows: ServiceRowMini[], key: "store" | "manager") => {
 
 
 
-type DailyCostBucket = {
-  date: string;
-  byStore: Record<string, { labourPct01: number | null; foodVarPct01: number | null }>;
-  area: { labourPct01: number | null; foodVarPct01: number | null };
-};
-
 type CostTotals = { sales: number; labour: number; ideal: number; actual: number };
 
 const accumulateCostTotals = (rows: CostControlRow[]) => {
@@ -352,60 +379,6 @@ const totalsToRatios = (totals: CostTotals) => ({
   foodVarPct01: totals.sales > 0 ? (totals.actual - totals.ideal) / totals.sales : null,
 });
 
-const eachDateInclusive = (startIso: string, endIso: string) => {
-  const out: string[] = [];
-  const cursor = parseIsoDate(startIso);
-  const end = parseIsoDate(endIso);
-  while (cursor <= end) {
-    out.push(toISODateUK(cursor));
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return out;
-};
-
-const computeCostWtdBuckets = (rows: CostControlRow[], weekStartIso: string, targetDateIso: string): DailyCostBucket[] => {
-  const dates = eachDateInclusive(weekStartIso, targetDateIso);
-  return dates.map((date) => {
-    const rowsForDay = rows.filter((r) => r.shift_date === date);
-    const { byStore: storeTotals, area: areaTotals } = accumulateCostTotals(rowsForDay);
-
-    const byStore: DailyCostBucket['byStore'] = {};
-    for (const [store, t] of Object.entries(storeTotals)) {
-      byStore[store] = totalsToRatios(t);
-    }
-
-    return {
-      date,
-      byStore,
-      area: totalsToRatios(areaTotals),
-    };
-  });
-};
-
-const Sparkline = ({ points }: { points: Array<number | null> }) => {
-  const width = 140;
-  const height = 32;
-  const pad = 2;
-  const vals = points.filter((v): v is number => v != null && Number.isFinite(v));
-  if (!vals.length) return <svg width={width} height={height} aria-hidden />;
-  const min = Math.min(...vals);
-  const max = Math.max(...vals);
-  const range = max - min || 1;
-  const step = points.length > 1 ? (width - pad * 2) / (points.length - 1) : 0;
-  const d = points
-    .map((v, i) => {
-      const yVal = v == null ? vals[vals.length - 1] : v;
-      const x = pad + i * step;
-      const y = height - pad - ((yVal - min) / range) * (height - pad * 2);
-      return `${i === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
-    })
-    .join(' ');
-  return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Trend sparkline">
-      <path d={d} fill="none" stroke="currentColor" strokeOpacity="0.6" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  );
-};
 export default function DailyUpdateClient({ exportMode = false }: { exportMode?: boolean } = {}) {
   const router = useRouter();
 
@@ -419,8 +392,12 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
   const [storeInputs, setStoreInputs] = useState<StoreInputRow[]>([]);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [serviceRows, setServiceRows] = useState<ServiceShiftRow[]>([]);
+  const [sdlwServiceRows, setSdlwServiceRows] = useState<ServiceShiftRow[]>([]);
   const [costRows, setCostRows] = useState<CostControlRow[]>([]);
+  const [sdlwCostRows, setSdlwCostRows] = useState<CostControlRow[]>([]);
   const [costWtdRows, setCostWtdRows] = useState<CostControlRow[]>([]);
+  const [serviceLosingActualRows, setServiceLosingActualRows] = useState<ServiceLosingActualRow[]>([]);
+  const [todayPlanInputs, setTodayPlanInputs] = useState<StoreInputRow[]>([]);
   const [osaRows, setOsaRows] = useState<OsaInternalRow[]>([]);
   const [stores, setStores] = useState<string[]>([]);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
@@ -441,7 +418,9 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
         setError(null);
 
         const previousBusinessDay = getPreviousBusinessDayUk();
+        const sdlwDate = addDaysIsoUk(previousBusinessDay, -7);
         const wkStart = getWeekStartUK(previousBusinessDay);
+        const todayUk = getTodayUk();
 
         setTargetDate(previousBusinessDay);
         setWeekStart(wkStart);
@@ -451,9 +430,13 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
           inputsRes,
           tasksRes,
           serviceRes,
+          sdlwServiceRes,
           costRes,
+          sdlwCostRes,
           costWtdRes,
           osaRes,
+          serviceLosingActualsRes,
+          todayPlanInputsRes,
           serviceStoresRes,
           costStoresRes,
           inputStoresRes,
@@ -475,9 +458,17 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
             .select("shift_date,store,dot_pct,labour_pct,extreme_over_40,rnl_minutes,additional_hours")
             .eq("shift_date", previousBusinessDay),
           supabase
+            .from("service_shifts")
+            .select("shift_date,store,dot_pct,labour_pct,extreme_over_40,rnl_minutes,additional_hours")
+            .eq("shift_date", sdlwDate),
+          supabase
             .from("cost_control_entries")
             .select("shift_date,store,sales_gbp,labour_cost_gbp,ideal_food_cost_gbp,actual_food_cost_gbp")
             .eq("shift_date", previousBusinessDay),
+          supabase
+            .from("cost_control_entries")
+            .select("shift_date,store,sales_gbp,labour_cost_gbp,ideal_food_cost_gbp,actual_food_cost_gbp")
+            .eq("shift_date", sdlwDate),
           supabase
             .from("cost_control_entries")
             .select("shift_date,store,sales_gbp,labour_cost_gbp,ideal_food_cost_gbp,actual_food_cost_gbp")
@@ -488,6 +479,16 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
             .select("shift_date,store,points_lost")
             .gte("shift_date", wkStart)
             .lte("shift_date", previousBusinessDay),
+          supabase
+            .from("daily_update_service_losing_actuals")
+            .select("date,store,load_time_mins,rack_time_mins,adt_mins,extremes_over_40_pct")
+            .eq("date", previousBusinessDay),
+          supabase
+            .from("daily_update_store_inputs")
+            .select(
+              "date,store,missed_calls_wtd,gps_tracked_wtd,aof_wtd,target_load_time_mins,target_rack_time_mins,target_adt_mins,target_extremes_over40_pct,notes"
+            )
+            .eq("date", todayUk),
           supabase.from("service_shifts").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
           supabase.from("cost_control_entries").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
           supabase.from("daily_update_store_inputs").select("store,date").order("date", { ascending: false }).limit(500),
@@ -498,9 +499,13 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
           inputsRes.error,
           tasksRes.error,
           serviceRes.error,
+          sdlwServiceRes.error,
           costRes.error,
+          sdlwCostRes.error,
           costWtdRes.error,
           osaRes.error,
+          serviceLosingActualsRes.error,
+          todayPlanInputsRes.error,
           serviceStoresRes.error,
           costStoresRes.error,
           inputStoresRes.error,
@@ -512,9 +517,13 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
         setStoreInputs((inputsRes.data || []) as StoreInputRow[]);
         setTasks((tasksRes.data || []) as TaskRow[]);
         setServiceRows((serviceRes.data || []) as ServiceShiftRow[]);
+        setSdlwServiceRows((sdlwServiceRes.data || []) as ServiceShiftRow[]);
         setCostRows((costRes.data || []) as CostControlRow[]);
+        setSdlwCostRows((sdlwCostRes.data || []) as CostControlRow[]);
         setCostWtdRows((costWtdRes.data || []) as CostControlRow[]);
         setOsaRows((osaRes.data || []) as OsaInternalRow[]);
+        setServiceLosingActualRows((serviceLosingActualsRes.data || []) as ServiceLosingActualRow[]);
+        setTodayPlanInputs((todayPlanInputsRes.data || []) as StoreInputRow[]);
 
         const storeSet = new Set<string>();
         for (const row of [...(serviceStoresRes.data || []), ...(costStoresRes.data || []), ...(inputStoresRes.data || [])]) {
@@ -709,10 +718,36 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
     return { total, byStore };
   }, [osaRows]);
 
+  const sdlwServiceByStore = useMemo(() => {
+    const m = new Map<string, ServiceShiftRow[]>();
+    for (const row of sdlwServiceRows) m.set(row.store, [...(m.get(row.store) || []), row]);
+    return m;
+  }, [sdlwServiceRows]);
+
+  const sdlwCostRatiosByStore = useMemo(() => {
+    const { byStore } = accumulateCostTotals(sdlwCostRows);
+    const m = new Map<string, { labourPct01: number | null; foodVarPct01: number | null }>();
+    for (const [store, totals] of Object.entries(byStore)) m.set(store, totalsToRatios(totals));
+    return m;
+  }, [sdlwCostRows]);
+
+  const todayPlanByStore = useMemo(() => {
+    const m = new Map<string, StoreInputRow>();
+    for (const row of todayPlanInputs) m.set(row.store, row);
+    return m;
+  }, [todayPlanInputs]);
+
+  const yesterdayActualsByStore = useMemo(() => {
+    const m = new Map<string, ServiceLosingActualRow>();
+    for (const row of serviceLosingActualRows) m.set(row.store, row);
+    return m;
+  }, [serviceLosingActualRows]);
+
   const storeCards = useMemo(() => {
     return stores.map((store) => {
       const cost = costRows.filter((row) => row.store === store);
       const service = serviceRows.filter((row) => row.store === store);
+      const sdlwService = sdlwServiceByStore.get(store) || [];
       const inputs = inputsByStore.get(store) || null;
       const storeTasks = tasksByStore.get(store) || [];
 
@@ -729,6 +764,11 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
       const rnlMinutes = avg(service.map((row) => row.rnl_minutes).filter((v): v is number => v != null));
       const additionalHours = sum(service.map((row) => Number(row.additional_hours || 0)));
 
+      const sdlwDotPct01 = avg(sdlwService.map((row) => normalisePct01(row.dot_pct)).filter((v): v is number => v != null));
+      const sdlwExtremesPct01 = avg(sdlwService.map((row) => normalisePct01(row.extreme_over_40)).filter((v): v is number => v != null));
+      const sdlwRnlMinutes = avg(sdlwService.map((row) => row.rnl_minutes).filter((v): v is number => v != null));
+      const sdlwCostRatios = sdlwCostRatiosByStore.get(store) || { labourPct01: null, foodVarPct01: null };
+
       const targets = getTargetsForStore(store, inputs);
 
       const missedCalls01 = to01From100(inputs?.missed_calls_wtd ?? null);
@@ -740,14 +780,34 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
         additionalHours,
         cost: { labourPct01, foodVarPct01 },
         service: { dotPct01, extremesPct01, rnlMinutes },
+        sdlw: {
+          dotPct01: sdlwDotPct01,
+          labourPct01: sdlwCostRatios.labourPct01,
+          rnlMinutes: sdlwRnlMinutes,
+          extremesPct01: sdlwExtremesPct01,
+          foodVarPct01: sdlwCostRatios.foodVarPct01,
+        },
         inputs,
         tasks: storeTasks,
         targets,
         osaWtdCount: osaCounts.byStore.get(store) || 0,
         daily: { missedCalls01, gps01, aof01 },
+        yesterdayActuals: yesterdayActualsByStore.get(store) || null,
+        todayPlan: todayPlanByStore.get(store) || null,
       };
     });
-  }, [stores, costRows, serviceRows, inputsByStore, tasksByStore, osaCounts.byStore]);
+  }, [
+    stores,
+    costRows,
+    serviceRows,
+    sdlwServiceByStore,
+    sdlwCostRatiosByStore,
+    inputsByStore,
+    tasksByStore,
+    osaCounts.byStore,
+    yesterdayActualsByStore,
+    todayPlanByStore,
+  ]);
 
   const areaRollup = useMemo(() => {
     const sales = sum(costRows.map((r) => Number(r.sales_gbp || 0)));
@@ -762,11 +822,6 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
 
     return { labourPct01, foodVarPct01, additionalHours };
   }, [costRows, serviceRows]);
-
-  const costWtdBuckets = useMemo(
-    () => (weekStart && targetDate ? computeCostWtdBuckets(costWtdRows, weekStart, targetDate) : []),
-    [costWtdRows, weekStart, targetDate]
-  );
 
   const keySignals = useMemo(() => {
     const { byStore, area } = accumulateCostTotals(costWtdRows);
@@ -836,34 +891,41 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
     return out;
   }, [costWtdRows, stores]);
 
-  const miniTrends = useMemo(() => {
-    const labourSeries = costWtdBuckets.map((b) => b.area.labourPct01);
-    const foodSeries = costWtdBuckets.map((b) => b.area.foodVarPct01);
-
-    const osaDates = weekStart && targetDate ? eachDateInclusive(weekStart, targetDate) : [];
-    const osaSeries = osaDates.map((date) => {
-      const vals = osaRows
-        .filter((r) => r.shift_date === date)
-        .map((r) => (r.points_lost == null ? null : Number(r.points_lost)))
-        .filter((v): v is number => v != null && Number.isFinite(v));
-      return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
-    });
-
-    return {
-      labourSeries,
-      foodSeries,
-      osaSeries,
-      labourLatest: labourSeries[labourSeries.length - 1] ?? null,
-      foodLatest: foodSeries[foodSeries.length - 1] ?? null,
-      osaLatest: osaSeries[osaSeries.length - 1] ?? null,
-    };
-  }, [costWtdBuckets, osaRows, targetDate, weekStart]);
-
   const topManager = useMemo(() => {
     const rankedManagers = computeRanked(svcRows, "manager");
     return rankedManagers[0] || null;
   }, [svcRows]);
 
+
+  const rankedStoreCards = useMemo(() => {
+    return [...storeCards].sort((a, b) => {
+      const aDot = a.service.dotPct01 ?? -1;
+      const bDot = b.service.dotPct01 ?? -1;
+      if (bDot !== aDot) return bDot - aDot;
+      const aLab = a.cost.labourPct01 ?? Number.POSITIVE_INFINITY;
+      const bLab = b.cost.labourPct01 ?? Number.POSITIVE_INFINITY;
+      return aLab - bLab;
+    });
+  }, [storeCards]);
+
+  const bestShiftSnapshot = useMemo(() => {
+    const ranked = [...storeCards].sort((a, b) => {
+      const aFoodAbs = a.cost.foodVarPct01 == null ? Number.POSITIVE_INFINITY : Math.abs(a.cost.foodVarPct01);
+      const bFoodAbs = b.cost.foodVarPct01 == null ? Number.POSITIVE_INFINITY : Math.abs(b.cost.foodVarPct01);
+      const comparisons: Array<[number, number, boolean]> = [
+        [a.service.dotPct01 ?? -1, b.service.dotPct01 ?? -1, true],
+        [a.cost.labourPct01 ?? Number.POSITIVE_INFINITY, b.cost.labourPct01 ?? Number.POSITIVE_INFINITY, false],
+        [aFoodAbs, bFoodAbs, false],
+        [a.service.rnlMinutes ?? Number.POSITIVE_INFINITY, b.service.rnlMinutes ?? Number.POSITIVE_INFINITY, false],
+        [a.service.extremesPct01 ?? Number.POSITIVE_INFINITY, b.service.extremesPct01 ?? Number.POSITIVE_INFINITY, false],
+      ];
+      for (const [av, bv, higherBetter] of comparisons) {
+        if (av !== bv) return higherBetter ? bv - av : av - bv;
+      }
+      return a.store.localeCompare(b.store);
+    });
+    return ranked[0] || null;
+  }, [storeCards]);
 
   const toggleTask = async (task: TaskRow) => {
     const willComplete = !task.is_complete;
@@ -1093,6 +1155,44 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
         ) : null}
 
         {!loading && !error ? (
+          <section className="section serviceBridge">
+            <div className="section-head">
+              <div>
+                <h2>Yesterday → Today (Service Losing)</h2>
+                <p>Yesterday actuals vs today plan targets</p>
+              </div>
+            </div>
+            <div className="bridgeGrid">
+              {rankedStoreCards.map((card) => (
+                <article key={`bridge-${card.store}`} className="bridgeCard">
+                  <div className="bridgeTitle">{card.store}</div>
+                  <div className="bridgeCols">
+                    <div>
+                      <div className="bridgeColTitle">Yesterday actuals</div>
+                      <div className="bridgePills">
+                        <span className="pill">Load {fmtNum2(card.yesterdayActuals?.load_time_mins ?? null)}</span>
+                        <span className="pill">Rack {fmtNum2(card.yesterdayActuals?.rack_time_mins ?? null)}</span>
+                        <span className="pill">ADT {fmtNum2(card.yesterdayActuals?.adt_mins ?? null)}</span>
+                        <span className="pill">Ext {fmtPct2(to01From100(card.yesterdayActuals?.extremes_over_40_pct ?? null))}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="bridgeColTitle">Today plan</div>
+                      <div className="bridgePills">
+                        <span className="pill">Load {fmtNum2(card.todayPlan?.target_load_time_mins ?? null)}</span>
+                        <span className="pill">Rack {fmtNum2(card.todayPlan?.target_rack_time_mins ?? null)}</span>
+                        <span className="pill">ADT {fmtNum2(card.todayPlan?.target_adt_mins ?? null)}</span>
+                        <span className="pill">Ext {fmtPct2(to01From100(card.todayPlan?.target_extremes_over40_pct ?? null))}</span>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {!loading && !error ? (
           <section className="section highlights">
             <div className="highlights-head">
               <h2>Highlights</h2>
@@ -1175,7 +1275,25 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
           </section>
         ) : null}
 
-        {!loading && !error ? (
+        {!loading && !error && bestShiftSnapshot ? (
+          <section className="section bestSnapshot">
+            <div className="section-head">
+              <div>
+                <h2>Best Shift Snapshot (Yesterday)</h2>
+                <p>{bestShiftSnapshot.store}</p>
+              </div>
+            </div>
+            <div className="snapshotPills">
+              <span className="pill">DOT {fmtPct2(bestShiftSnapshot.service.dotPct01)}</span>
+              <span className="pill">Labour {fmtPct2(bestShiftSnapshot.cost.labourPct01)}</span>
+              <span className="pill">Food Var {fmtPct2(bestShiftSnapshot.cost.foodVarPct01)}</span>
+              <span className="pill">R&L {fmtMins2(bestShiftSnapshot.service.rnlMinutes)}</span>
+              <span className="pill">Extremes {fmtPct2(bestShiftSnapshot.service.extremesPct01)}</span>
+            </div>
+          </section>
+        ) : null}
+
+        {!loading && !error && !exportMode ? (
           <section className="section">
             <div className="section-head">
               <div>
@@ -1210,34 +1328,9 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
           </section>
         ) : null}
 
-        {!loading && !error ? (
-          <section className="section">
-            <div className="section-head">
-              <div>
-                <h2>Mini-trends (WTD)</h2>
-                <p>Week start to target date.</p>
-              </div>
-            </div>
-            <div className="miniTrendGrid">
-              <article className="miniTrendCard">
-                <div className="miniTrendHead"><b>Labour WTD</b><span className={pillClassFromStatus(statusLowerBetter(miniTrends.labourLatest, AREA_TARGETS.labourMax01))}>{fmtPct2(miniTrends.labourLatest)}</span></div>
-                <div className="sparkWrap"><Sparkline points={miniTrends.labourSeries} /></div>
-              </article>
-              <article className="miniTrendCard">
-                <div className="miniTrendHead"><b>Food variance WTD</b><span className={pillClassFromStatus(statusAbsLowerBetter(miniTrends.foodLatest, AREA_TARGETS.foodVarAbsMax01))}>{fmtPct2(miniTrends.foodLatest)}</span></div>
-                <div className="sparkWrap"><Sparkline points={miniTrends.foodSeries} /></div>
-              </article>
-              <article className="miniTrendCard">
-                <div className="miniTrendHead"><b>OSA Avg Points Lost WTD</b><span className="pill">{fmtNum2(miniTrends.osaLatest)}</span></div>
-                <div className="sparkWrap"><Sparkline points={miniTrends.osaSeries} /></div>
-              </article>
-            </div>
-          </section>
-        ) : null}
-
         {/* Store cards */}
         {!loading && !error ? (
-          <section className="section">
+          <section className={`section ${exportMode ? "storeSection" : ""}`}>
             <div className="section-head">
               <div>
                 <h2>Stores</h2>
@@ -1251,16 +1344,7 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
             </div>
 
             <div className="storeGrid">
-              {[...storeCards]
-                .sort((a, b) => {
-                  const aDot = a.service.dotPct01 ?? -1;
-                  const bDot = b.service.dotPct01 ?? -1;
-                  if (bDot !== aDot) return bDot - aDot;
-                  const aLab = a.cost.labourPct01 ?? Number.POSITIVE_INFINITY;
-                  const bLab = b.cost.labourPct01 ?? Number.POSITIVE_INFINITY;
-                  return aLab - bLab;
-                })
-                .map((card) => {
+              {rankedStoreCards.map((card) => {
                   const dotStatus = statusHigherBetter(card.service.dotPct01, card.targets.dotMin01);
                   const labourStatus = statusLowerBetter(card.cost.labourPct01, card.targets.labourMax01);
                   const rnlStatus = statusLowerBetter(card.service.rnlMinutes, card.targets.rnlMaxMins, 0.1);
@@ -1314,7 +1398,10 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
                             <div className="rowLabel">DOT</div>
                             <div className="rowHint">≥ {(card.targets.dotMin01 * 100).toFixed(0)}%</div>
                           </div>
+                          <div className="metricValueWrap">
                           <span className={pillClassFromStatus(dotStatus)}>{fmtPct2(card.service.dotPct01)}</span>
+                          <div className="sdlwLine">{buildSdlwLine(card.service.dotPct01, card.sdlw.dotPct01, "pct")}</div>
+                        </div>
                         </div>
 
                         <div className="metricRow">
@@ -1322,7 +1409,10 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
                             <div className="rowLabel">Labour</div>
                             <div className="rowHint">≤ {(card.targets.labourMax01 * 100).toFixed(0)}%</div>
                           </div>
+                          <div className="metricValueWrap">
                           <span className={pillClassFromStatus(labourStatus)}>{fmtPct2(card.cost.labourPct01)}</span>
+                          <div className="sdlwLine">{buildSdlwLine(card.cost.labourPct01, card.sdlw.labourPct01, "pct")}</div>
+                        </div>
                         </div>
 
                         <div className="metricRow">
@@ -1330,7 +1420,10 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
                             <div className="rowLabel">R&amp;L</div>
                             <div className="rowHint">≤ {card.targets.rnlMaxMins.toFixed(0)}m</div>
                           </div>
+                          <div className="metricValueWrap">
                           <span className={pillClassFromStatus(rnlStatus)}>{fmtMins2(card.service.rnlMinutes)}</span>
+                          <div className="sdlwLine">{buildSdlwLine(card.service.rnlMinutes, card.sdlw.rnlMinutes, "mins")}</div>
+                        </div>
                         </div>
 
                         <div className="metricRow">
@@ -1338,7 +1431,10 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
                             <div className="rowLabel">Extremes &gt;40</div>
                             <div className="rowHint">≤ {(card.targets.extremesMax01 * 100).toFixed(0)}%</div>
                           </div>
+                          <div className="metricValueWrap">
                           <span className={pillClassFromStatus(extremesStatus)}>{fmtPct2(card.service.extremesPct01)}</span>
+                          <div className="sdlwLine">{buildSdlwLine(card.service.extremesPct01, card.sdlw.extremesPct01, "pct")}</div>
+                        </div>
                         </div>
 
                         <div className="metricRow">
@@ -1354,7 +1450,10 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
                             <div className="rowLabel">Food variance</div>
                             <div className="rowHint">Abs ≤ {(card.targets.foodVarAbsMax01 * 100).toFixed(2)}%</div>
                           </div>
+                          <div className="metricValueWrap">
                           <span className={pillClassFromStatus(foodVarStatus)}>{fmtPct2(card.cost.foodVarPct01)}</span>
+                          <div className="sdlwLine">{buildSdlwLine(card.cost.foodVarPct01, card.sdlw.foodVarPct01, "pct")}</div>
+                        </div>
                         </div>
                       </div>
 
@@ -1892,6 +1991,38 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
           text-overflow: ellipsis;
         }
 
+        .metricValueWrap {
+          display: grid;
+          justify-items: end;
+          gap: 2px;
+        }
+
+        .sdlwLine {
+          font-size: 11px;
+          font-weight: 800;
+          color: rgba(100, 116, 139, 0.95);
+          line-height: 1.15;
+        }
+
+        .bridgeGrid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .bridgeCard {
+          border-radius: 16px;
+          border: 1px solid rgba(15, 23, 42, 0.08);
+          background: rgba(248, 250, 252, 0.8);
+          padding: 10px;
+        }
+
+        .bridgeTitle { font-weight: 900; margin-bottom: 8px; }
+        .bridgeCols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+        .bridgeColTitle { font-size: 11px; font-weight: 900; text-transform: uppercase; color: rgba(100,116,139,0.95); margin-bottom: 6px; }
+        .bridgePills { display: grid; gap: 6px; }
+        .snapshotPills { display: flex; flex-wrap: wrap; gap: 8px; }
+
         .inputsRow {
           margin-top: 10px;
           display: grid;
@@ -2079,34 +2210,6 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
           font-weight: 800;
         }
 
-        .miniTrendGrid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 10px;
-        }
-
-        .miniTrendCard {
-          border-radius: 16px;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          background: rgba(248, 250, 252, 0.8);
-          padding: 10px;
-          color: #0f172a;
-          box-shadow: 0 8px 18px rgba(2, 6, 23, 0.04);
-        }
-
-        .miniTrendHead {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 8px;
-          font-size: 12px;
-        }
-
-        .sparkWrap {
-          margin-top: 8px;
-          opacity: 0.9;
-        }
-
         .footer {
           text-align: center;
           margin-top: 18px;
@@ -2122,8 +2225,7 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
           .highlights-grid {
             grid-template-columns: 1fr;
           }
-          .signalsGrid,
-          .miniTrendGrid {
+          .signalsGrid {
             grid-template-columns: 1fr;
           }
           .kvGrid {
@@ -2133,6 +2235,10 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
             grid-template-columns: 1fr;
           }
           .inputsRow {
+            grid-template-columns: 1fr;
+          }
+          .bridgeGrid,
+          .bridgeCols {
             grid-template-columns: 1fr;
           }
           .storePills {
@@ -2162,12 +2268,14 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
           .section,
           .storeCard,
           .signalCard,
-          .miniTrendCard,
           .panel,
           .metricRow,
           .inputChip {
             box-shadow: none !important;
             break-inside: avoid;
+          }
+          .exportMode .storeSection {
+            page-break-before: always;
           }
           .exportMode .storeGrid {
             grid-template-columns: 1fr !important;
@@ -2175,6 +2283,12 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
           .storeCard {
             page-break-inside: avoid;
             break-inside: avoid;
+          }
+          .exportMode .storeCard:nth-child(2n + 1) {
+            page-break-before: always;
+          }
+          .exportMode .storeCard:first-child {
+            page-break-before: auto;
           }
           .exportMode,
           .exportMode * {
