@@ -5,7 +5,7 @@ import DailyUpdateClient from "../DailyUpdateClient";
 
 function PrintTrigger() {
   useEffect(() => {
-    const timer = window.setTimeout(() => window.print(), 700);
+    const timer = window.setTimeout(() => window.print(), 900);
     return () => window.clearTimeout(timer);
   }, []);
   return null;
