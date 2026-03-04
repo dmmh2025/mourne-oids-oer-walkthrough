@@ -16,6 +16,12 @@ export default function DailyUpdateExportPage() {
     <>
       <PrintTrigger />
       <DailyUpdateClient exportMode />
+      <style jsx global>{`
+        @page {
+          size: A4 portrait;
+          margin: 10mm;
+        }
+      `}</style>
     </>
   );
 }
