@@ -26,15 +26,6 @@ type StoreInputRow = {
   notes: string | null;
 };
 
-type ServiceLosingActualRow = {
-  date: string;
-  store: string;
-  load_time_mins: number | null;
-  rack_time_mins: number | null;
-  adt_mins: number | null;
-  extremes_over_40_pct: number | null;
-};
-
 type TaskRow = {
   id: string;
   date: string;
@@ -140,8 +131,6 @@ const getPreviousBusinessDayUk = () => {
   return toISODateUK(previous);
 };
 
-const getTodayUk = () => toISODateUK(new Date());
-
 const addDaysIsoUk = (isoDate: string, days: number) => {
   const d = parseIsoDate(isoDate);
   d.setDate(d.getDate() + days);
@@ -170,6 +159,8 @@ const fmtPct2 = (v01: number | null) =>
   v01 == null || !Number.isFinite(v01) ? "—" : `${(v01 * 100).toFixed(2)}%`;
 const fmtNum2 = (v: number | null) =>
   v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}`;
+const fmtNum1 = (v: number | null) =>
+  v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(1)}`;
 const fmtMins2 = (v: number | null) =>
   v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}m`;
 
@@ -395,9 +386,6 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
   const [sdlwServiceRows, setSdlwServiceRows] = useState<ServiceShiftRow[]>([]);
   const [costRows, setCostRows] = useState<CostControlRow[]>([]);
   const [sdlwCostRows, setSdlwCostRows] = useState<CostControlRow[]>([]);
-  const [costWtdRows, setCostWtdRows] = useState<CostControlRow[]>([]);
-  const [serviceLosingActualRows, setServiceLosingActualRows] = useState<ServiceLosingActualRow[]>([]);
-  const [todayPlanInputs, setTodayPlanInputs] = useState<StoreInputRow[]>([]);
   const [osaRows, setOsaRows] = useState<OsaInternalRow[]>([]);
   const [stores, setStores] = useState<string[]>([]);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
@@ -420,7 +408,6 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
         const previousBusinessDay = getPreviousBusinessDayUk();
         const sdlwDate = addDaysIsoUk(previousBusinessDay, -7);
         const wkStart = getWeekStartUK(previousBusinessDay);
-        const todayUk = getTodayUk();
 
         setTargetDate(previousBusinessDay);
         setWeekStart(wkStart);
@@ -433,10 +420,7 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
           sdlwServiceRes,
           costRes,
           sdlwCostRes,
-          costWtdRes,
           osaRes,
-          serviceLosingActualsRes,
-          todayPlanInputsRes,
           serviceStoresRes,
           costStoresRes,
           inputStoresRes,
@@ -470,25 +454,10 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
             .select("shift_date,store,sales_gbp,labour_cost_gbp,ideal_food_cost_gbp,actual_food_cost_gbp")
             .eq("shift_date", sdlwDate),
           supabase
-            .from("cost_control_entries")
-            .select("shift_date,store,sales_gbp,labour_cost_gbp,ideal_food_cost_gbp,actual_food_cost_gbp")
-            .gte("shift_date", wkStart)
-            .lte("shift_date", previousBusinessDay),
-          supabase
             .from("osa_internal_results")
             .select("shift_date,store,points_lost")
             .gte("shift_date", wkStart)
             .lte("shift_date", previousBusinessDay),
-          supabase
-            .from("daily_update_service_losing_actuals")
-            .select("date,store,load_time_mins,rack_time_mins,adt_mins,extremes_over_40_pct")
-            .eq("date", previousBusinessDay),
-          supabase
-            .from("daily_update_store_inputs")
-            .select(
-              "date,store,missed_calls_wtd,gps_tracked_wtd,aof_wtd,target_load_time_mins,target_rack_time_mins,target_adt_mins,target_extremes_over40_pct,notes"
-            )
-            .eq("date", todayUk),
           supabase.from("service_shifts").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
           supabase.from("cost_control_entries").select("store,shift_date").order("shift_date", { ascending: false }).limit(500),
           supabase.from("daily_update_store_inputs").select("store,date").order("date", { ascending: false }).limit(500),
@@ -502,10 +471,7 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
           sdlwServiceRes.error,
           costRes.error,
           sdlwCostRes.error,
-          costWtdRes.error,
           osaRes.error,
-          serviceLosingActualsRes.error,
-          todayPlanInputsRes.error,
           serviceStoresRes.error,
           costStoresRes.error,
           inputStoresRes.error,
@@ -520,10 +486,7 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
         setSdlwServiceRows((sdlwServiceRes.data || []) as ServiceShiftRow[]);
         setCostRows((costRes.data || []) as CostControlRow[]);
         setSdlwCostRows((sdlwCostRes.data || []) as CostControlRow[]);
-        setCostWtdRows((costWtdRes.data || []) as CostControlRow[]);
         setOsaRows((osaRes.data || []) as OsaInternalRow[]);
-        setServiceLosingActualRows((serviceLosingActualsRes.data || []) as ServiceLosingActualRow[]);
-        setTodayPlanInputs((todayPlanInputsRes.data || []) as StoreInputRow[]);
 
         const storeSet = new Set<string>();
         for (const row of [...(serviceStoresRes.data || []), ...(costStoresRes.data || []), ...(inputStoresRes.data || [])]) {
@@ -731,18 +694,6 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
     return m;
   }, [sdlwCostRows]);
 
-  const todayPlanByStore = useMemo(() => {
-    const m = new Map<string, StoreInputRow>();
-    for (const row of todayPlanInputs) m.set(row.store, row);
-    return m;
-  }, [todayPlanInputs]);
-
-  const yesterdayActualsByStore = useMemo(() => {
-    const m = new Map<string, ServiceLosingActualRow>();
-    for (const row of serviceLosingActualRows) m.set(row.store, row);
-    return m;
-  }, [serviceLosingActualRows]);
-
   const storeCards = useMemo(() => {
     return stores.map((store) => {
       const cost = costRows.filter((row) => row.store === store);
@@ -792,8 +743,6 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
         targets,
         osaWtdCount: osaCounts.byStore.get(store) || 0,
         daily: { missedCalls01, gps01, aof01 },
-        yesterdayActuals: yesterdayActualsByStore.get(store) || null,
-        todayPlan: todayPlanByStore.get(store) || null,
       };
     });
   }, [
@@ -805,8 +754,6 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
     inputsByStore,
     tasksByStore,
     osaCounts.byStore,
-    yesterdayActualsByStore,
-    todayPlanByStore,
   ]);
 
   const areaRollup = useMemo(() => {
@@ -823,73 +770,45 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
     return { labourPct01, foodVarPct01, additionalHours };
   }, [costRows, serviceRows]);
 
+  const areaOsaAvgPointsLostWtd = useMemo(() => {
+    const points = osaRows.map((r) => r.points_lost).filter((v): v is number => v != null && Number.isFinite(v));
+    return avg(points);
+  }, [osaRows]);
+
   const keySignals = useMemo(() => {
-    const { byStore, area } = accumulateCostTotals(costWtdRows);
-    const areaMetric = totalsToRatios(area);
-    const out: Array<{
-      store: string;
-      label: string;
-      value: number | null;
-      targetText: string;
-      status: MetricStatus;
-      labourPct01: number | null;
-      foodVarPct01: number | null;
-    }> = [];
+    const signalPriority: Record<string, number> = {
+      Stable: 0,
+      "Labour Risk": 1,
+      "Food Risk": 2,
+      "Dispatch Risk": 3,
+      "Service Risk": 4,
+    };
 
-    for (const store of stores) {
-      const metric = totalsToRatios(byStore[store] || { sales: 0, labour: 0, ideal: 0, actual: 0 });
-      const targets = DEFAULT_TARGETS[store] || DEFAULT_TARGETS.Newcastle;
-      const foodStatus = statusAbsLowerBetter(metric.foodVarPct01, targets.foodVarAbsMax01);
-      const labourStatus = statusLowerBetter(metric.labourPct01, targets.labourMax01);
+    const preferredOrder = ["Downpatrick", "Kilkeel", "Newcastle", "Ballynahinch"];
+    const orderedStores = preferredOrder.filter((store) => stores.includes(store));
 
-      if (foodStatus === "bad") {
-        out.push({
-          store,
-          label: "Food WTD",
-          value: metric.foodVarPct01,
-          targetText: `Target abs ≤ ${(targets.foodVarAbsMax01 * 100).toFixed(2)}%`,
-          status: foodStatus,
-          labourPct01: metric.labourPct01,
-          foodVarPct01: metric.foodVarPct01,
-        });
-      } else if (labourStatus === "bad") {
-        out.push({
-          store,
-          label: "Labour WTD",
-          value: metric.labourPct01,
-          targetText: `Target ≤ ${(targets.labourMax01 * 100).toFixed(0)}%`,
-          status: labourStatus,
-          labourPct01: metric.labourPct01,
-          foodVarPct01: metric.foodVarPct01,
-        });
-      } else {
-        out.push({
-          store,
-          label: "On track WTD",
-          value: metric.labourPct01,
-          targetText: `Food abs ≤ ${(targets.foodVarAbsMax01 * 100).toFixed(2)}% • Labour ≤ ${(targets.labourMax01 * 100).toFixed(0)}%`,
-          status: "good",
-          labourPct01: metric.labourPct01,
-          foodVarPct01: metric.foodVarPct01,
-        });
-      }
-    }
+    const storeSignals = orderedStores.map((store) => {
+      const card = storeCards.find((c) => c.store === store);
+      if (!card) return { store, label: "Stable", status: "good" as MetricStatus };
 
-    const areaFoodStatus = statusAbsLowerBetter(areaMetric.foodVarPct01, AREA_TARGETS.foodVarAbsMax01);
-    const areaLabourStatus = statusLowerBetter(areaMetric.labourPct01, AREA_TARGETS.labourMax01);
-    const areaSignalStatus = areaFoodStatus === "bad" ? areaFoodStatus : areaLabourStatus === "bad" ? areaLabourStatus : "good";
-    out.unshift({
-      store: "Area total",
-      label: areaFoodStatus === "bad" ? "Food WTD" : areaLabourStatus === "bad" ? "Labour WTD" : "On track WTD",
-      value: areaFoodStatus === "bad" ? areaMetric.foodVarPct01 : areaMetric.labourPct01,
-      targetText: `Food abs ≤ ${(AREA_TARGETS.foodVarAbsMax01 * 100).toFixed(2)}% • Labour ≤ ${(AREA_TARGETS.labourMax01 * 100).toFixed(0)}%`,
-      status: areaSignalStatus,
-      labourPct01: areaMetric.labourPct01,
-      foodVarPct01: areaMetric.foodVarPct01,
+      const extremesStatus = statusLowerBetter(card.service.extremesPct01, card.targets.extremesMax01);
+      const rnlStatus = statusLowerBetter(card.service.rnlMinutes, card.targets.rnlMaxMins, 0.1);
+      const foodStatus = statusAbsLowerBetter(card.cost.foodVarPct01, card.targets.foodVarAbsMax01);
+      const labourStatus = statusLowerBetter(card.cost.labourPct01, card.targets.labourMax01);
+
+      if (extremesStatus === "bad") return { store, label: "Service Risk", status: "bad" as MetricStatus };
+      if (rnlStatus === "bad") return { store, label: "Dispatch Risk", status: "bad" as MetricStatus };
+      if (foodStatus === "bad") return { store, label: "Food Risk", status: "bad" as MetricStatus };
+      if (labourStatus === "bad") return { store, label: "Labour Risk", status: "bad" as MetricStatus };
+      return { store, label: "Stable", status: "good" as MetricStatus };
     });
 
-    return out;
-  }, [costWtdRows, stores]);
+    const areaSignal =
+      [...storeSignals].sort((a, b) => signalPriority[b.label] - signalPriority[a.label])[0] ||
+      ({ store: "Area", label: "Stable", status: "good" } as const);
+
+    return { areaSignal, storeSignals };
+  }, [storeCards, stores]);
 
   const topManager = useMemo(() => {
     const rankedManagers = computeRanked(svcRows, "manager");
@@ -957,7 +876,14 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
         : areaRollup.additionalHours <= AREA_TARGETS.addHoursOkMax
           ? "ok"
           : "bad";
-  const areaOsaStatus: MetricStatus = osaCounts.total <= 0 ? "good" : osaCounts.total <= 1 ? "ok" : "bad";
+  const areaOsaStatus: MetricStatus =
+    areaOsaAvgPointsLostWtd == null || !Number.isFinite(areaOsaAvgPointsLostWtd)
+      ? "na"
+      : areaOsaAvgPointsLostWtd <= 15
+        ? "good"
+        : areaOsaAvgPointsLostWtd <= 20
+          ? "ok"
+          : "bad";
 
   // Slack text (still generated, but not displayed)
   const slackText = useMemo(() => {
@@ -975,7 +901,7 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
       `• Food: ${statusEmoji(areaFoodStatus)} ${fmtPct2(areaRollup.foodVarPct01)} (abs ≤ ${(AREA_TARGETS.foodVarAbsMax01 * 100).toFixed(2)}%)`
     );
     lines.push(`• Add. hours: ${statusEmoji(areaAddHoursStatus)} ${fmtNum2(areaRollup.additionalHours)} (actual vs rota)`);
-    lines.push(`• OSA WTD: ${statusEmoji(areaOsaStatus)} ${osaCounts.total}`);
+    lines.push(`• OSA Avg Points Lost WTD: ${statusEmoji(areaOsaStatus)} ${fmtNum1(areaOsaAvgPointsLostWtd)}`);
     lines.push("");
 
     const ranked = [...storeCards].sort((a, b) => {
@@ -1036,7 +962,7 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
     areaFoodStatus,
     areaAddHoursStatus,
     areaOsaStatus,
-    osaCounts.total,
+    areaOsaAvgPointsLostWtd,
     storeCards,
   ]);
 
@@ -1108,9 +1034,9 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
             <span className="areaOverviewLabel">Area Overview</span>
             <div className="kpi-mini">
               <span className="kpi-chip">
-                <b>OSA WTD</b>{" "}
+                <b>OSA Avg Points Lost WTD</b>{" "}
                 <span className={pillClassFromStatus(areaOsaStatus)} style={{ minWidth: 54 }}>
-                  {osaCounts.total}
+                  {fmtNum1(areaOsaAvgPointsLostWtd)}
                 </span>
               </span>
 
@@ -1155,39 +1081,27 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
         ) : null}
 
         {!loading && !error ? (
-          <section className="section serviceBridge">
+          <section className="section">
             <div className="section-head">
               <div>
-                <h2>Yesterday → Today (Service Losing)</h2>
-                <p>Yesterday actuals vs today plan targets</p>
+                <h2>Key Signals</h2>
+                <p>Compact risk summary.</p>
               </div>
             </div>
-            <div className="bridgeGrid">
-              {rankedStoreCards.map((card) => (
-                <article key={`bridge-${card.store}`} className="bridgeCard">
-                  <div className="bridgeTitle">{card.store}</div>
-                  <div className="bridgeCols">
-                    <div>
-                      <div className="bridgeColTitle">Yesterday actuals</div>
-                      <div className="bridgePills">
-                        <span className="pill">Load {fmtNum2(card.yesterdayActuals?.load_time_mins ?? null)}</span>
-                        <span className="pill">Rack {fmtNum2(card.yesterdayActuals?.rack_time_mins ?? null)}</span>
-                        <span className="pill">ADT {fmtNum2(card.yesterdayActuals?.adt_mins ?? null)}</span>
-                        <span className="pill">Ext {fmtPct2(to01From100(card.yesterdayActuals?.extremes_over_40_pct ?? null))}</span>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="bridgeColTitle">Today plan</div>
-                      <div className="bridgePills">
-                        <span className="pill">Load {fmtNum2(card.todayPlan?.target_load_time_mins ?? null)}</span>
-                        <span className="pill">Rack {fmtNum2(card.todayPlan?.target_rack_time_mins ?? null)}</span>
-                        <span className="pill">ADT {fmtNum2(card.todayPlan?.target_adt_mins ?? null)}</span>
-                        <span className="pill">Ext {fmtPct2(to01From100(card.todayPlan?.target_extremes_over40_pct ?? null))}</span>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-              ))}
+            <div className="signalsCompact">
+              <p className="signalsLine subtitle">
+                Area Signal: <span className={pillClassFromStatus(keySignals.areaSignal.status)}>{keySignals.areaSignal.label}</span>
+              </p>
+              <p className="signalsLine subtitle signalsStoresLine">
+                Stores:
+                {keySignals.storeSignals.map((signal, index) => (
+                  <React.Fragment key={signal.store}>
+                    {index > 0 ? <span className="signalsSeparator">•</span> : null}
+                    <span className="signalsStoreName">{signal.store}</span>
+                    <span className={pillClassFromStatus(signal.status)}>{signal.label}</span>
+                  </React.Fragment>
+                ))}
+              </p>
             </div>
           </section>
         ) : null}
@@ -1289,41 +1203,6 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
               <span className="pill">Food Var {fmtPct2(bestShiftSnapshot.cost.foodVarPct01)}</span>
               <span className="pill">R&L {fmtMins2(bestShiftSnapshot.service.rnlMinutes)}</span>
               <span className="pill">Extremes {fmtPct2(bestShiftSnapshot.service.extremesPct01)}</span>
-            </div>
-          </section>
-        ) : null}
-
-        {!loading && !error && !exportMode ? (
-          <section className="section">
-            <div className="section-head">
-              <div>
-                <h2>Key Signals</h2>
-                <p>Cost-only signals from weighted daily totals.</p>
-              </div>
-              <span className="pill">Target checks</span>
-            </div>
-            <div className="signalsGrid">
-              {keySignals.map((signal) => (
-                <article key={signal.store} className="signalCard">
-                  <div className="signalTop">
-                    <b>{signal.store}</b>
-                    {signal.label === "On track WTD" ? (
-                      <span className="signalPillsCompact">
-                        <span className={pillClassFromStatus(statusLowerBetter(signal.labourPct01, signal.store === "Area total" ? AREA_TARGETS.labourMax01 : (DEFAULT_TARGETS[signal.store] || DEFAULT_TARGETS.Newcastle).labourMax01))}>
-                          L {fmtPct2(signal.labourPct01)}
-                        </span>
-                        <span className={pillClassFromStatus(statusAbsLowerBetter(signal.foodVarPct01, signal.store === "Area total" ? AREA_TARGETS.foodVarAbsMax01 : (DEFAULT_TARGETS[signal.store] || DEFAULT_TARGETS.Newcastle).foodVarAbsMax01))}>
-                          F {fmtPct2(signal.foodVarPct01)}
-                        </span>
-                      </span>
-                    ) : (
-                      <span className={pillClassFromStatus(signal.status)}>{fmtPct2(signal.value)}</span>
-                    )}
-                  </div>
-                  <div className="signalLabel">{signal.label}</div>
-                  <p className="signalTarget">{signal.targetText}</p>
-                </article>
-              ))}
             </div>
           </section>
         ) : null}
@@ -2170,44 +2049,32 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
         }
 
 
-        .signalsGrid {
+        .signalsCompact {
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 10px;
-        }
-
-        .signalCard {
-          border-radius: 16px;
-          border: 1px solid rgba(15, 23, 42, 0.08);
-          background: rgba(248, 250, 252, 0.8);
-          padding: 10px;
-          box-shadow: 0 8px 18px rgba(2, 6, 23, 0.04);
-        }
-
-        .signalTop {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .signalPillsCompact {
-          display: inline-flex;
           gap: 6px;
+        }
+
+        .signalsLine {
+          margin: 0;
+          display: flex;
           align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
         }
 
-        .signalLabel {
-          font-weight: 900;
-          margin-top: 8px;
-          font-size: 13px;
+        .signalsStoresLine {
+          gap: 6px;
         }
 
-        .signalTarget {
-          margin: 6px 0 0;
-          font-size: 12px;
-          color: var(--muted);
+        .signalsStoreName {
           font-weight: 800;
+          color: rgba(15, 23, 42, 0.82);
+          margin-left: 4px;
+        }
+
+        .signalsSeparator {
+          color: rgba(100, 116, 139, 0.95);
+          font-weight: 900;
         }
 
         .footer {
@@ -2223,9 +2090,6 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
             grid-template-columns: 1fr;
           }
           .highlights-grid {
-            grid-template-columns: 1fr;
-          }
-          .signalsGrid {
             grid-template-columns: 1fr;
           }
           .kvGrid {
@@ -2267,7 +2131,6 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
           }
           .section,
           .storeCard,
-          .signalCard,
           .panel,
           .metricRow,
           .inputChip {
