@@ -887,7 +887,7 @@ export default function DailyUpdateClient() {
           <section className="section highlights">
             <div className="highlights-head">
               <h2>Highlights</h2>
-              <p>This week to date • ranked by DOT, labour, then RNL</p>
+              <p></p>
             </div>
 
             {highlightsError && (
