@@ -310,6 +310,48 @@ type DailyCostBucket = {
   area: { labourPct01: number | null; foodVarPct01: number | null };
 };
 
+type CostTotals = { sales: number; labour: number; ideal: number; actual: number };
+
+const accumulateCostTotals = (rows: CostControlRow[]) => {
+  const byStore: Record<string, CostTotals> = {};
+  const area: CostTotals = { sales: 0, labour: 0, ideal: 0, actual: 0 };
+
+  for (const row of rows) {
+    const store = String(row.store || "").trim();
+    if (!store) continue;
+    if (!byStore[store]) byStore[store] = { sales: 0, labour: 0, ideal: 0, actual: 0 };
+
+    const sales = Number(row.sales_gbp);
+    const labour = Number(row.labour_cost_gbp);
+    const ideal = Number(row.ideal_food_cost_gbp);
+    const actual = Number(row.actual_food_cost_gbp);
+
+    if (Number.isFinite(sales)) {
+      byStore[store].sales += sales;
+      area.sales += sales;
+    }
+    if (Number.isFinite(labour)) {
+      byStore[store].labour += labour;
+      area.labour += labour;
+    }
+    if (Number.isFinite(ideal)) {
+      byStore[store].ideal += ideal;
+      area.ideal += ideal;
+    }
+    if (Number.isFinite(actual)) {
+      byStore[store].actual += actual;
+      area.actual += actual;
+    }
+  }
+
+  return { byStore, area };
+};
+
+const totalsToRatios = (totals: CostTotals) => ({
+  labourPct01: totals.sales > 0 ? totals.labour / totals.sales : null,
+  foodVarPct01: totals.sales > 0 ? (totals.actual - totals.ideal) / totals.sales : null,
+});
+
 const eachDateInclusive = (startIso: string, endIso: string) => {
   const out: string[] = [];
   const cursor = parseIsoDate(startIso);
@@ -325,54 +367,17 @@ const computeCostWtdBuckets = (rows: CostControlRow[], weekStartIso: string, tar
   const dates = eachDateInclusive(weekStartIso, targetDateIso);
   return dates.map((date) => {
     const rowsForDay = rows.filter((r) => r.shift_date === date);
-    const storeTotals: Record<string, { sales: number; labour: number; ideal: number; actual: number }> = {};
-    let areaSales = 0;
-    let areaLabour = 0;
-    let areaIdeal = 0;
-    let areaActual = 0;
-
-    for (const row of rowsForDay) {
-      const store = String(row.store || '').trim();
-      if (!storeTotals[store]) storeTotals[store] = { sales: 0, labour: 0, ideal: 0, actual: 0 };
-
-      const sales = Number(row.sales_gbp);
-      const labour = Number(row.labour_cost_gbp);
-      const ideal = Number(row.ideal_food_cost_gbp);
-      const actual = Number(row.actual_food_cost_gbp);
-
-      if (Number.isFinite(sales)) {
-        storeTotals[store].sales += sales;
-        areaSales += sales;
-      }
-      if (Number.isFinite(labour)) {
-        storeTotals[store].labour += labour;
-        areaLabour += labour;
-      }
-      if (Number.isFinite(ideal)) {
-        storeTotals[store].ideal += ideal;
-        areaIdeal += ideal;
-      }
-      if (Number.isFinite(actual)) {
-        storeTotals[store].actual += actual;
-        areaActual += actual;
-      }
-    }
+    const { byStore: storeTotals, area: areaTotals } = accumulateCostTotals(rowsForDay);
 
     const byStore: DailyCostBucket['byStore'] = {};
     for (const [store, t] of Object.entries(storeTotals)) {
-      byStore[store] = {
-        labourPct01: t.sales > 0 ? t.labour / t.sales : null,
-        foodVarPct01: t.sales > 0 ? (t.actual - t.ideal) / t.sales : null,
-      };
+      byStore[store] = totalsToRatios(t);
     }
 
     return {
       date,
       byStore,
-      area: {
-        labourPct01: areaSales > 0 ? areaLabour / areaSales : null,
-        foodVarPct01: areaSales > 0 ? (areaActual - areaIdeal) / areaSales : null,
-      },
+      area: totalsToRatios(areaTotals),
     };
   });
 };
@@ -764,42 +769,72 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
   );
 
   const keySignals = useMemo(() => {
-    const latest = costWtdBuckets[costWtdBuckets.length - 1];
-    if (!latest) return [] as Array<{ store: string; label: string; value: number | null; targetText: string; status: MetricStatus }>;
+    const { byStore, area } = accumulateCostTotals(costWtdRows);
+    const areaMetric = totalsToRatios(area);
+    const out: Array<{
+      store: string;
+      label: string;
+      value: number | null;
+      targetText: string;
+      status: MetricStatus;
+      labourPct01: number | null;
+      foodVarPct01: number | null;
+    }> = [];
 
-    return stores.map((store) => {
-      const metric = latest.byStore[store] || { labourPct01: null, foodVarPct01: null };
+    for (const store of stores) {
+      const metric = totalsToRatios(byStore[store] || { sales: 0, labour: 0, ideal: 0, actual: 0 });
       const targets = DEFAULT_TARGETS[store] || DEFAULT_TARGETS.Newcastle;
       const foodStatus = statusAbsLowerBetter(metric.foodVarPct01, targets.foodVarAbsMax01);
       const labourStatus = statusLowerBetter(metric.labourPct01, targets.labourMax01);
 
       if (foodStatus === "bad") {
-        return {
+        out.push({
           store,
-          label: "Food variance breach",
+          label: "Food WTD",
           value: metric.foodVarPct01,
           targetText: `Target abs ≤ ${(targets.foodVarAbsMax01 * 100).toFixed(2)}%`,
           status: foodStatus,
-        };
-      }
-      if (labourStatus === "bad") {
-        return {
+          labourPct01: metric.labourPct01,
+          foodVarPct01: metric.foodVarPct01,
+        });
+      } else if (labourStatus === "bad") {
+        out.push({
           store,
-          label: "Labour breach",
+          label: "Labour WTD",
           value: metric.labourPct01,
           targetText: `Target ≤ ${(targets.labourMax01 * 100).toFixed(0)}%`,
           status: labourStatus,
-        };
+          labourPct01: metric.labourPct01,
+          foodVarPct01: metric.foodVarPct01,
+        });
+      } else {
+        out.push({
+          store,
+          label: "On track WTD",
+          value: metric.labourPct01,
+          targetText: `Food abs ≤ ${(targets.foodVarAbsMax01 * 100).toFixed(2)}% • Labour ≤ ${(targets.labourMax01 * 100).toFixed(0)}%`,
+          status: "good",
+          labourPct01: metric.labourPct01,
+          foodVarPct01: metric.foodVarPct01,
+        });
       }
-      return {
-        store,
-        label: "On track",
-        value: metric.foodVarPct01,
-        targetText: `Food abs ≤ ${(targets.foodVarAbsMax01 * 100).toFixed(2)}% • Labour ≤ ${(targets.labourMax01 * 100).toFixed(0)}%`,
-        status: "good" as MetricStatus,
-      };
+    }
+
+    const areaFoodStatus = statusAbsLowerBetter(areaMetric.foodVarPct01, AREA_TARGETS.foodVarAbsMax01);
+    const areaLabourStatus = statusLowerBetter(areaMetric.labourPct01, AREA_TARGETS.labourMax01);
+    const areaSignalStatus = areaFoodStatus === "bad" ? areaFoodStatus : areaLabourStatus === "bad" ? areaLabourStatus : "good";
+    out.unshift({
+      store: "Area total",
+      label: areaFoodStatus === "bad" ? "Food WTD" : areaLabourStatus === "bad" ? "Labour WTD" : "On track WTD",
+      value: areaFoodStatus === "bad" ? areaMetric.foodVarPct01 : areaMetric.labourPct01,
+      targetText: `Food abs ≤ ${(AREA_TARGETS.foodVarAbsMax01 * 100).toFixed(2)}% • Labour ≤ ${(AREA_TARGETS.labourMax01 * 100).toFixed(0)}%`,
+      status: areaSignalStatus,
+      labourPct01: areaMetric.labourPct01,
+      foodVarPct01: areaMetric.foodVarPct01,
     });
-  }, [costWtdBuckets, stores]);
+
+    return out;
+  }, [costWtdRows, stores]);
 
   const miniTrends = useMemo(() => {
     const labourSeries = costWtdBuckets.map((b) => b.area.labourPct01);
@@ -1154,7 +1189,18 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
                 <article key={signal.store} className="signalCard">
                   <div className="signalTop">
                     <b>{signal.store}</b>
-                    <span className={pillClassFromStatus(signal.status)}>{fmtPct2(signal.value)}</span>
+                    {signal.label === "On track WTD" ? (
+                      <span className="signalPillsCompact">
+                        <span className={pillClassFromStatus(statusLowerBetter(signal.labourPct01, signal.store === "Area total" ? AREA_TARGETS.labourMax01 : (DEFAULT_TARGETS[signal.store] || DEFAULT_TARGETS.Newcastle).labourMax01))}>
+                          L {fmtPct2(signal.labourPct01)}
+                        </span>
+                        <span className={pillClassFromStatus(statusAbsLowerBetter(signal.foodVarPct01, signal.store === "Area total" ? AREA_TARGETS.foodVarAbsMax01 : (DEFAULT_TARGETS[signal.store] || DEFAULT_TARGETS.Newcastle).foodVarAbsMax01))}>
+                          F {fmtPct2(signal.foodVarPct01)}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className={pillClassFromStatus(signal.status)}>{fmtPct2(signal.value)}</span>
+                    )}
                   </div>
                   <div className="signalLabel">{signal.label}</div>
                   <p className="signalTarget">{signal.targetText}</p>
@@ -2012,6 +2058,12 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
           justify-content: space-between;
           align-items: center;
           gap: 10px;
+        }
+
+        .signalPillsCompact {
+          display: inline-flex;
+          gap: 6px;
+          align-items: center;
         }
 
         .signalLabel {
