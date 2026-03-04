@@ -636,7 +636,7 @@ export default function DailyUpdateClient() {
             <div className="section-head">
               <div>
                 <h2>Stores</h2>
-                <p>Screenshot-friendly tiles (3 rows per column).</p>
+                <p></p>
               </div>
               <div className="kpi-mini">
                 <span className="kpi-chip">
