@@ -4,10 +4,14 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 
+/* ----------------------- CONFIG ----------------------- */
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
+
+/* ----------------------- TYPES ----------------------- */
 
 type AreaMessageRow = { date: string; message: string | null };
 
@@ -52,6 +56,8 @@ type CostControlRow = {
 
 type OsaInternalRow = { shift_date: string; store: string | null };
 
+/* ----------------------- TARGETS ----------------------- */
+
 const INPUT_TARGETS = {
   missedCallsMax01: 0.06,
   aofMin01: 0.62,
@@ -64,24 +70,22 @@ const AREA_TARGETS = {
   addHoursOkMax: 1,
 };
 
-const normalisePct01 = (v: number | null) => {
-  if (v == null || !Number.isFinite(v)) return null;
-  return v > 1 ? v / 100 : v;
-};
+/* ----------------------- HELPERS ----------------------- */
 
-const to01From100 = (v0to100: number | null) => {
-  if (v0to100 == null || !Number.isFinite(v0to100)) return null;
-  return v0to100 / 100;
-};
+const normalisePct01 = (v: number | null) =>
+  v == null || !Number.isFinite(v) ? null : v > 1 ? v / 100 : v;
+
+const to01From100 = (v: number | null) =>
+  v == null || !Number.isFinite(v) ? null : v / 100;
 
 const fmtPct2 = (v: number | null) =>
-  v == null || !Number.isFinite(v) ? "—" : `${(v * 100).toFixed(2)}%`;
+  v == null ? "—" : `${(v * 100).toFixed(2)}%`;
 
 const fmtNum2 = (v: number | null) =>
-  v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}`;
+  v == null ? "—" : v.toFixed(2);
 
 const fmtMins2 = (v: number | null) =>
-  v == null || !Number.isFinite(v) ? "—" : `${Number(v).toFixed(2)}m`;
+  v == null ? "—" : `${v.toFixed(2)}m`;
 
 const avg = (arr: number[]) =>
   arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
@@ -120,37 +124,56 @@ const pillClassFromStatus = (s: MetricStatus) => {
   return "pill";
 };
 
+/* ----------------------- COMPONENT ----------------------- */
+
 export default function DailyUpdateClient() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [stores, setStores] = useState<string[]>([]);
+
+  const [areaMessage, setAreaMessage] = useState("");
   const [storeCards, setStoreCards] = useState<any[]>([]);
+  const [stores, setStores] = useState<string[]>([]);
 
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
 
-        const { data: serviceRows } = await supabase
-          .from("service_shifts")
-          .select("*");
+        const [
+          inputsRes,
+          tasksRes,
+          serviceRes,
+          costRes,
+          osaRes,
+        ] = await Promise.all([
+          supabase.from("daily_update_store_inputs").select("*"),
+          supabase.from("daily_update_store_tasks").select("*"),
+          supabase.from("service_shifts").select("*"),
+          supabase.from("cost_control_entries").select("*"),
+          supabase.from("osa_internal_results").select("*"),
+        ]);
 
-        const { data: costRows } = await supabase
-          .from("cost_control_entries")
-          .select("*");
+        if (inputsRes.error) throw inputsRes.error;
 
-        if (!serviceRows || !costRows) return;
+        const inputs = inputsRes.data || [];
+        const tasks = tasksRes.data || [];
+        const serviceRows = serviceRes.data || [];
+        const costRows = costRes.data || [];
+        const osaRows = osaRes.data || [];
 
         const storeSet = new Set<string>();
-        serviceRows.forEach((r: any) => storeSet.add(r.store));
-        costRows.forEach((r: any) => storeSet.add(r.store));
+        [...inputs, ...serviceRows, ...costRows].forEach((r: any) => {
+          if (r.store) storeSet.add(r.store);
+        });
 
         const storeList = Array.from(storeSet).sort();
         setStores(storeList);
 
         const cards = storeList.map((store) => {
+          const input = inputs.find((r: any) => r.store === store) || null;
+          const storeTasks = tasks.filter((r: any) => r.store === store);
           const service = serviceRows.filter((r: any) => r.store === store);
           const cost = costRows.filter((r: any) => r.store === store);
 
@@ -169,15 +192,21 @@ export default function DailyUpdateClient() {
 
           return {
             store,
-            cost: { labourPct01, foodVarPct01 },
-            service: { dotPct01, extremesPct01, rnlMinutes },
+            input,
+            tasks: storeTasks,
+            dotPct01,
+            extremesPct01,
+            rnlMinutes,
             additionalHours,
+            labourPct01,
+            foodVarPct01,
+            osaCount: osaRows.filter((r: any) => r.store === store).length,
           };
         });
 
         setStoreCards(cards);
-      } catch (e) {
-        setError("Failed to load data");
+      } catch (e: any) {
+        setError(e.message);
       } finally {
         setLoading(false);
       }
@@ -188,41 +217,97 @@ export default function DailyUpdateClient() {
 
   return (
     <main className="wrap">
-      <div className="shell">
-        <div className="topbar">
-          <button className="navbtn" onClick={() => router.back()}>← Back</button>
-          <div className="topbar-spacer" />
-          <button className="navbtn solid" onClick={() => router.push("/")}>🏠 Home</button>
-          <button className="navbtn solid" onClick={() => window.print()}>📄 Export PDF</button>
-        </div>
+      <div className="banner">
+        <img src="/mourneoids_forms_header_1600x400.png" />
+      </div>
 
-        <h1>Daily Update</h1>
+      <div className="shell">
 
         {error && <div className="alert">{error}</div>}
         {loading && <div className="alert muted">Loading…</div>}
 
         <div className="storeGrid dense">
           {storeCards.map((card) => {
-            const dotStatus = statusHigherBetter(card.service.dotPct01, 0.78);
-            const labourStatus = statusLowerBetter(card.cost.labourPct01, 0.26);
-            const foodVarStatus = statusAbsLowerBetter(card.cost.foodVarPct01, 0.003);
+            const dotStatus = statusHigherBetter(card.dotPct01, 0.78);
+            const labourStatus = statusLowerBetter(card.labourPct01, 0.26);
+            const foodStatus = statusAbsLowerBetter(card.foodVarPct01, 0.003);
+
+            const missedStatus = statusLowerBetter(
+              to01From100(card.input?.missed_calls_wtd ?? null),
+              INPUT_TARGETS.missedCallsMax01
+            );
+
+            const gpsStatus = statusHigherBetter(
+              to01From100(card.input?.gps_tracked_wtd ?? null),
+              INPUT_TARGETS.gpsMin01
+            );
+
+            const aofStatus = statusHigherBetter(
+              to01From100(card.input?.aof_wtd ?? null),
+              INPUT_TARGETS.aofMin01
+            );
 
             return (
-              <article key={card.store} className="storeCard denseCard">
+              <article key={card.store} className="storeCard compact">
+
                 <div className="storeTop">
                   <div className="storeName">{card.store}</div>
                   <div className="storeBadges">
-                    <span className={pillClassFromStatus(dotStatus)}>DOT {fmtPct2(card.service.dotPct01)}</span>
-                    <span className={pillClassFromStatus(labourStatus)}>Lab {fmtPct2(card.cost.labourPct01)}</span>
+                    <span className={pillClassFromStatus(dotStatus)}>
+                      DOT {fmtPct2(card.dotPct01)}
+                    </span>
+                    <span className={pillClassFromStatus(labourStatus)}>
+                      Lab {fmtPct2(card.labourPct01)}
+                    </span>
                   </div>
                 </div>
 
-                <div className="metricRow">
-                  <span className="pill">R&L {fmtMins2(card.service.rnlMinutes)}</span>
-                  <span className="pill">Ext {fmtPct2(card.service.extremesPct01)}</span>
-                  <span className="pill">AddH {fmtNum2(card.additionalHours)}</span>
-                  <span className={pillClassFromStatus(foodVarStatus)}>Food {fmtPct2(card.cost.foodVarPct01)}</span>
+                <div className="metricGrid compact">
+                  <span className={pillClassFromStatus(foodStatus)}>
+                    Food {fmtPct2(card.foodVarPct01)}
+                  </span>
+                  <span className="pill">
+                    R&L {fmtMins2(card.rnlMinutes)}
+                  </span>
+                  <span className="pill">
+                    Ext {fmtPct2(card.extremesPct01)}
+                  </span>
+                  <span className="pill">
+                    AddH {fmtNum2(card.additionalHours)}
+                  </span>
                 </div>
+
+                <div className="subRow">
+                  <span className={pillClassFromStatus(missedStatus)}>
+                    Miss {fmtPct2(to01From100(card.input?.missed_calls_wtd ?? null))}
+                  </span>
+                  <span className={pillClassFromStatus(gpsStatus)}>
+                    GPS {fmtPct2(to01From100(card.input?.gps_tracked_wtd ?? null))}
+                  </span>
+                  <span className={pillClassFromStatus(aofStatus)}>
+                    AOF {fmtPct2(to01From100(card.input?.aof_wtd ?? null))}
+                  </span>
+                  <span className="pill">
+                    OSA {card.osaCount}
+                  </span>
+                </div>
+
+                {card.input?.notes && (
+                  <div className="notes compactNote">
+                    {card.input.notes}
+                  </div>
+                )}
+
+                {card.tasks.filter((t: any) => !t.is_complete).length > 0 && (
+                  <div className="tasks compactTasks">
+                    {card.tasks
+                      .filter((t: any) => !t.is_complete)
+                      .map((t: any) => (
+                        <div key={t.id}>• {t.task}</div>
+                      ))}
+                  </div>
+                )}
+
               </article>
             );
           })}
