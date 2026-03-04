@@ -925,7 +925,7 @@ export default function DailyUpdateExportPage() {
 
       {storePages.map((storePair, pairIndex) => (
         <section className="exportPage storesPage" key={`pair-${pairIndex}`}>
-          {storePair.map((card) => {
+          {storePair.map((card, cardIndex) => {
             const dotStatus = statusHigherBetter(card.metrics.dotPct01, card.targets.dotMin01);
             const labourStatus = statusLowerBetter(card.metrics.labourPct01, card.targets.labourMax01);
             const rnlStatus = statusLowerBetter(card.metrics.rnlMinutes, card.targets.rnlMaxMins, 0.1);
@@ -943,31 +943,64 @@ export default function DailyUpdateExportPage() {
             const gpsStatus = statusHigherBetter(card.metrics.gps01, INPUT_TARGETS.gpsMin01);
             const aofStatus = statusHigherBetter(card.metrics.aof01, INPUT_TARGETS.aofMin01);
 
+            const storeRank = pairIndex * 2 + cardIndex + 1;
+
             return (
               <article className="storeHalf" key={card.store}>
                 <div className="storeCard">
                   <div className="storeHead">
-                    <h3>{card.store}</h3>
-                    <span className="pill">OSA WTD: {card.osaWtdCount}</span>
+                    <div className="storeHeadMain">
+                      <h3>{card.store}</h3>
+                      <span className="rankTag">Rank #{storeRank}</span>
+                    </div>
+                    <span className="pill osaPill">OSA WTD: {card.osaWtdCount}</span>
                   </div>
 
                   <div className="storeGrid">
                     <div className="leftCol">
-                      <div className="metricRow"><span>DOT %</span><span className={pillClassFromStatus(dotStatus)}>{fmtPct2(card.metrics.dotPct01)}</span><small>Target ≥ {(card.targets.dotMin01 * 100).toFixed(0)}%</small></div>
-                      <div className="metricRow"><span>Labour %</span><span className={pillClassFromStatus(labourStatus)}>{fmtPct2(card.metrics.labourPct01)}</span><small>Target ≤ {(card.targets.labourMax01 * 100).toFixed(0)}%</small></div>
-                      <div className="metricRow"><span>R&amp;L mins</span><span className={pillClassFromStatus(rnlStatus)}>{fmtMins2(card.metrics.rnlMinutes)}</span><small>Target ≤ {card.targets.rnlMaxMins.toFixed(0)}m</small></div>
-                      <div className="metricRow"><span>Extremes &gt;40 %</span><span className={pillClassFromStatus(extremesStatus)}>{fmtPct2(card.metrics.extremesPct01)}</span><small>Target ≤ {(card.targets.extremesMax01 * 100).toFixed(0)}%</small></div>
-                      <div className="metricRow"><span>Additional hours</span><span className={pillClassFromStatus(addHoursStatus)}>{fmtNum2(card.metrics.additionalHours)}</span><small>Target: actual vs rota</small></div>
-                      <div className="metricRow"><span>Food variance %</span><span className={pillClassFromStatus(foodVarStatus)}>{fmtPct2(card.metrics.foodVarPct01)}</span><small>Target abs ≤ {(card.targets.foodVarAbsMax01 * 100).toFixed(2)}%</small></div>
+                      <h4 className="sectionTitle">Core performance</h4>
 
-                      <div className="metricRow"><span>Missed calls WTD %</span><span className={pillClassFromStatus(missedStatus)}>{fmtPct2(card.metrics.missedCalls01)}</span><small>Target ≤ {(INPUT_TARGETS.missedCallsMax01 * 100).toFixed(0)}%</small></div>
-                      <div className="metricRow"><span>GPS tracked WTD %</span><span className={pillClassFromStatus(gpsStatus)}>{fmtPct2(card.metrics.gps01)}</span><small>Target ≥ {(INPUT_TARGETS.gpsMin01 * 100).toFixed(0)}%</small></div>
-                      <div className="metricRow"><span>AOF WTD %</span><span className={pillClassFromStatus(aofStatus)}>{fmtPct2(card.metrics.aof01)}</span><small>Target ≥ {(INPUT_TARGETS.aofMin01 * 100).toFixed(0)}%</small></div>
+                      <div className="metricRow">
+                        <div className="metricText"><span className="metricName">DOT</span><small>Target ≥ {(card.targets.dotMin01 * 100).toFixed(0)}%</small></div>
+                        <span className={pillClassFromStatus(dotStatus)}>{fmtPct2(card.metrics.dotPct01)}</span>
+                      </div>
+                      <div className="metricRow">
+                        <div className="metricText"><span className="metricName">Labour</span><small>Target ≤ {(card.targets.labourMax01 * 100).toFixed(0)}%</small></div>
+                        <span className={pillClassFromStatus(labourStatus)}>{fmtPct2(card.metrics.labourPct01)}</span>
+                      </div>
+                      <div className="metricRow">
+                        <div className="metricText"><span className="metricName">R&amp;L</span><small>Target ≤ {card.targets.rnlMaxMins.toFixed(0)}m</small></div>
+                        <span className={pillClassFromStatus(rnlStatus)}>{fmtMins2(card.metrics.rnlMinutes)}</span>
+                      </div>
+                      <div className="metricRow">
+                        <div className="metricText"><span className="metricName">Extremes</span><small>Target ≤ {(card.targets.extremesMax01 * 100).toFixed(0)}%</small></div>
+                        <span className={pillClassFromStatus(extremesStatus)}>{fmtPct2(card.metrics.extremesPct01)}</span>
+                      </div>
+                      <div className="metricRow">
+                        <div className="metricText"><span className="metricName">Add Hours</span><small>Target: actual vs rota</small></div>
+                        <span className={pillClassFromStatus(addHoursStatus)}>{fmtNum2(card.metrics.additionalHours)}</span>
+                      </div>
+                      <div className="metricRow">
+                        <div className="metricText"><span className="metricName">Food Var</span><small>Target abs ≤ {(card.targets.foodVarAbsMax01 * 100).toFixed(2)}%</small></div>
+                        <span className={pillClassFromStatus(foodVarStatus)}>{fmtPct2(card.metrics.foodVarPct01)}</span>
+                      </div>
+                      <div className="metricRow">
+                        <div className="metricText"><span className="metricName">Missed Calls</span><small>Target ≤ {(INPUT_TARGETS.missedCallsMax01 * 100).toFixed(0)}%</small></div>
+                        <span className={pillClassFromStatus(missedStatus)}>{fmtPct2(card.metrics.missedCalls01)}</span>
+                      </div>
+                      <div className="metricRow">
+                        <div className="metricText"><span className="metricName">GPS</span><small>Target ≥ {(INPUT_TARGETS.gpsMin01 * 100).toFixed(0)}%</small></div>
+                        <span className={pillClassFromStatus(gpsStatus)}>{fmtPct2(card.metrics.gps01)}</span>
+                      </div>
+                      <div className="metricRow">
+                        <div className="metricText"><span className="metricName">AOF</span><small>Target ≥ {(INPUT_TARGETS.aofMin01 * 100).toFixed(0)}%</small></div>
+                        <span className={pillClassFromStatus(aofStatus)}>{fmtPct2(card.metrics.aof01)}</span>
+                      </div>
                     </div>
 
                     <div className="rightCol">
                       <div className="panel">
-                        <h4>Service losing targets inputs</h4>
+                        <h4 className="sectionTitle">Service losing targets</h4>
                         <p>Load time target: {fmtNum2(card.inputs?.target_load_time_mins ?? null)}m</p>
                         <p>Rack time target: {fmtNum2(card.inputs?.target_rack_time_mins ?? null)}m</p>
                         <p>ADT target: {fmtNum2(card.inputs?.target_adt_mins ?? null)}m</p>
@@ -979,18 +1012,21 @@ export default function DailyUpdateExportPage() {
                       </div>
 
                       <div className="panel">
-                        <h4>Notes</h4>
+                        <h4 className="sectionTitle">Notes</h4>
                         <p className="fullText">{card.inputs?.notes?.trim() || "—"}</p>
                       </div>
 
                       <div className="panel">
-                        <h4>Tasks list</h4>
+                        <h4 className="sectionTitle">Tasks</h4>
                         {card.tasks.length === 0 ? (
                           <p>No tasks for this store on {targetDate}.</p>
                         ) : (
                           <ul className="taskList">
                             {card.tasks.map((task) => (
-                              <li key={task.id}>{task.is_complete ? "☑" : "☐"} {task.task}</li>
+                              <li className={task.is_complete ? "taskDone" : ""} key={task.id}>
+                                <span className="taskState">{task.is_complete ? "☑" : "☐"}</span>
+                                <span>{task.task}</span>
+                              </li>
                             ))}
                           </ul>
                         )}
@@ -1189,60 +1225,135 @@ export default function DailyUpdateExportPage() {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          gap: 1mm;
-          margin-bottom: 1.2mm;
+          gap: 2mm;
+          margin-bottom: 1.4mm;
+          padding: 1.2mm 1.6mm;
+          border: 1.4px solid #bfdbfe;
+          background: #eff6ff;
+          border-radius: 1.6mm;
+        }
+        .storeHeadMain {
+          display: flex;
+          align-items: center;
+          gap: 1.2mm;
+          min-width: 0;
+        }
+        .storeHead h3 {
+          font-size: 15.5px;
+          font-weight: 800;
+        }
+        .rankTag {
+          border-radius: 999px;
+          border: 1px solid #cbd5e1;
+          background: #ffffff;
+          color: #334155;
+          font-size: 10.2px;
+          font-weight: 700;
+          padding: 0.4mm 1.5mm;
+          white-space: nowrap;
+        }
+        .osaPill {
+          font-size: 11px;
+          font-weight: 800;
+          border-width: 1.4px;
+          padding: 0.7mm 2.1mm;
         }
 
         .storeGrid {
           flex: 1;
           min-height: 0;
           display: grid;
-          grid-template-columns: 1.2fr 1fr;
+          grid-template-columns: 1.05fr 0.95fr;
           gap: 2mm;
         }
 
         .leftCol {
+          border: 1px solid #dbe5f3;
+          background: #f8fbff;
+          border-radius: 1.5mm;
+          padding: 1.1mm 1.2mm;
           display: grid;
           grid-template-columns: 1fr;
-          gap: 0.7mm;
+          gap: 0;
           align-content: start;
         }
         .metricRow {
           display: grid;
-          grid-template-columns: 1fr auto;
-          gap: 0.8mm;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 1mm;
           align-items: center;
-          border: 1px solid #ebf0f8;
-          border-radius: 1.2mm;
-          padding: 0.8mm;
-          font-size: 9.6px;
+          border-bottom: 1px solid #dbe5f3;
+          padding: 0.85mm 0.15mm;
+          min-height: 9mm;
+        }
+        .metricRow:last-child {
+          border-bottom: 0;
+        }
+        .metricText {
+          display: grid;
+          gap: 0.2mm;
+          min-width: 0;
+        }
+        .metricName {
+          font-size: 11.4px;
+          font-weight: 740;
+          line-height: 1.2;
         }
         .metricRow small {
-          grid-column: 1 / -1;
           color: #64748b;
-          font-size: 8.5px;
+          font-size: 9.2px;
+          line-height: 1.2;
         }
 
         .rightCol {
           display: grid;
-          gap: 1mm;
+          grid-template-rows: 1fr 1fr 1fr;
+          gap: 1.1mm;
           align-content: start;
         }
         .panel {
-          border: 1px solid #edf2fa;
-          border-radius: 1.2mm;
-          padding: 1mm;
-          font-size: 9.2px;
+          border: 1px solid #dbe5f3;
+          border-radius: 1.4mm;
+          background: #f8fbff;
+          padding: 1.2mm;
+          font-size: 10px;
+          line-height: 1.3;
+          display: grid;
+          gap: 0.45mm;
         }
-        .panel p { line-height: 1.3; }
+        .sectionTitle {
+          margin-bottom: 0.35mm;
+          font-size: 10.6px;
+          font-weight: 760;
+          letter-spacing: 0.01em;
+          color: #334155;
+          text-transform: uppercase;
+        }
+        .panel p { line-height: 1.28; font-size: 10px; }
 
         .taskList {
           list-style: none;
           margin: 0;
           padding: 0;
           display: grid;
-          gap: 0.5mm;
+          gap: 0.35mm;
           line-height: 1.25;
+        }
+        .taskList li {
+          font-size: 10.2px;
+          display: flex;
+          gap: 0.8mm;
+          align-items: baseline;
+        }
+        .taskState {
+          font-size: 11px;
+          line-height: 1;
+          width: 3mm;
+          flex: 0 0 auto;
+        }
+        .taskDone {
+          color: #64748b;
+          text-decoration: line-through;
         }
 
         .pill {
@@ -1255,6 +1366,16 @@ export default function DailyUpdateExportPage() {
         .pill.green { background: #dcfce7; border-color: #86efac; color: #166534; }
         .pill.amber { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
         .pill.red { background: #fee2e2; border-color: #fca5a5; color: #991b1b; }
+
+        .storesPage .pill {
+          padding: 0.65mm 1.9mm;
+          border-width: 1.4px;
+          font-size: 10.8px;
+          font-weight: 760;
+          min-width: 19mm;
+          text-align: center;
+          line-height: 1.1;
+        }
 
         @media print {
           .exportShell { max-width: none; }
