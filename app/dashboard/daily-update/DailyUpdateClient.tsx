@@ -242,6 +242,7 @@ const getTargetsForStore = (store: string, inputs: StoreInputRow | null): Target
 };
 
 type MetricStatus = "good" | "ok" | "bad" | "na";
+type SignalCategory = "Service" | "Food" | "Labour" | "OSA";
 const within = (a: number, b: number, tol: number) => Math.abs(a - b) <= tol;
 
 const statusHigherBetter = (value: number | null, targetMin: number, tol = 0.002): MetricStatus => {
@@ -776,12 +777,11 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
   }, [osaRows]);
 
   const keySignals = useMemo(() => {
-    const signalPriority: Record<string, number> = {
-      Stable: 0,
-      "Labour Risk": 1,
-      "Food Risk": 2,
-      "Dispatch Risk": 3,
-      "Service Risk": 4,
+    const signalPriority: Record<SignalCategory, number> = {
+      OSA: 1,
+      Labour: 2,
+      Food: 3,
+      Service: 4,
     };
 
     const preferredOrder = ["Downpatrick", "Kilkeel", "Newcastle", "Ballynahinch"];
@@ -789,23 +789,37 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
 
     const storeSignals = orderedStores.map((store) => {
       const card = storeCards.find((c) => c.store === store);
-      if (!card) return { store, label: "Stable", status: "good" as MetricStatus };
+      if (!card) return { store, label: "Service" as SignalCategory, status: "na" as MetricStatus };
 
+      const dotStatus = statusHigherBetter(card.service.dotPct01, card.targets.dotMin01);
       const extremesStatus = statusLowerBetter(card.service.extremesPct01, card.targets.extremesMax01);
       const rnlStatus = statusLowerBetter(card.service.rnlMinutes, card.targets.rnlMaxMins, 0.1);
       const foodStatus = statusAbsLowerBetter(card.cost.foodVarPct01, card.targets.foodVarAbsMax01);
       const labourStatus = statusLowerBetter(card.cost.labourPct01, card.targets.labourMax01);
+      const addHoursStatus: MetricStatus =
+        card.additionalHours == null || !Number.isFinite(card.additionalHours)
+          ? "na"
+          : card.additionalHours <= 0
+            ? "good"
+            : card.additionalHours <= 1
+              ? "ok"
+              : "bad";
+      const osaStatus: MetricStatus = card.osaWtdCount <= 0 ? "good" : card.osaWtdCount <= 1 ? "ok" : "bad";
 
-      if (extremesStatus === "bad") return { store, label: "Service Risk", status: "bad" as MetricStatus };
-      if (rnlStatus === "bad") return { store, label: "Dispatch Risk", status: "bad" as MetricStatus };
-      if (foodStatus === "bad") return { store, label: "Food Risk", status: "bad" as MetricStatus };
-      if (labourStatus === "bad") return { store, label: "Labour Risk", status: "bad" as MetricStatus };
-      return { store, label: "Stable", status: "good" as MetricStatus };
+      if (extremesStatus === "bad" || rnlStatus === "bad" || dotStatus === "bad") {
+        return { store, label: "Service" as SignalCategory, status: "bad" as MetricStatus };
+      }
+      if (foodStatus === "bad") return { store, label: "Food" as SignalCategory, status: "bad" as MetricStatus };
+      if (labourStatus === "bad" || addHoursStatus === "bad") {
+        return { store, label: "Labour" as SignalCategory, status: "bad" as MetricStatus };
+      }
+      if (osaStatus === "bad") return { store, label: "OSA" as SignalCategory, status: "bad" as MetricStatus };
+      return { store, label: "Service" as SignalCategory, status: "na" as MetricStatus };
     });
 
     const areaSignal =
       [...storeSignals].sort((a, b) => signalPriority[b.label] - signalPriority[a.label])[0] ||
-      ({ store: "Area", label: "Stable", status: "good" } as const);
+      ({ store: "Area", label: "Service", status: "na" } as const);
 
     return { areaSignal, storeSignals };
   }, [storeCards, stores]);
@@ -1260,7 +1274,7 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
 
                             {/* Keep AOF visible without bloating the grid */}
                             <span className="storeChip">
-                              <span className="storeChipLabel">AOF</span>
+                              <span className="storeChipLabel">AOF (WTD)</span>
                               <span className={pillClassFromStatus(aofStatus)} style={{ minWidth: 84 }}>
                                 {fmtPct2(card.daily.aof01)}
                               </span>
@@ -1270,11 +1284,12 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
                       </div>
 
                       {/* Service-dashboard style: 2 columns x 3 rows */}
+                      <div className="rowHint">Daily snapshot</div>
                       <div className="metricsList">
                         {/* Column/row order chosen to read cleanly in screenshots */}
                         <div className="metricRow">
                           <div className="rowText">
-                            <div className="rowLabel">DOT</div>
+                            <div className="rowLabel">DOT (Daily)</div>
                             <div className="rowHint">≥ {(card.targets.dotMin01 * 100).toFixed(0)}%</div>
                           </div>
                           <div className="metricValueWrap">
@@ -1285,7 +1300,7 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
 
                         <div className="metricRow">
                           <div className="rowText">
-                            <div className="rowLabel">Labour</div>
+                            <div className="rowLabel">Labour (Daily)</div>
                             <div className="rowHint">≤ {(card.targets.labourMax01 * 100).toFixed(0)}%</div>
                           </div>
                           <div className="metricValueWrap">
@@ -1296,7 +1311,7 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
 
                         <div className="metricRow">
                           <div className="rowText">
-                            <div className="rowLabel">R&amp;L</div>
+                            <div className="rowLabel">R&amp;L (Daily)</div>
                             <div className="rowHint">≤ {card.targets.rnlMaxMins.toFixed(0)}m</div>
                           </div>
                           <div className="metricValueWrap">
@@ -1307,7 +1322,7 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
 
                         <div className="metricRow">
                           <div className="rowText">
-                            <div className="rowLabel">Extremes &gt;40</div>
+                            <div className="rowLabel">Extremes &gt;40 (Daily)</div>
                             <div className="rowHint">≤ {(card.targets.extremesMax01 * 100).toFixed(0)}%</div>
                           </div>
                           <div className="metricValueWrap">
@@ -1318,7 +1333,7 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
 
                         <div className="metricRow">
                           <div className="rowText">
-                            <div className="rowLabel">Add. hours</div>
+                            <div className="rowLabel">Additional hours (Daily)</div>
                             <div className="rowHint">Actual vs rota</div>
                           </div>
                           <span className={pillClassFromStatus(addHoursStatus)}>{fmtNum2(card.additionalHours)}</span>
@@ -1326,7 +1341,7 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
 
                         <div className="metricRow">
                           <div className="rowText">
-                            <div className="rowLabel">Food variance</div>
+                            <div className="rowLabel">Food variance (Daily)</div>
                             <div className="rowHint">Abs ≤ {(card.targets.foodVarAbsMax01 * 100).toFixed(2)}%</div>
                           </div>
                           <div className="metricValueWrap">
@@ -1337,13 +1352,14 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
                       </div>
 
                       {/* Compact “inputs” row (optional – keeps screenshot clean) */}
+                      <div className="rowHint">WTD inputs</div>
                       <div className="inputsRow">
                         <div className="inputChip">
-                          <span className="inputLabel">Missed calls</span>
+                          <span className="inputLabel">Missed calls (WTD)</span>
                           <span className={pillClassFromStatus(missedStatus)}>{fmtPct2(card.daily.missedCalls01)}</span>
                         </div>
                         <div className="inputChip">
-                          <span className="inputLabel">GPS tracked</span>
+                          <span className="inputLabel">GPS tracked (WTD)</span>
                           <span className={pillClassFromStatus(gpsStatus)}>{fmtPct2(card.daily.gps01)}</span>
                         </div>
                       </div>
@@ -1354,7 +1370,7 @@ export default function DailyUpdateClient({ exportMode = false }: { exportMode?:
                           <div className="panel">
                             <div className="panelHead">
                               <div className="panelTitle">Service losing targets</div>
-                              <div className="panelHint">Input</div>
+                              <div className="panelHint">Daily targets to hit or beat</div>
                             </div>
                             <div className="kvGrid">
                               <div className="kv">
