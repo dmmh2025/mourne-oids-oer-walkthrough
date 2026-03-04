@@ -942,6 +942,9 @@ export default function DailyUpdateExportPage() {
             const missedStatus = statusLowerBetter(card.metrics.missedCalls01, INPUT_TARGETS.missedCallsMax01);
             const gpsStatus = statusHigherBetter(card.metrics.gps01, INPUT_TARGETS.gpsMin01);
             const aofStatus = statusHigherBetter(card.metrics.aof01, INPUT_TARGETS.aofMin01);
+            const noteText = card.inputs?.notes?.trim() || "—";
+            const shouldClampNotes = noteText !== "—" && noteText.length > 260;
+            const shouldClampTasks = card.tasks.length > 6;
 
             const storeRank = pairIndex * 2 + cardIndex + 1;
 
@@ -1010,7 +1013,7 @@ export default function DailyUpdateExportPage() {
                     </div>
 
                     <div className="rightCol">
-                      <div className="panel">
+                      <div className="panel serviceInputsPanel">
                         <h4 className="sectionTitle">Service losing targets</h4>
                         <div className="inputPillGrid">
                           <div className="inputPillItem">
@@ -1038,7 +1041,8 @@ export default function DailyUpdateExportPage() {
 
                       <div className="panel notesPanel">
                         <h4 className="sectionTitle">Notes</h4>
-                        <p className="fullText">{card.inputs?.notes?.trim() || "—"}</p>
+                        <p className={`fullText${shouldClampNotes ? " printClamp" : ""}`}>{noteText}</p>
+                        {shouldClampNotes ? <p className="overflowHint">See Daily Update page for full notes.</p> : null}
                       </div>
 
                       <div className="panel tasksPanel">
@@ -1046,7 +1050,7 @@ export default function DailyUpdateExportPage() {
                         {card.tasks.length === 0 ? (
                           <p>No tasks for this store on {targetDate}.</p>
                         ) : (
-                          <ul className="taskList">
+                          <ul className={`taskList${shouldClampTasks ? " printClamp" : ""}`}>
                             {card.tasks.map((task) => (
                               <li className={task.is_complete ? "taskDone" : ""} key={task.id}>
                                 <span className="taskState">{task.is_complete ? "☑" : "☐"}</span>
@@ -1055,6 +1059,7 @@ export default function DailyUpdateExportPage() {
                             ))}
                           </ul>
                         )}
+                        {shouldClampTasks ? <p className="overflowHint">See Daily Update page for full task list.</p> : null}
                       </div>
                     </div>
                   </div>
@@ -1067,7 +1072,14 @@ export default function DailyUpdateExportPage() {
 
       <style jsx global>{`
         @page { size: A4 landscape; margin: 8mm; }
-        * {
+        :root {
+          --print-page-height: 210mm;
+          --print-page-margin: 8mm;
+          --stores-page-gap: 2mm;
+          --stores-page-inner-height: calc(var(--print-page-height) - (var(--print-page-margin) * 2));
+          --store-half-height: calc((var(--stores-page-inner-height) - var(--stores-page-gap)) / 2);
+        }
+        *, *::before, *::after {
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
           box-sizing: border-box;
@@ -1233,17 +1245,21 @@ export default function DailyUpdateExportPage() {
         }
 
         .storesPage {
-          gap: 2mm;
+          gap: var(--stores-page-gap);
+          min-height: var(--stores-page-inner-height);
         }
         .storeHalf {
-          height: calc((190mm - 2mm) / 2);
+          height: var(--store-half-height);
           break-inside: avoid;
           page-break-inside: avoid;
+          overflow: hidden;
         }
         .storeCard {
           height: 100%;
           display: flex;
           flex-direction: column;
+          gap: 1.4mm;
+          overflow: hidden;
         }
 
         .storeHead {
@@ -1251,7 +1267,6 @@ export default function DailyUpdateExportPage() {
           justify-content: space-between;
           align-items: center;
           gap: 2mm;
-          margin-bottom: 1.4mm;
           padding: 1.2mm 1.6mm;
           border: 1.4px solid #bfdbfe;
           background: #eff6ff;
@@ -1287,12 +1302,13 @@ export default function DailyUpdateExportPage() {
         .storeGrid {
           flex: 1;
           min-height: 0;
-          display: grid;
-          grid-template-columns: 1.05fr 0.95fr;
+          display: flex;
           gap: 2mm;
+          overflow: hidden;
         }
 
         .leftCol {
+          flex: 1.05;
           border: 1px solid #dbe5f3;
           background: #f8fbff;
           border-radius: 1.5mm;
@@ -1301,6 +1317,9 @@ export default function DailyUpdateExportPage() {
           grid-template-columns: 1fr;
           gap: 0.8mm;
           align-content: start;
+          min-width: 0;
+          min-height: 0;
+          overflow: hidden;
         }
         .metricTilesGrid {
           display: grid;
@@ -1344,10 +1363,13 @@ export default function DailyUpdateExportPage() {
         }
 
         .rightCol {
-          display: grid;
-          grid-template-rows: 1fr 1fr 1fr;
+          flex: 0.95;
+          display: flex;
+          flex-direction: column;
           gap: 1.1mm;
-          align-content: start;
+          min-height: 0;
+          min-width: 0;
+          overflow: hidden;
         }
         .panel {
           border: 1px solid #dbe5f3;
@@ -1358,9 +1380,15 @@ export default function DailyUpdateExportPage() {
           line-height: 1.3;
           display: grid;
           gap: 0.45mm;
+          min-height: 0;
+        }
+        .serviceInputsPanel { flex: 1.1 1 0; }
+        .notesPanel,
+        .tasksPanel {
+          flex: 1 1 0;
+          overflow: hidden;
         }
         .sectionTitle {
-          margin-bottom: 0.35mm;
           font-size: 10.6px;
           font-weight: 760;
           letter-spacing: 0.01em;
@@ -1411,6 +1439,8 @@ export default function DailyUpdateExportPage() {
           line-height: 1.5;
           font-weight: 860;
           color: #0f172a;
+          overflow-wrap: anywhere;
+          word-break: break-word;
         }
 
         .tasksPanel {
@@ -1434,6 +1464,10 @@ export default function DailyUpdateExportPage() {
           gap: 0.8mm;
           align-items: baseline;
         }
+        .taskList li span:last-child {
+          overflow-wrap: anywhere;
+          word-break: break-word;
+        }
         .taskState {
           font-size: 11.4px;
           line-height: 1;
@@ -1444,6 +1478,12 @@ export default function DailyUpdateExportPage() {
           color: #64748b;
           text-decoration: line-through;
           text-decoration-thickness: 1px;
+        }
+        .overflowHint {
+          display: none;
+          font-size: 9.2px;
+          color: #475569;
+          font-style: italic;
         }
 
         .pill {
@@ -1482,6 +1522,25 @@ export default function DailyUpdateExportPage() {
           }
 
           .firstPage.printClampMessage .messageContinuationNote {
+            display: block;
+          }
+
+          .notesPanel .fullText.printClamp {
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 6;
+            line-clamp: 6;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+
+          .taskList.printClamp {
+            max-height: 24mm;
+            overflow: hidden;
+          }
+
+          .notesPanel .overflowHint,
+          .tasksPanel .overflowHint {
             display: block;
           }
         }
